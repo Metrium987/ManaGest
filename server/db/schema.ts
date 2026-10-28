@@ -2,7 +2,7 @@
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS app_meta (
@@ -90,6 +90,35 @@ export const SCHEMA_STATEMENTS: string[] = [
     period TEXT NOT NULL,
     last_number INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (entity, period)
+  )`,
+
+  // Per-entity numbering configuration (R-A: editable pattern + prefix per
+  // document type; falls back to company.number_pattern when absent).
+  `CREATE TABLE IF NOT EXISTS entity_numbering (
+    entity TEXT PRIMARY KEY,
+    prefix TEXT NOT NULL,
+    pattern TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+
+  // Gap register (BK-005 / OQ-005): every consumed number that has no live
+  // document behind it is traced here with the reason and the acting user.
+  `CREATE TABLE IF NOT EXISTS number_gaps (
+    id TEXT PRIMARY KEY,
+    entity TEXT NOT NULL,
+    number TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT 'deleted',
+    created_by TEXT,
+    created_at TEXT NOT NULL
+  )`,
+
+  // Generic key/value extension settings (R-A: no hard-coded limits —
+  // retention years, UI language variant, login attempts, etc.).
+  `CREATE TABLE IF NOT EXISTS settings_extra (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_by TEXT,
+    updated_at TEXT NOT NULL
   )`,
 
   `CREATE TABLE IF NOT EXISTS clients (

@@ -1,9 +1,11 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { nowISO } from '../db';
+import { todayIn } from '../lib/dates';
 import { logActivity } from '../lib/audit';
+import { retentionElapsed, DEFAULT_RETENTION_YEARS } from '../lib/retention';
 import { fail } from '../lib/errors';
-import { nextNumber } from '../lib/numbering';
+import { nextNumber, recordNumberGap } from '../lib/numbering';
 import { computeTotals } from '../lib/tax';
 import { lineItemsSchema, offsetOf, paginationSchema, parseInput } from '../lib/validation';
 import { assertPeriodOpen } from '../lib/locks';
@@ -171,14 +173,30 @@ creditRoutes.post('/:id/apply', requirePermission('credits.write'), async (c) =>
 
 creditRoutes.delete('/:id', requirePermission('credits.delete'), async (c) => {
   const id = c.req.param('id');
+  const user = c.get('user')!;
   const credit = await c.env.DB.prepare(
-    `SELECT applied_total, date FROM credits WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT applied_total, date, status, number FROM credits WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(id)
-    .first<{ applied_total: number; date: string }>();
+    .first<{ applied_total: number; date: string; status: string; number: string | null }>();
   if (!credit) return fail(404, 'NOT_FOUND');
   if (credit.applied_total > 0) return fail(409, 'CREDIT_ALREADY_APPLIED');
   await assertPeriodOpen(c.env.DB, credit.date);
+
+  // Retention guard (OQ-006, [VALIDATE LOCALLY]): issued credits are locked
+  // from deletion until the retention window elapses (default 10 years).
+  if (credit.status !== 'draft') {
+    const retentionYears = Number(
+      (await c.env.DB.prepare(`SELECT value FROM settings_extra WHERE key = 'retention_years'`).first())?.value
+        ?? DEFAULT_RETENTION_YEARS,
+    );
+    const today = todayIn(c.get('company')!.timezone);
+    if (!retentionElapsed(credit.date, retentionYears, today)) {
+      return fail(409, 'RETENTION_LOCKED');
+    }
+  }
+
+  await recordNumberGap(c.env.DB, 'credit', credit.number ? credit.number : null, user.id);
   await c.env.DB.prepare(`UPDATE credits SET deleted_at = ?, updated_at = ? WHERE id = ?`)
     .bind(nowISO(), nowISO(), id)
     .run();

@@ -134,9 +134,19 @@ export const TVA_RATES = [
 
 export const VAT_REGIMES = ['standard', 'franchise'] as const;
 
+export const LINE_TAX_STATUSES = ['taxable', 'exempt'] as const;
+export type LineTaxStatusDomain = (typeof LINE_TAX_STATUSES)[number];
+export const LINE_TAX_STATUS_LABELS: Record<LineTaxStatusDomain, string> = {
+  taxable: 'TVA applicable',
+  exempt: 'Exonéré de TVA',
+};
+
 export const COUNTRIES = ['Polynésie française', 'France', 'Nouvelle-Calédonie', 'Autre'] as const;
 
 export const CURRENCIES = ['XPF', 'EUR', 'USD', 'NZD', 'AUD', 'JPY', 'GBP', 'CHF', 'CAD'] as const;
+
+export const UI_LANGUAGES = ['fr', 'en'] as const;
+export type UiLanguage = (typeof UI_LANGUAGES)[number];
 
 /** Currencies with zero decimal places, as used in the Pacific franc zone. */
 export const ZERO_DECIMAL_CURRENCIES = ['XPF', 'JPY'] as const;

@@ -213,3 +213,69 @@ describe('audit diff snapshots', () => {
     });
   });
 });
+
+// ===== M0 (T-002) — TVA status model: exempt lines carry no 0-rate bucket =====
+import { computeTotals as ct2 } from '../shared/tax';
+
+describe('M0 tax-status model (BK-001/PF-TVA-002)', () => {
+  it('exempt line produces no bucket and no tax', () => {
+    const r = ct2(
+      [
+        { id: 'a', description: 'x', quantity: 2, unit_price: 10000, tax_rate: 16, tax_status: 'exempt' },
+        { id: 'b', description: 'y', quantity: 1, unit_price: 5000, tax_rate: 16 },
+      ],
+      { discount_type: 'percent', discount_value: 0 },
+      false,
+    );
+    expect(r.tax_total).toBe(800); // 5 000 HT × 16 % = 800
+    expect(r.tax_buckets).toHaveLength(1);
+    expect(r.total).toBe(25800); // 20 000 exonéré + 5 000 HT + 800 TVA
+  });
+
+  it('all-exempt document has no buckets at all', () => {
+    const r = ct2(
+      [{ id: 'a', description: 'x', quantity: 1, unit_price: 12000, tax_rate: 16, tax_status: 'exempt' }],
+      { discount_type: 'amount', discount_value: 0 },
+      false,
+    );
+    expect(r.tax_buckets).toHaveLength(0);
+    expect(r.total).toBe(12000);
+  });
+
+  it('company-level franchise still zeroes every line', () => {
+    const r = ct2(
+      [{ id: 'a', description: 'x', quantity: 1, unit_price: 9999, tax_rate: 16 }],
+      { discount_type: 'percent', discount_value: 0 },
+      true,
+    );
+    expect(r.tax_total).toBe(0);
+    expect(r.tax_buckets).toHaveLength(0);
+  });
+
+  it('default (no tax_status) keeps previous behaviour', () => {
+    const r = ct2(
+      [{ id: 'a', description: 'x', quantity: 1, unit_price: 10000, tax_rate: 16 }],
+      { discount_type: 'percent', discount_value: 0 },
+      false,
+    );
+    expect(r.tax_total).toBe(1600);
+  });
+});
+
+// ===== M0 (T-009) — retention guard =====
+import { retentionCutoff, retentionElapsed, DEFAULT_RETENTION_YEARS } from '../server/lib/retention';
+
+describe('M0 retention guard (OQ-005/006)', () => {
+  it('default is 10 years', () => expect(DEFAULT_RETENTION_YEARS).toBe(10));
+  it('today+10y cutoff computed from document date', () => {
+    expect(retentionCutoff('2016-03-14', 10)).toBe('2026-03-14');
+  });
+  it('elapsed only after cutoff', () => {
+    expect(retentionElapsed('2016-03-14', 10, '2026-03-14')).toBe(false);
+    expect(retentionElapsed('2016-03-14', 10, '2026-03-15')).toBe(true);
+  });
+  it('custom retention years respected', () => {
+    expect(retentionElapsed('2020-01-01', 5, '2025-01-02')).toBe(true);
+    expect(retentionElapsed('2020-01-01', 5, '2024-12-31')).toBe(false);
+  });
+});

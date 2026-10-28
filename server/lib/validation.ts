@@ -56,6 +56,8 @@ export const lineItemSchema = z.object({
   quantity: quantity,
   unit_price: minorAmount,
   tax_rate: percentRate,
+  // Local TVA status (BK-001): exempt lines produce no 0-rate bucket.
+  tax_status: z.enum(['taxable', 'exempt']).optional(),
 });
 
 export const lineItemsSchema = z.array(lineItemSchema).min(1).max(200);

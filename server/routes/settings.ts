@@ -55,6 +55,85 @@ const COMPANY_DIFF_KEYS = [
 export const settingsRoutes = new Hono<AppEnv>();
 settingsRoutes.use('*', requireAuth);
 
+// --- M0 (T-001): per-entity numbering configuration (CC-RA-1, editable pattern+prefix) ---
+settingsRoutes.get('/numbering', requirePermission('settings.read'), async (c) => {
+  const entityNumbering = await c.env.DB.prepare(`SELECT entity, prefix, pattern, updated_at FROM entity_numbering ORDER BY entity`).all();
+  const gaps = await c.env.DB.prepare(
+    `SELECT entity, number, reason, created_by, created_at FROM number_gaps ORDER BY created_at DESC LIMIT 200`,
+  ).all();
+  return c.json({ entity_numbering: entityNumbering.results ?? [], gaps: gaps.results ?? [] });
+});
+
+settingsRoutes.put('/numbering/:entity', requirePermission('settings.write'), async (c) => {
+  const entity = c.req.param('entity');
+  const body = parseInput(
+    z.object({ prefix: z.string().trim().min(1).max(10), pattern: z.string().trim().min(3).max(40) }),
+    await c.req.json().catch(() => ({})),
+  );
+  if (!['invoice', 'quote', 'credit', 'payment'].includes(entity)) {
+    return fail(422, 'VALIDATION_ERROR', { entity: 'unsupported' });
+  }
+  // Only known placeholders are accepted (R-A: unsupported tokens must not
+  // leak literally into document numbers).
+  const leftover = body.pattern
+    .replace(/\{prefix\}/g, '')
+    .replace(/\{YYYY\}/g, '')
+    .replace(/\{YY\}/g, '')
+    .replace(/\{MM\}/g, '')
+    .replace(/\{######\}|\{#####\}|\{####\}|\{###\}|\{##\}|\{#\}/g, '');
+  if (/[{}]/.test(leftover)) {
+    return fail(422, 'VALIDATION_ERROR', { pattern: 'unsupported_placeholder' });
+  }
+  const user = c.get('user')!;
+  await c.env.DB.prepare(
+    `INSERT INTO entity_numbering (entity, prefix, pattern, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(entity) DO UPDATE SET prefix = excluded.prefix, pattern = excluded.pattern, updated_at = excluded.updated_at`,
+  ).bind(entity, body.prefix, body.pattern, nowISO()).run();
+  await logActivity(c.env.DB, {
+    userId: user.id,
+    action: 'updated',
+    entityType: 'settings',
+    entityId: `numbering:${entity}`,
+    summary: 'activity.settings_numbering_changed',
+    meta: { entity, prefix: body.prefix, pattern: body.pattern },
+  });
+  return c.json({ ok: true });
+});
+
+// --- M0 (T-003/T-009): key/value extension settings (retention years, UI language variant) ---
+const EXTRA_KEYS = ['retention_years', 'ui_language'] as const;
+
+settingsRoutes.get('/extras', requirePermission('settings.read'), async (c) => {
+  const rows = await c.env.DB.prepare(`SELECT key, value FROM settings_extra`).all();
+  return c.json({ extras: rows.results ?? [] });
+});
+
+settingsRoutes.put('/extras/:key', requirePermission('settings.write'), async (c) => {
+  const key = c.req.param('key');
+  const body = parseInput(z.object({ value: z.string().trim().min(1).max(80) }), await c.req.json().catch(() => ({})));
+  if (!(EXTRA_KEYS as readonly string[]).includes(key)) return fail(422, 'VALIDATION_ERROR', { key: 'unsupported' });
+  if (key === 'retention_years' && !/^[1-9]\d{0,2}$/.test(body.value)) {
+    return fail(422, 'VALIDATION_ERROR', { value: 'invalid' });
+  }
+  if (key === 'ui_language' && !['fr', 'en'].includes(body.value)) {
+    return fail(422, 'VALIDATION_ERROR', { value: 'invalid' });
+  }
+  const user = c.get('user')!;
+  await c.env.DB.prepare(
+    `INSERT INTO settings_extra (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+  ).bind(key, body.value, user.id, nowISO()).run();
+  await logActivity(c.env.DB, {
+    userId: user.id,
+    action: 'updated',
+    entityType: 'settings',
+    entityId: `extras:${key}`,
+    summary: 'activity.settings_extra_changed',
+    meta: { key, value: body.value },
+  });
+  return c.json({ ok: true });
+});
+
 settingsRoutes.get('/', requirePermission('settings.read'), async (c) => {
   const company = c.get('company')!;
   const taxRates = await c.env.DB.prepare(`SELECT * FROM tax_rates ORDER BY rate DESC`).all();

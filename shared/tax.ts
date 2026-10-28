@@ -1,5 +1,7 @@
 import { roundMinor } from './money';
 
+export type LineTaxStatus = 'taxable' | 'exempt';
+
 export interface LineItem {
   id: string;
   product_id?: string | null;
@@ -7,6 +9,8 @@ export interface LineItem {
   quantity: number;
   unit_price: number;
   tax_rate: number;
+  /** Local TVA status per line: exempt lines show no 0-rate bucket (BK-001/PF-TVA-002). */
+  tax_status?: LineTaxStatus;
 }
 
 export interface DiscountInput {
@@ -71,9 +75,14 @@ export function computeTotals(
         : 0;
     allocated += share;
     const taxableBase = Math.max(0, lineTotal - share);
-    const rate = taxExempt ? 0 : line.tax_rate;
-    const amount = taxExempt ? 0 : roundMinor((taxableBase * rate) / 100);
+    const exempt = taxExempt || line.tax_status === 'exempt';
+    const rate = exempt ? 0 : line.tax_rate;
+    const amount = exempt ? 0 : roundMinor((taxableBase * rate) / 100);
 
+    if (exempt) {
+      // Exempt lines carry no VAT bucket at all — not a 0% slab (official DICP wording).
+      return;
+    }
     const bucket = buckets.get(rate) ?? { rate, base: 0, amount: 0 };
     bucket.base += taxableBase;
     bucket.amount += amount;

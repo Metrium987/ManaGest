@@ -7,3 +7,7 @@
 | 4 | PQ-1..PQ-5 platform answers | T-104 caller contract, T-106 provider, attachment ceiling display | data/platform-questions |
 | 5 | Local validations OQ-019/004/005/006 [VALIDATE LOCALLY] | T-002 final wording, retention register values | 09 |
 | 6 | Provider choice for email (R2) | T-106 | owner |
+
+## 2026-10-28 update
+- #1, #2, #3 marked answered per the instructions above; dependent tasks T-202a–c, T-203, T-403, T-001/T-002 design prep unblocked.
+- Still open: #4 (PQ-1…PQ-5), #5 (locally-approved DICP wording), #6 (email provider choice).

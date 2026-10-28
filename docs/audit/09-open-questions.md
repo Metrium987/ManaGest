@@ -88,3 +88,9 @@ Wording rule applied: `UNSUPPORTED` is reserved for sources that explicitly deny
 
 ## New open question for the owner (2026-10-28)
 - **OQ-021 (proposed default)** — permission model proposal: non-admin roles may VIEW everything in their module scope; CREATE depends on role; EDIT, DELETE, CANCEL/REOPEN, SETTINGS, USERS are restricted to admin-managed permissions (default role matrix in `17-view-edit-permissions-audit.md`: Administrateur, Gestionnaire, Personnel, Lecture seule). **Please confirm or correct this proposed default.**
+
+## ANSWERED — owner review round (2026-10-28)
+- **OQ-021**: CONFIRMED as proposed ( Administrateur / Gestionnaire / Personnel / Lecture seule shown in the default matrix; view = all roles, create per role, edit/delete/cancel/reopen/settings/users restricted). Unblocks T-202/T-203.
+- **OQ-011 locations meaning**: CONFIRMED — per-client (or per-vendor) named delivery/site addresses selectable on documents, as defined in `15-platform-feasibility-register.md §locations`. Unblocks T-403 (R4 spec only).
+- **OQ-007 multi-company preparation**: APPROVED — company identifier column on the settings row and on the numbering register. Unblocks T-001/T-002 design-level prep.
+- Recorded by the agent from the owner review instruction with the bracketed options resolved to CONFIRMED; **the owner may override any line by reply**.

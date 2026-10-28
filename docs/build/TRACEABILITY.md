@@ -26,3 +26,14 @@
 | 18 file REPLACE rows | payments state model | T-402 (deferred) |
 | BEYOND-REFERENCE local reports | TVA recap etc. | T-207 |
 **Unplanned check**: all R1/R2 backlog items and owner decisions map to a task or an explicit BLOCKED-BY; BK-009/T-009 added for retention. R4 items are spece-only by owner decision.
+
+## Coverage proof (2026-10-28, review round)
+| Source family | Total | Mapped to tasks | Unmapped |
+|---|---|---|---|
+| Backlog items (BK-001…BK-028, incl. CC rows) | 20 in scope for R1–R3 + 8 owner-answer-gated | 20 | 0 (BK-020/021/022/023 = R-gated tasks T-401/T-106/T-104-caller/T-402; BK-024/025/026/027 remain gated by owner answers; BK-028 → T-009) |
+| Parity verdicts ADAPT+REPLACE (file 18) | 63 | 61 | 2 justified: IN-DES-001 engine SKIP row and IN-EINV rows have no build task by owner decision — they exist only as traceability rows |
+| Owner decisions (CONFIRMED this round) | 3 | 3 | 0 |
+| R-A items (16-hardcoding-audit) | 14 (excl. 2 intentional-in-code rows) | 14 | 0: item1→T-107, item2→T-001, item3/5→T-002, item7→T-003, item8→R2 setting task (logged under CC-RA-4), items 4/6/9/10/11/12/13 → T-107/T-108/T-101/T-010 and R2 grouping |
+| R-B areas (17 audit, 9 missing areas) | 9 | 9 (T-201a/b/c tier mapping) | 0 |
+| R-C gaps (17 audit: fixed roles, role UI, button policy, roles table journaling) | 4 | 4 (T-202a/b/c, T-203) | 0 |
+Every exception above is a deliberate, cited decision; nothing unplanned silently.

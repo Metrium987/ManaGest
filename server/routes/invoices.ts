@@ -3,8 +3,9 @@ import { z } from 'zod';
 import { addDays, todayIn } from '../lib/dates';
 import { nowISO } from '../db';
 import { logActivity } from '../lib/audit';
+import { retentionElapsed, DEFAULT_RETENTION_YEARS } from '../lib/retention';
 import { fail } from '../lib/errors';
-import { nextNumber } from '../lib/numbering';
+import { nextNumber, recordNumberGap } from '../lib/numbering';
 import { computeTotals } from '../lib/tax';
 import { offsetOf, paginationSchema, parseInput, lineItemsSchema, optionalIsoDate } from '../lib/validation';
 import { assertPeriodOpen } from '../lib/locks';
@@ -292,6 +293,19 @@ invoiceRoutes.post('/:id/cancel', requirePermission('invoices.write'), async (c)
   if (invoice.paid_total > 0) return fail(409, 'INVOICE_HAS_PAYMENTS');
   await assertPeriodOpen(c.env.DB, invoice.date);
 
+  // Retention guard (OQ-006): issued documents leave the deletion window
+  // only after the configurable retention period (default 10 years).
+  if (invoice.status !== undefined && invoice.status !== 'draft') {
+    const retentionYears = Number(
+      (await c.env.DB.prepare(`SELECT value FROM settings_extra WHERE key = 'retention_years'`).first())?.value
+        ?? DEFAULT_RETENTION_YEARS,
+    );
+    const today = todayIn(c.get('company')!.timezone);
+    if (!retentionElapsed(invoice.date, retentionYears, today)) {
+      return fail(409, 'RETENTION_LOCKED');
+    }
+  }
+
   await c.env.DB.prepare(
     `UPDATE invoices SET status = 'cancelled', balance = 0, cancelled_at = ?, updated_at = ? WHERE id = ?`,
   )
@@ -462,14 +476,28 @@ invoiceRoutes.delete('/:id', requirePermission('invoices.delete'), async (c) => 
   const id = c.req.param('id');
   const user = c.get('user')!;
   const invoice = await c.env.DB.prepare(
-    `SELECT id, number, paid_total, date FROM invoices WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT id, number, paid_total, date, status FROM invoices WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(id)
-    .first<{ id: string; number: string; paid_total: number; date: string }>();
+    .first<{ id: string; number: string; paid_total: number; date: string; status: string }>();
   if (!invoice) return fail(404, 'NOT_FOUND');
   if (invoice.paid_total > 0) return fail(409, 'INVOICE_HAS_PAYMENTS');
   await assertPeriodOpen(c.env.DB, invoice.date);
 
+  // Retention guard (OQ-006): issued documents leave the deletion window
+  // only after the configurable retention period (default 10 years).
+  if (invoice.status !== undefined && invoice.status !== 'draft') {
+    const retentionYears = Number(
+      (await c.env.DB.prepare(`SELECT value FROM settings_extra WHERE key = 'retention_years'`).first())?.value
+        ?? DEFAULT_RETENTION_YEARS,
+    );
+    const today = todayIn(c.get('company')!.timezone);
+    if (!retentionElapsed(invoice.date, retentionYears, today)) {
+      return fail(409, 'RETENTION_LOCKED');
+    }
+  }
+
+  await recordNumberGap(c.env.DB, 'invoice', invoice.number, user.id);
   await c.env.DB.prepare(`UPDATE invoices SET deleted_at = ?, updated_at = ? WHERE id = ?`)
     .bind(nowISO(), nowISO(), id)
     .run();

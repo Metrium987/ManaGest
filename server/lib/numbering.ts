@@ -11,6 +11,14 @@ export async function nextNumber(
   pattern: string,
   dateISO: string,
 ): Promise<string> {
+  const override = await database
+    .prepare(`SELECT prefix, pattern FROM entity_numbering WHERE entity = ?`)
+    .bind(entity)
+    .first<{ prefix: string; pattern: string }>();
+  if (override) {
+    prefix = override.prefix;
+    pattern = override.pattern;
+  }
   const year = dateISO.slice(0, 4);
   const month = dateISO.slice(5, 7);
 
@@ -74,4 +82,24 @@ export async function sequenceAudit(database: D1Database): Promise<
       .prepare(`SELECT entity, period, last_number FROM number_sequences ORDER BY entity, period`)
       
   );
+}
+
+
+/** Record a consumed number without a live document behind it (gap register). */
+export async function recordNumberGap(
+  database: D1Database,
+  entity: string,
+  number: string | null,
+  userId: string | null,
+  reason = 'deleted',
+): Promise<void> {
+  if (!number) return;
+  await database
+    .prepare(
+      `INSERT INTO number_gaps (id, entity, number, reason, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT DO NOTHING`,
+    )
+    .bind(crypto.randomUUID(), entity, number, reason, userId, new Date().toISOString())
+    .run();
 }
