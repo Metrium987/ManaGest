@@ -17,7 +17,7 @@
     "paths": {
       "@shared/*": ["./shared/*"]
     },
-    "types": ["@cloudflare/workers-types"]
+    "types": ["@cloudflare/workers-types", "node"]
   },
   "include": ["server", "tests", "shared"]
 }

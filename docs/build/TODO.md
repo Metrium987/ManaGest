@@ -17,7 +17,7 @@ Legend: Eff S/M/L/XL; status TODO|IN PROGRESS|DONE|BLOCKED; every row cites evid
 | T-006 | In-app CSV export of every list with round-trip headers | M7 | BK-011 (R1 scope per OQ-016 owner answer); import-export sheet | T-001 | — | S | G-R1.6 |
 | T-007 | Overdue/computed status chips (depôt? expired quote) list/detail | M4 | BK-004 | T-002 | — | S | G-R1.7 |
 | T-009 | Retention: issued-doc delete guard + gap register + configurable years | M0 | OQ-005/006; BK-028 | T-001 | accountant confirm | M | DONE (live 409 evidence) |
-| T-008 | Permissions: server checks sweep + audit test helper (fixed roles) | M1 | CC-RC (enforcement part); 17 §R-C current state | — | OQ-021 only blocks CUSTOM roles | M | G-R1.8 |
+| T-008 | Permissions: server checks sweep + audit test helper (fixed roles) | M1 | CC-RC (enforcement part); 17 §R-C | — | — | M | DONE (invariant + matrix tests; live negatives incl. 403s; no unguarded route) |
 
 ## R2 — Productivity & platform-dependent
 | ID | Title | Module | Evidence | Deps | Blockers | Eff | Gate |
