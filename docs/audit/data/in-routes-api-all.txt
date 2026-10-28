@@ -1,0 +1,313 @@
+142:    Route::post('api/v1/signup', [AccountController::class, 'store'])->name('signup.submit')->middleware('throttle:signup');
+143:    Route::post('api/v1/oauth_login', [LoginController::class, 'oauthApiLogin']);
+144:    Route::get('api/v1/oidc/config', [LoginController::class, 'oidcConfig'])->name('oidc.config');
+145:    Route::post('api/v1/oidc/exchange', [LoginController::class, 'oidcExchange'])->name('oidc.exchange')->middleware('throttle:30,1');
+149:    Route::post('api/v1/login/precheck', [LoginController::class, 'precheck'])->name('login.precheck');
+153:    Route::post('api/v1/login', [LoginController::class, 'apiLogin'])->name('login.submit');
+154:    Route::post('api/v1/passkeys/login/options', [PasskeyController::class, 'loginOptions'])->name('passkeys.login.options');
+158:    Route::post('api/v1/reset_password', [ForgotPasswordController::class, 'sendResetLinkEmail']);
+163:    Route::post('password_timeout', PasswordTimeoutController::class)->name('password_timeout');
+164:    Route::put('accounts/{account}', [AccountController::class, 'update'])->name('account.update');
+165:    Route::resource('bank_integrations', BankIntegrationController::class); // name = (clients. index / create / show / update / destroy / edit
+166:    Route::post('bank_integrations/refresh_accounts', [BankIntegrationController::class, 'refreshAccounts'])->name('bank_integrations.refresh_accounts')->middleware('throttle:30,1');
+167:    Route::post('bank_integrations/remove_account/{acc_id}', [BankIntegrationController::class, 'removeAccount'])->name('bank_integrations.remove_account');
+168:    Route::post('bank_integrations/get_transactions/{acc_id}', [BankIntegrationController::class, 'getTransactions'])->name('bank_integrations.transactions')->middleware('throttle:1,1');
+170:    Route::post('bank_integrations/bulk', [BankIntegrationController::class, 'bulk'])->name('bank_integrations.bulk');
+172:    Route::resource('bank_transactions', BankTransactionController::class); // name = (bank_transactions. index / create / show / update / destroy / edit
+173:    Route::post('bank_transactions/bulk', [BankTransactionController::class, 'bulk'])->name('bank_transactions.bulk');
+174:    Route::post('bank_transactions/match', [BankTransactionController::class, 'match'])->name('bank_transactions.match');
+176:    Route::resource('bank_transaction_rules', BankTransactionRuleController::class); // name = (clients. index / create / show / update / destroy / edit
+177:    Route::post('bank_transaction_rules/bulk', [BankTransactionRuleController::class, 'bulk'])->name('bank_transaction_rules.bulk');
+179:    Route::post('check_subdomain', [SubdomainController::class, 'index'])->name('check_subdomain');
+180:    Route::get('ping', [PingController::class, 'index'])->name('ping');
+181:    Route::get('health_check', [PingController::class, 'health'])->name('health_check');
+182:    Route::get('last_error', [PingController::class, 'lastError'])->name('last_error');
+184:    Route::get('activities', [ActivityController::class, 'index']);
+185:    Route::post('activities/entity', [ActivityController::class, 'entityActivity']);
+186:    Route::post('activities/notes', [ActivityController::class, 'note']);
+187:    Route::get('activities/download_entity/{activity}', [ActivityController::class, 'downloadHistoricalEntity']);
+189:    Route::post('charts/totals', [ChartController::class, 'totals'])->name('chart.totals');
+190:    Route::post('charts/chart_summary', [ChartController::class, 'chart_summary'])->name('chart.chart_summary');
+192:    Route::post('charts/totals_v2', [ChartController::class, 'totalsV2'])->name('chart.totals_v2');
+193:    Route::post('charts/chart_summary_v2', [ChartController::class, 'chart_summaryV2'])->name('chart.chart_summary_v2');
+194:    Route::post('charts/calculated_fields', [ChartController::class, 'calculatedFields'])->name('chart.calculated_fields');
+195:    Route::post('charts/analytics_summary', [ChartController::class, 'analytics_summary'])->name('chart.analytics_summary');
+196:    Route::post('charts/analytics_totals', [ChartController::class, 'analytics_totals'])->name('chart.analytics_totals');
+197:    Route::post('charts/cashflow_forecast', [ChartController::class, 'cashflow_forecast'])->name('chart.cashflow_forecast');
+198:    Route::post('charts/client_payment_analytics', [ChartController::class, 'client_payment_analytics'])->name('chart.client_payment_analytics');
+199:    Route::post('charts/project_analytics/{project}', [ChartController::class, 'project_analytics'])->name('chart.project_analytics');
+200:    Route::post('charts/project_burnup/{project}', [ChartController::class, 'projectBurnup'])->name('chart.project_burnup');
+202:    Route::post('claim_license', [LicenseController::class, 'index'])->name('license.index');
+203:    Route::post('check_license', [LicenseController::class, 'check'])->name('license.check');
+205:    Route::resource('clients', ClientController::class); // name = (clients. index / create / show / update / destroy / edit
+206:    Route::put('clients/{client}/upload', [ClientController::class, 'upload'])->name('clients.upload');
+207:    Route::post('clients/{client}/purge', [ClientController::class, 'purge'])->name('clients.purge')->middleware('password_protected');
+208:    Route::post('clients/{client}/updateTaxData', [ClientController::class, 'updateTaxData'])->name('clients.update_tax_data')->middleware('throttle:10,1');
+209:    Route::post('clients/{client}/{mergeable_client}/merge', [ClientController::class, 'merge'])->name('clients.merge')->middleware('password_protected');
+210:    Route::post('clients/bulk', [ClientController::class, 'bulk'])->name('clients.bulk');
+211:    Route::post('clients/{client}/documents', [ClientController::class, 'documents'])->name('clients.documents');
+212:    Route::post('clients/{client}/show_settings', [ClientController::class, 'showSettings'])->name('clients.show_settings');
+213:    Route::post('clients/{client}/peppol_discovery', [ClientController::class, 'peppolDiscovery'])->name('clients.peppol_discovery');
+214:    Route::post('clients/{client}/check_vat', [ClientController::class, 'checkVat'])->name('clients.check_vat');
+215:    Route::get('clients/{client}/vat_status', [ClientController::class, 'vatStatus'])->name('clients.vat_status');
+217:    Route::post('reactivate_email/{bounce_id}', [ClientController::class, 'reactivateEmail'])->name('clients.reactivate_email');
+219:    Route::post('feedback', FeedbackController::class)->name('feedback');
+220:    Route::post('filters/{entity}', [FilterController::class, 'index'])->name('filters');
+222:    Route::resource('client_gateway_tokens', ClientGatewayTokenController::class);
+223:    Route::post('client_gateway_tokens/{client_gateway_token}/setAsDefault', [ClientGatewayTokenController::class, 'setAsDefault'])->name('client_gateway_tokens.set_as_default');
+225:    Route::post('connected_account', [ConnectedAccountController::class, 'index']);
+226:    Route::post('connected_account/gmail', [ConnectedAccountController::class, 'handleGmailOauth']);
+228:    Route::get('calendar_connection', [CalendarConnectionController::class, 'show'])->name('calendar_connection.show');
+229:    Route::post('calendar_connection/{provider}/complete', [CalendarConnectionController::class, 'complete'])->name('calendar_connection.complete')->middleware('throttle:10,1');
+230:    Route::get('calendar_connection/calendars', [CalendarConnectionController::class, 'calendars'])->name('calendar_connection.calendars');
+231:    Route::get('calendar_connection/events', [CalendarConnectionController::class, 'events'])->name('calendar_connection.events');
+232:    Route::put('calendar_connection/calendars', [CalendarConnectionController::class, 'updateCalendars'])->name('calendar_connection.calendars.update');
+233:    Route::delete('calendar_connection', [CalendarConnectionController::class, 'destroy'])->name('calendar_connection.destroy');
+235:    Route::post('client_statement', [ClientStatementController::class, 'statement'])->name('client.statement');
+237:    Route::post('companies/current', [CompanyController::class, 'current'])->name('companies.current');
+238:    Route::post('companies/purge/{company}', [MigrationController::class, 'purgeCompany'])->middleware('password_protected');
+239:    Route::post('companies/purge_save_settings/{company}', [MigrationController::class, 'purgeCompanySaveSettings'])->middleware('password_protected');
+240:    Route::resource('companies', CompanyController::class); // name = (companies. index / create / show / update / destroy / edit
+242:    Route::get('companies/{company}/logo', [CompanyController::class, 'logo']);
+243:    Route::put('companies/{company}/upload', [CompanyController::class, 'upload']);
+244:    Route::post('companies/{company}/default', [CompanyController::class, 'default']);
+245:    Route::post('companies/updateOriginTaxData/{company}', [CompanyController::class, 'updateOriginTaxData'])->middleware('throttle:3,1');
+247:    Route::get('company_ledger', [CompanyLedgerController::class, 'index'])->name('company_ledger.index');
+249:    Route::resource('company_gateways', CompanyGatewayController::class);
+251:    Route::post('company_gateways/bulk', [CompanyGatewayController::class, 'bulk'])->name('company_gateways.bulk');
+252:    Route::post('company_gateways/{company_gateway}/test', [CompanyGatewayController::class, 'test'])->name('company_gateways.test');
+253:    Route::post('company_gateways/{company_gateway}/clone', [CompanyGatewayController::class, 'clone'])->name('company_gateways.clone');
+254:    Route::post('company_gateways/{company_gateway}/import_customers', [CompanyGatewayController::class, 'importCustomers'])->name('company_gateways.import_customers');
+256:    Route::put('company_users/{user}', [CompanyUserController::class, 'update']);
+257:    Route::put('company_users/{user}/preferences', [CompanyUserController::class, 'updatePreferences']);
+259:    Route::resource('credits', CreditController::class); // name = (credits. index / create / show / update / destroy / edit
+260:    Route::put('credits/{credit}/upload', [CreditController::class, 'upload'])->name('credits.upload');
+261:    Route::get('credits/{credit}/{action}', [CreditController::class, 'action'])->name('credits.action');
+262:    Route::post('credits/bulk', [CreditController::class, 'bulk'])->name('credits.bulk');
+263:    Route::get('credit/{invitation_key}/download', [CreditController::class, 'downloadPdf'])->name('credits.downloadPdf');
+264:    Route::get('credit/{invitation_key}/download_e_credit', [CreditController::class, 'downloadECredit'])->name('credits.downloadECredit');
+266:    Route::resource('designs', DesignController::class); // name = (payments. index / create / show / update / destroy / edit
+267:    Route::post('designs/bulk', [DesignController::class, 'bulk'])->name('designs.bulk');
+268:    Route::post('designs/set/default', [DesignController::class, 'default'])->name('designs.default');
+270:    Route::resource('documents', DocumentController::class); // name = (documents. index / create / show / update / destroy / edit
+271:    Route::get('documents/{document}/download', [DocumentController::class, 'download'])->name('documents.download');
+272:    Route::post('documents/bulk', [DocumentController::class, 'bulk'])->name('documents.bulk');
+274:    Route::post('einvoice/validateEntity', [EInvoiceController::class, 'validateEntity'])->name('einvoice.validateEntity');
+275:    Route::post('einvoice/configurations', [EInvoiceController::class, 'configurations'])->name('einvoice.configurations');
+277:    Route::post('einvoice/peppol/discovery', [EInvoicePeppolController::class, 'discovery'])->name('einvoice.peppol.discovery');
+278:    Route::post('einvoice/peppol/legal_entity', [EInvoicePeppolController::class, 'show'])->name('einvoice.peppol.legal_entity');
+279:    Route::post('einvoice/peppol/setup', [EInvoicePeppolController::class, 'setup'])->name('einvoice.peppol.setup');
+280:    Route::post('einvoice/peppol/disconnect', [EInvoicePeppolController::class, 'disconnect'])->name('einvoice.peppol.disconnect');
+281:    Route::put('einvoice/peppol/update', [EInvoicePeppolController::class, 'updateLegalEntity'])->name('einvoice.peppol.update_legal_entity');
+282:    Route::post('einvoice/peppol/add_additional_legal_identifier', [EInvoicePeppolController::class, 'addAdditionalTaxIdentifier'])->name('einvoice.peppol.add_additional_legal_identifier');
+283:    Route::delete('einvoice/peppol/remove_additional_legal_identifier', [EInvoicePeppolController::class, 'removeAdditionalTaxIdentifier'])->name('einvoice.peppol.remove_additional_legal_identifier');
+284:    Route::post('einvoice/peppol/send', [EInvoicePeppolController::class, 'retrySend'])->name('einvoice.peppol.retry_send');
+286:    Route::post('einvoice/peppol/sg/c5/activate', [EInvoicePeppolController::class, 'c5Activate'])->name('einvoice.peppol.sg.c5.activate');
+287:    Route::post('einvoice/peppol/sg/c5/deactivate', [EInvoicePeppolController::class, 'c5Deactivate'])->name('einvoice.peppol.sg.c5.deactivate');
+288:    // @todo revert to Route::put() after the next hosted release ships the matching admin route verb
+289:    Route::post('einvoice/peppol/sg/c5/cancel', [EInvoicePeppolController::class, 'c5Cancel'])->name('einvoice.peppol.sg.c5.cancel');
+291:    Route::post('einvoice/token/update', EInvoiceTokenController::class)->name('einvoice.token.update');
+292:    Route::get('einvoice/quota', [EInvoiceController::class, 'quota'])->name('einvoice.quota');
+293:    Route::get('einvoice/health_check', [EInvoiceController::class, 'healthcheck'])->name('einvoice.healthcheck');
+294:    Route::get('einvoice/delivery_map', [EInvoiceController::class, 'deliveryMap'])->name('einvoice.delivery_map');
+296:    Route::post('emails', [EmailController::class, 'send'])->name('email.send')->middleware('user_verified');
+297:    Route::post('emails/clientHistory/{client}', [EmailHistoryController::class, 'clientHistory'])->name('email.clientHistory');
+298:    Route::post('emails/entityHistory', [EmailHistoryController::class, 'entityHistory'])->name('email.entityHistory');
+300:    Route::resource('expenses', ExpenseController::class); // name = (expenses. index / create / show / update / destroy / edit
+301:    Route::put('expenses/{expense}/upload', [ExpenseController::class, 'upload']);
+302:    Route::post('expenses/bulk', [ExpenseController::class, 'bulk'])->name('expenses.bulk');
+303:    Route::post('export', [ExportController::class, 'index'])->name('export.index');
+304:    Route::put('edocument/upload', [ExpenseController::class, "edocument"])->name("expenses.edocument");
+306:    Route::resource('expense_categories', ExpenseCategoryController::class); // name = (expense_categories. index / create / show / update / destroy / edit
+307:    Route::post('expense_categories/bulk', [ExpenseCategoryController::class, 'bulk'])->name('expense_categories.bulk');
+309:    Route::resource('group_settings', GroupSettingController::class);
+310:    Route::post('group_settings/bulk', [GroupSettingController::class, 'bulk']);
+311:    Route::put('group_settings/{group_setting}/upload', [GroupSettingController::class, 'upload'])->name('group_settings.upload');
+313:    Route::post('import', [ImportController::class, 'import'])->name('import.import');
+314:    Route::post('import_json', [ImportJsonController::class, 'import'])->name('import.import_json');
+315:    Route::post('preimport', [ImportController::class, 'preimport'])->name('import.preimport');
+317:    Route::resource('invoices', InvoiceController::class); // name = (invoices. index / create / show / update / destroy / edit
+318:    Route::get('invoices/{invoice}/delivery_note', [InvoiceController::class, 'deliveryNote'])->name('invoices.delivery_note');
+319:    Route::get('invoices/{invoice}/{action}', [InvoiceController::class, 'action'])->name('invoices.action');
+320:    Route::put('invoices/{invoice}/upload', [InvoiceController::class, 'upload'])->name('invoices.upload');
+321:    Route::post('invoices/{invoice}/payment_schedule', [InvoiceController::class, 'paymentSchedule'])->name('invoices.payment_schedule');
+322:    Route::delete('invoices/{invoice}/payment_schedule', [InvoiceController::class, 'deletePaymentSchedule'])->name('invoices.delete_payment_schedule');
+323:    Route::get('invoice/{invitation_key}/download', [InvoiceController::class, 'downloadPdf'])->name('invoices.downloadPdf');
+324:    Route::get('invoice/{invitation_key}/download_e_invoice', [InvoiceController::class, 'downloadEInvoice'])->name('invoices.downloadEInvoice');
+325:    Route::post('invoices/bulk', [InvoiceController::class, 'bulk'])->name('invoices.bulk');
+326:    Route::post('invoices/update_reminders', [InvoiceController::class, 'update_reminders'])->name('invoices.update_reminders');
+328:    Route::resource('locations', LocationController::class); // name = (locations. index / create / show / update / destroy / edit
+329:    Route::post('locations/bulk', [LocationController::class, 'bulk'])->name('locations.bulk');
+331:    Route::post('logout', [LogoutController::class, 'index'])->name('logout');
+333:    Route::post('one_time_token', [OneTimeTokenController::class, 'create']);
+335:    Route::resource('payments', PaymentController::class); // name = (payments. index / create / show / update / destroy / edit
+336:    Route::post('payments/refund', [PaymentController::class, 'refund'])->name('payments.refund');
+337:    Route::post('payments/bulk', [PaymentController::class, 'bulk'])->name('payments.bulk');
+338:    Route::put('payments/{payment}/upload', [PaymentController::class, 'upload']);
+340:    Route::resource('payment_terms', PaymentTermController::class); // name = (payments. index / create / show / update / destroy / edit
+341:    Route::post('payment_terms/bulk', [PaymentTermController::class, 'bulk'])->name('payment_terms.bulk');
+343:    Route::post('preview', [PreviewController::class, 'show'])->name('preview.show');
+344:    Route::post('live_preview', [PreviewController::class, 'live'])->name('preview.live');
+345:    Route::post('live_design', [PreviewController::class, 'design'])->name('preview.design');
+347:    Route::post('preview/purchase_order', [PreviewPurchaseOrderController::class, 'show'])->name('preview_purchase_order.show');
+348:    Route::post('live_preview/purchase_order', [PreviewPurchaseOrderController::class, 'live'])->name('preview_purchase_order.live');
+350:    Route::resource('products', ProductController::class); // name = (products. index / create / show / update / destroy / edit
+351:    Route::post('products/bulk', [ProductController::class, 'bulk'])->name('products.bulk');
+352:    Route::put('products/{product}/upload', [ProductController::class, 'upload']);
+354:    Route::resource('projects', ProjectController::class); // name = (projects. index / create / show / update / destroy / edit
+355:    Route::post('projects/bulk', [ProjectController::class, 'bulk'])->name('projects.bulk');
+356:    Route::put('projects/{project}/upload', [ProjectController::class, 'upload'])->name('projects.upload');
+358:    Route::resource('purchase_orders', PurchaseOrderController::class);
+359:    Route::post('purchase_orders/bulk', [PurchaseOrderController::class, 'bulk'])->name('purchase_orders.bulk');
+360:    Route::put('purchase_orders/{purchase_order}/upload', [PurchaseOrderController::class, 'upload']);
+361:    Route::get('purchase_orders/{purchase_order}/{action}', [PurchaseOrderController::class, 'action'])->name('purchase_orders.action');
+362:    Route::get('purchase_order/{invitation_key}/download', [PurchaseOrderController::class, 'downloadPdf'])->name('purchase_orders.downloadPdf');
+363:    Route::get('purchase_order/{invitation_key}/download_e_purchase_order', [PurchaseOrderController::class, 'downloadEPurchaseOrder'])->name('purchase_orders.downloadEPurchaseOrder');
+365:    Route::resource('quotes', QuoteController::class); // name = (quotes. index / create / show / update / destroy / edit
+366:    Route::get('quotes/{quote}/{action}', [QuoteController::class, 'action'])->name('quotes.action');
+367:    Route::post('quotes/bulk', [QuoteController::class, 'bulk'])->name('quotes.bulk');
+368:    Route::put('quotes/{quote}/upload', [QuoteController::class, 'upload']);
+369:    Route::get('quote/{invitation_key}/download', [QuoteController::class, 'downloadPdf'])->name('quotes.downloadPdf');
+370:    Route::get('quote/{invitation_key}/download_e_quote', [QuoteController::class, 'downloadEQuote'])->name('quotes.downloadEQuote');
+372:    Route::post('quickbooks/sync', [QuickbooksController::class, 'sync'])->name('quickbooks.sync');
+373:    Route::post('quickbooks/action', [QuickbooksController::class, 'action'])->name('quickbooks.action');
+374:    Route::post('quickbooks/settings', [QuickbooksController::class, 'settings'])->name('quickbooks.settings');
+375:    Route::post('quickbooks/disconnect', [QuickbooksController::class, 'disconnect'])->name('quickbooks.disconnect');
+376:    Route::post('quickbooks/reconnect_url', [QuickbooksController::class, 'reconnectUrl'])->name('quickbooks.reconnect_url');
+378:    Route::resource('recurring_expenses', RecurringExpenseController::class);
+379:    Route::post('recurring_expenses/bulk', [RecurringExpenseController::class, 'bulk'])->name('recurring_expenses.bulk');
+380:    Route::put('recurring_expenses/{recurring_expense}/upload', [RecurringExpenseController::class, 'upload']);
+382:    Route::resource('recurring_invoices', RecurringInvoiceController::class); // name = (recurring_invoices. index / create / show / update / destroy / edit
+383:    Route::post('recurring_invoices/bulk', [RecurringInvoiceController::class, 'bulk'])->name('recurring_invoices.bulk');
+384:    Route::put('recurring_invoices/{recurring_invoice}/upload', [RecurringInvoiceController::class, 'upload']);
+385:    Route::resource('recurring_quotes', RecurringQuoteController::class); // name = (recurring_invoices. index / create / show / update / destroy / edit
+386:    Route::post('recurring_quotes/bulk', [RecurringQuoteController::class, 'bulk'])->name('recurring_quotes.bulk');
+387:    Route::put('recurring_quotes/{recurring_quote}/upload', [RecurringQuoteController::class, 'upload']);
+389:    Route::post('refresh', [LoginController::class, 'refresh'])->middleware('throttle:refresh');
+390:    Route::post('refresh_react', [LoginController::class, 'refreshReact'])->middleware('throttle:refresh');
+392:    Route::post('reports/clients', ClientReportController::class)->middleware('throttle:20,1');
+393:    Route::post('reports/activities', ActivityReportController::class)->middleware('throttle:20,1');
+394:    Route::post('reports/client_contacts', ClientContactReportController::class)->middleware('throttle:20,1');
+395:    Route::post('reports/contacts', ClientContactReportController::class)->middleware('throttle:20,1');
+396:    Route::post('reports/credits', CreditReportController::class)->middleware('throttle:20,1');
+397:    Route::post('reports/documents', DocumentReportController::class)->middleware('throttle:20,1');
+398:    Route::post('reports/expenses', ExpenseReportController::class)->middleware('throttle:20,1');
+399:    Route::post('reports/invoices', InvoiceReportController::class)->middleware('throttle:20,1');
+400:    Route::post('reports/invoice_items', InvoiceItemReportController::class)->middleware('throttle:20,1');
+401:    Route::post('reports/locations', LocationReportController::class)->middleware('throttle:20,1');
+402:    Route::post('reports/client_locations', LocationReportController::class)->middleware('throttle:20,1');
+403:    Route::post('reports/purchase_orders', PurchaseOrderReportController::class)->middleware('throttle:20,1');
+404:    Route::post('reports/purchase_order_items', PurchaseOrderItemReportController::class)->middleware('throttle:20,1');
+405:    Route::post('reports/quotes', QuoteReportController::class)->middleware('throttle:20,1');
+406:    Route::post('reports/quote_items', QuoteItemReportController::class)->middleware('throttle:20,1');
+407:    Route::post('reports/recurring_invoices', RecurringInvoiceReportController::class)->middleware('throttle:20,1');
+408:    Route::post('reports/recurring_invoice_items', RecurringInvoiceItemReportController::class)->middleware('throttle:20,1');
+409:    Route::post('reports/payments', PaymentReportController::class)->middleware('throttle:20,1');
+410:    Route::post('reports/products', ProductReportController::class)->middleware('throttle:20,1');
+411:    Route::post('reports/product_sales', ProductSalesReportController::class)->middleware('throttle:20,1');
+412:    Route::post('reports/tasks', TaskReportController::class)->middleware('throttle:20,1');
+413:    Route::post('reports/vendors', VendorReportController::class)->middleware('throttle:20,1');
+414:    Route::post('reports/profitloss', ProfitAndLossController::class);
+415:    Route::post('reports/ar_detail_report', ARDetailReportController::class);
+416:    Route::post('reports/ar_summary_report', ARSummaryReportController::class);
+417:    Route::post('reports/client_balance_report', ClientBalanceReportController::class);
+418:    Route::post('reports/client_sales_report', ClientSalesReportController::class);
+419:    Route::post('reports/tax_summary_report', TaxSummaryReportController::class);
+420:    Route::post('reports/tax_period_report', TaxPeriodReportController::class);
+421:    Route::post('reports/user_sales_report', UserSalesReportController::class);
+422:    Route::post('reports/projects', ProjectReportController::class);
+423:    Route::post('reports/preview/{hash}', ReportPreviewController::class);
+424:    Route::post('exports/preview/{hash}', ReportExportController::class);
+426:    Route::post('templates/preview/{hash}', TemplatePreviewController::class);
+427:    Route::post('search', SearchController::class);
+429:    Route::resource('task_schedulers', TaskSchedulerController::class);
+430:    Route::post('task_schedulers/bulk', [TaskSchedulerController::class, 'bulk'])->name('task_schedulers.bulk');
+432:    Route::get('scheduler', [SchedulerController::class, 'index']);
+433:    Route::post('support/messages/send', SendingController::class);
+435:    Route::post('self-update', [SelfUpdateController::class, 'update'])->middleware('password_protected');
+436:    Route::post('self-update/check_version', [SelfUpdateController::class, 'checkVersion']);
+438:    Route::resource('system_logs', SystemLogController::class);
+440:    Route::resource('tasks', TaskController::class); // name = (tasks. index / create / show / update / destroy / edit
+441:    Route::post('tasks/bulk', [TaskController::class, 'bulk'])->name('tasks.bulk');
+442:    Route::put('tasks/{task}/upload', [TaskController::class, 'upload']);
+443:    Route::post('tasks/sort', [TaskController::class, 'sort']);
+445:    Route::resource('task_statuses', TaskStatusController::class); // name = (task_statuses. index / create / show / update / destroy / edit
+446:    Route::post('task_statuses/bulk', [TaskStatusController::class, 'bulk'])->name('task_statuses.bulk');
+448:    Route::resource('tags', TagController::class); // name = (tags. index / create / show / update / destroy / edit
+449:    Route::post('tags/bulk', [TagController::class, 'bulk'])->name('tags.bulk');
+451:    Route::resource('tax_rates', TaxRateController::class); // name = (tax_rates. index / create / show / update / destroy / edit
+452:    Route::post('tax_rates/bulk', [TaxRateController::class, 'bulk'])->name('tax_rates.bulk');
+454:    Route::post('templates', [TemplateController::class, 'show'])->name('templates.show');
+456:    Route::resource('tokens', TokenController::class); // name = (tokens. index / create / show / update / destroy / edit
+457:    Route::post('tokens/bulk', [TokenController::class, 'bulk'])->name('tokens.bulk');
+459:    Route::get('settings/enable_two_factor', [TwoFactorController::class, 'setupTwoFactor']);
+460:    Route::post('settings/enable_two_factor', [TwoFactorController::class, 'enableTwoFactor']);
+461:    Route::post('settings/disable_two_factor', [TwoFactorController::class, 'disableTwoFactor']);
+462:    Route::get('settings/passkeys', [PasskeyController::class, 'index'])->name('passkeys.index');
+463:    Route::post('settings/passkeys/options', [PasskeyController::class, 'registrationOptions'])->name('passkeys.options');
+464:    Route::post('settings/passkeys', [PasskeyController::class, 'store'])->name('passkeys.store');
+465:    Route::delete('settings/passkeys/{passkey}', [PasskeyController::class, 'destroy'])->name('passkeys.destroy');
+467:    Route::post('verify', [TwilioController::class, 'generate'])->name('verify.generate')->middleware('throttle:daily-verify');
+468:    Route::post('verify/confirm', [TwilioController::class, 'confirm'])->name('verify.confirm')->middleware('throttle:daily-verify');
+470:    Route::resource('vendors', VendorController::class); // name = (vendors. index / create / show / update / destroy / edit
+471:    Route::post('vendors/bulk', [VendorController::class, 'bulk'])->name('vendors.bulk');
+472:    Route::put('vendors/{vendor}/upload', [VendorController::class, 'upload']);
+473:    Route::post('vendors/{vendor}/{mergeable_vendor}/merge', [VendorController::class, 'merge'])->name('vendors.merge')->middleware('password_protected');
+475:    Route::get('users', [UserController::class, 'index']);
+476:    Route::get('users/create', [UserController::class, 'create'])->middleware('password_protected');
+477:    Route::get('users/{user}', [UserController::class, 'show'])->middleware('password_protected');
+478:    Route::put('users/{user}', [UserController::class, 'update'])->middleware('password_protected');
+479:    Route::post('users', [UserController::class, 'store'])->middleware('password_protected');
+480:    //Route::post('users/{user}/attach_to_company', [UserController::class, 'attach')->middleware('password_protected');
+481:    Route::delete('users/{user}/detach_from_company', [UserController::class, 'detach'])->middleware('password_protected');
+483:    Route::post('users/bulk', [UserController::class, 'bulk'])->name('users.bulk')->middleware('password_protected');
+484:    Route::post('/users/{user}/invite', [UserController::class, 'invite'])->middleware('password_protected');
+485:    Route::post('/users/{user}/disconnect_mailer', [UserController::class, 'disconnectOauthMailer']);
+486:    Route::post('/users/{user}/disconnect_oauth', [UserController::class, 'disconnectOauth']);
+487:    Route::post('/user/{user}/reconfirm', [UserController::class, 'reconfirm']);
+488:    Route::post('/users/{user}/purge', [UserController::class, 'purge'])->middleware('password_protected');
+490:    Route::resource('webhooks', WebhookController::class);
+491:    Route::post('webhooks/bulk', [WebhookController::class, 'bulk'])->name('webhooks.bulk');
+492:    Route::post('webhooks/{webhook}/retry', [WebhookController::class, 'retry'])->name('webhooks.retry');
+495:    // Route::post('hooks', [SubscriptionController::class, 'subscribe'])->name('hooks.subscribe');
+496:    // Route::delete('hooks/{subscription_id}', [SubscriptionController::class, 'unsubscribe'])->name('hooks.unsubscribe');
+498:    Route::post('smtp/check', [SmtpController::class, 'check'])->name('smtp.check')->middleware('throttle:10,1');
+499:    Route::post('mailer/check', [MailerController::class, 'check'])->name('mailer.check')->middleware('throttle:10,1');
+501:    Route::post('stripe/update_payment_methods', [StripeController::class, 'update'])->middleware('password_protected')->name('stripe.update');
+502:    Route::post('stripe/import_customers', [StripeController::class, 'import'])->middleware('password_protected')->name('stripe.import');
+504:    Route::post('stripe/verify', [StripeController::class, 'verify'])->middleware('password_protected')->name('stripe.verify');
+505:Route::post('stripe/disconnect/{company_gateway_id}', [StripeController::class, 'disconnect'])->middleware('password_protected')->name('stripe.disconnect');
+507:    Route::get('subscriptions/steps', [SubscriptionStepsController::class, 'index']);
+508:    Route::post('subscriptions/steps/check', [SubscriptionStepsController::class, 'check']);
+510:    Route::resource('subscriptions', SubscriptionController::class);
+512:    Route::post('subscriptions/bulk', [SubscriptionController::class, 'bulk'])->name('subscriptions.bulk');
+513:    Route::get('statics', StaticController::class);
+514:    // Route::post('apple_pay/upload_file','ApplyPayController::class, 'upload');
+516:    Route::post('yodlee/status/{account_number}', [YodleeController::class, 'accountStatus']); // @todo @turbo124 check route-path?!
+518:    Route::get('nordigen/institutions', [NordigenController::class, 'institutions'])->name('nordigen.institutions');
+522:Route::post('api/v1/sms_reset', [TwilioController::class, 'generate2faResetCode'])->name('sms_reset.generate')->middleware('throttle:daily-verify');
+523:Route::post('api/v1/sms_reset/confirm', [TwilioController::class, 'confirm2faResetCode'])->name('sms_reset.confirm')->middleware('throttle:daily-verify');
+525:Route::match(['get', 'post'], 'payment_webhook/{company_key}/{company_gateway_id}', PaymentWebhookController::class)
+529:Route::match(['get', 'post'], 'payment_notification_webhook/{company_key}/{company_gateway_id}/{client}', PaymentNotificationWebhookController::class)
+533:Route::post('api/v1/postmark_webhook', [PostMarkController::class, 'webhook'])->middleware('throttle:5000,1');
+534:Route::post('api/v1/sns_webhook', [SNSController::class, 'webhook'])->middleware('throttle:5000,1');
+535:Route::post('api/v1/postmark_inbound_webhook', [PostMarkController::class, 'inboundWebhook'])->middleware('throttle:1000,1');
+536:Route::post('api/v1/mailgun_webhook', [MailgunController::class, 'webhook'])->middleware('throttle:1000,1');
+537:Route::post('api/v1/mailgun_inbound_webhook', [MailgunController::class, 'inboundWebhook'])->middleware('throttle:1000,1');
+538:Route::post('api/v1/brevo_webhook', [BrevoController::class, 'webhook'])->middleware('throttle:1000,1');
+539:Route::post('api/v1/brevo_inbound_webhook', [BrevoController::class, 'inboundWebhook'])->middleware('throttle:1000,1');
+540:Route::get('token_hash_router', [OneTimeTokenController::class, 'router'])->middleware('throttle:500,1');
+541:Route::get('webcron', [WebCronController::class, 'index'])->middleware('throttle:100,1');
+542:Route::post('api/v1/process_webhook', [AppleController::class, 'process_webhook'])->middleware('throttle:1000,1');
+543:Route::post('api/v1/confirm_purchase', [AppleController::class, 'confirm_purchase'])->middleware('throttle:1000,1');
+545:Route::post('api/v1/yodlee/refresh', [YodleeController::class, 'refreshWebhook'])->middleware('throttle:100,1');
+546:Route::post('api/v1/yodlee/data_updates', [YodleeController::class, 'dataUpdatesWebhook'])->middleware('throttle:100,1');
+547:Route::post('api/v1/yodlee/refresh_updates', [YodleeController::class, 'refreshUpdatesWebhook'])->middleware('throttle:100,1');
+548:Route::post('api/v1/yodlee/balance', [YodleeController::class, 'balanceWebhook'])->middleware('throttle:100,1');
+550:Route::get('api/v1/protected_download/{hash}', [ProtectedDownloadController::class, 'index'])
+553:Route::post('api/v1/ppcp/webhook', [PayPalPPCPPaymentDriver::class, 'processWebhookRequest'])->middleware('throttle:1000,1');
+555:Route::get('api/v1/calendar_connection/{provider}/authorize/{hash}', [CalendarConnectionController::class, 'redirectToProvider'])->name('calendar_connection.authorize')->middleware('throttle:10,1');
+557:Route::get('quickbooks/authorize/{token}', [ImportQuickbooksController::class, 'authorizeQuickbooks'])->name('quickbooks.authorize');
+558:Route::get('quickbooks/reconnect/{token}', [ImportQuickbooksController::class, 'reconnect'])->name('quickbooks.reconnect');
+559:Route::get('quickbooks/authorized', [ImportQuickbooksController::class, 'onAuthorized'])->name('quickbooks.authorized');
+563:Route::get('/health', function () {

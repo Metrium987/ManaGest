@@ -1,0 +1,2 @@
+# M12 — R4 extension points (specification rows only — CC-DEF-1)
+**Scope** (matrix §14): T-401 portal wrapper (reuse public links/tokens/logs); T-402 payment status machine pending/failed + method registry; T-403 locations address slot — **BLOCKED-BY owner confirmation of meaning** (15 §locations); T-404 command palette reusing nav labels. No implementation in R1–R3; each row adds the design note that prevents later rework.
