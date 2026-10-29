@@ -11,6 +11,7 @@ import { EXTRA_DEFAULTS, EXTRA_KEYS } from '../lib/settings-extra';
 import { optionalText, paginationSchema, parseInput } from '../lib/validation';
 import { clientIp, requireAuth, requirePermission } from '../middleware';
 import { rebuildAllInvoiceTaxLines } from '../services/documents';
+import { encryptMailSecret, ensureMailConfig, publicMailConfig, readMailConfig, validateSmtpHost } from '../services/email';
 import type { AppEnv, UserRow } from '../types';
 
 const companySchema = z.object({
@@ -55,6 +56,110 @@ const COMPANY_DIFF_KEYS = [
 
 export const settingsRoutes = new Hono<AppEnv>();
 settingsRoutes.use('*', requireAuth);
+
+/** Manager-only email configuration; credentials never leave the API as plaintext. */
+settingsRoutes.get('/email', requirePermission('settings.write'), async (c) => {
+  await ensureMailConfig(c.env.DB);
+  const config = await readMailConfig(c.env.DB);
+  return c.json({ config: publicMailConfig(config) });
+});
+
+settingsRoutes.put('/email', requirePermission('settings.write'), async (c) => {
+  const body = parseInput(z.object({
+    provider: z.enum(['manual', 'resend', 'brevo', 'smtp']),
+    sender_name: z.string().trim().max(120),
+    sender_email: z.union([z.string().trim().email().max(190), z.literal('')]),
+    reply_to: z.union([z.string().trim().email().max(190), z.literal('')]).default(''),
+    api_key: z.string().max(500).optional(),
+    clear_api_key: z.boolean().optional().default(false),
+    smtp_host: z.string().trim().max(253).default(''),
+    smtp_port: z.coerce.number().int().min(1).max(65535).default(587),
+    smtp_security: z.enum(['starttls', 'implicit_tls']).default('starttls'),
+    smtp_username: z.string().trim().max(190).default(''),
+    smtp_password: z.string().max(500).optional(),
+    clear_smtp_password: z.boolean().optional().default(false),
+    invoice_subject: z.string().trim().min(1).max(200),
+    invoice_body: z.string().trim().min(1).max(4000),
+    quote_subject: z.string().trim().min(1).max(200),
+    quote_body: z.string().trim().min(1).max(4000),
+    credit_subject: z.string().trim().min(1).max(200),
+    credit_body: z.string().trim().min(1).max(4000),
+  }), await c.req.json().catch(() => ({})));
+
+  if (body.provider !== 'manual' && !body.sender_email) return fail(422, 'VALIDATION_ERROR', { sender_email: 'required' });
+  if (body.provider === 'smtp') {
+    if (!validateSmtpHost(body.smtp_host)) return fail(422, 'VALIDATION_ERROR', { smtp_host: 'invalid' });
+    if (![465, 587].includes(body.smtp_port)) return fail(422, 'VALIDATION_ERROR', { smtp_port: 'unsupported' });
+    if (!body.smtp_username) return fail(422, 'VALIDATION_ERROR', { smtp_username: 'required' });
+  }
+
+  const existing = await readMailConfig(c.env.DB);
+  const secret = c.env.MAIL_CONFIG_ENCRYPTION_KEY;
+  if ((body.api_key?.trim() || body.smtp_password) && !secret) return fail(503, 'MAIL_ENCRYPTION_KEY_MISSING');
+  const apiKey = body.clear_api_key ? null : body.api_key?.trim()
+    ? await encryptMailSecret(body.api_key.trim(), secret!)
+    : existing.api_key_ciphertext;
+  const apiKeyProvider = body.clear_api_key ? null : body.api_key?.trim()
+    ? body.provider
+    : existing.api_key_provider;
+  const smtpPassword = body.clear_smtp_password ? null : body.smtp_password?.length
+    ? await encryptMailSecret(body.smtp_password, secret!)
+    : existing.smtp_password_ciphertext;
+  const needsApi = body.provider === 'resend' || body.provider === 'brevo';
+  if (needsApi && (!apiKey || apiKeyProvider !== body.provider)) return fail(422, 'VALIDATION_ERROR', { credentials: 'required' });
+  if (body.provider === 'smtp' && !smtpPassword) return fail(422, 'VALIDATION_ERROR', { credentials: 'required' });
+
+  const user = c.get('user')!;
+  await c.env.DB.prepare(
+    `INSERT INTO email_settings (
+      id, provider, sender_name, sender_email, reply_to, api_key_ciphertext, api_key_provider,
+      smtp_host, smtp_port, smtp_security, smtp_username, smtp_password_ciphertext,
+      invoice_subject, invoice_body, quote_subject, quote_body, credit_subject, credit_body, updated_by, updated_at
+    ) VALUES ('workspace', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET provider=excluded.provider, sender_name=excluded.sender_name,
+      sender_email=excluded.sender_email, reply_to=excluded.reply_to,
+      api_key_ciphertext=excluded.api_key_ciphertext, api_key_provider=excluded.api_key_provider,
+      smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port, smtp_security=excluded.smtp_security,
+      smtp_username=excluded.smtp_username, smtp_password_ciphertext=excluded.smtp_password_ciphertext,
+      invoice_subject=excluded.invoice_subject, invoice_body=excluded.invoice_body,
+      quote_subject=excluded.quote_subject, quote_body=excluded.quote_body,
+      credit_subject=excluded.credit_subject, credit_body=excluded.credit_body,
+      updated_by=excluded.updated_by, updated_at=excluded.updated_at`,
+  ).bind(
+    body.provider, body.sender_name, body.sender_email, body.reply_to, apiKey, apiKeyProvider,
+    body.smtp_host, body.smtp_port, body.smtp_security, body.smtp_username, smtpPassword,
+    body.invoice_subject, body.invoice_body, body.quote_subject, body.quote_body,
+    body.credit_subject, body.credit_body, user.id, nowISO(),
+  ).run();
+  await logActivity(c.env.DB, {
+    userId: user.id, action: 'updated', entityType: 'settings', entityId: 'email',
+    summary: 'activity.email_settings_changed',
+    meta: { provider: body.provider, sender_email: body.sender_email },
+  });
+  return c.json({ ok: true });
+});
+
+settingsRoutes.post('/email/test', requirePermission('settings.write'), async (c) => {
+  const body = parseInput(z.object({ recipient: z.string().trim().email().max(190) }), await c.req.json().catch(() => ({})));
+  const user = c.get('user')!;
+  const config = await readMailConfig(c.env.DB);
+  if (config.provider === 'manual') return fail(409, 'EMAIL_NOT_CONFIGURED');
+  try {
+    const { dispatchMail } = await import('../services/email');
+    const result = await dispatchMail(config, {
+      to: body.recipient,
+      subject: 'ManaGest email delivery test',
+      text: 'This is a test message to verify your ManaGest email delivery configuration.',
+    }, c.env);
+    await logActivity(c.env.DB, {
+      userId: user.id, action: 'tested', entityType: 'settings', entityId: 'email',
+      summary: 'activity.email_test_sent', meta: { provider: config.provider, recipient: body.recipient },
+    });
+    return c.json({ ok: true, message_id: result.messageId });
+  } catch {
+    return fail(502, 'EMAIL_DELIVERY_FAILED');
+  }
+});
 
 // --- M0 (T-001): per-entity numbering configuration (CC-RA-1, editable pattern+prefix) ---
 settingsRoutes.get('/numbering', requirePermission('settings.read'), async (c) => {

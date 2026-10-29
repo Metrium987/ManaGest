@@ -72,6 +72,16 @@ export function CreditsPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const sendEmail = useMutation({
+    mutationFn: (creditId: string) => api.post(`/email/credit/${creditId}`),
+    onSuccess: () => {
+      toast.success(t('email.documentSent'));
+      queryClient.invalidateQueries({ queryKey: ['credits'] });
+      queryClient.invalidateQueries({ queryKey: ['activity'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const apply = useMutation({
     mutationFn: () =>
       api.post(`/credits/${applyCredit?.id}/apply`, { invoice_id: invoiceId, amount: toMinor(applyAmount, currency) }),
@@ -132,6 +142,11 @@ export function CreditsPage() {
                       <a href={`/api/credits/${credit.id}/pdf`} target="_blank" rel="noreferrer" className="text-xs font-medium text-brand-700 hover:underline">
                         {t('common.download')}
                       </a>
+                      {can('credits.write') ? (
+                        <Button variant="secondary" size="sm" loading={sendEmail.isPending && sendEmail.variables === credit.id} onClick={() => sendEmail.mutate(credit.id)}>
+                          {t('email.sendDocument')}
+                        </Button>
+                      ) : null}
                       {credit.balance > 0 && can('credits.write') ? (
                         <Button variant="secondary" size="sm" onClick={() => { setApplyCredit(credit); setApplyAmount(credit.balance / (10 ** (currency === 'XPF' ? 0 : 2))); }}>
                           {t('credits.apply')}

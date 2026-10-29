@@ -93,6 +93,16 @@ export function InvoiceDetailPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const sendEmail = useMutation({
+    mutationFn: () => api.post(`/email/invoice/${id}`),
+    onSuccess: () => {
+      toast.success(t('email.documentSent'));
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['activity'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const markPaid = useMutation({
     mutationFn: () => api.post(`/invoices/${id}/mark-paid`, { method, reference }),
     onSuccess: () => {
@@ -151,6 +161,11 @@ export function InvoiceDetailPage() {
               {t('invoices.pdfCompact')}
             </Button>
             {can('invoices.write') ? <ShareButton entityType="invoice" entityId={data.id} /> : null}
+            {can('invoices.write') && data.client_email ? (
+              <Button variant="secondary" loading={sendEmail.isPending} onClick={() => sendEmail.mutate()} icon={<Send className="h-4 w-4" aria-hidden="true" />}>
+                {t('email.sendDocument')}
+              </Button>
+            ) : null}
             {data.status === 'draft' && can('invoices.write') ? (
               <Button variant="secondary" loading={action.isPending} onClick={() => action.mutate('send')} icon={<Send className="h-4 w-4" aria-hidden="true" />}>
                 {t('invoices.send')}

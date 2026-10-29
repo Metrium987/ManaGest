@@ -2,7 +2,7 @@
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (
@@ -168,6 +168,31 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS settings_extra (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
+    updated_by TEXT,
+    updated_at TEXT NOT NULL
+  )`,
+
+  // Workspace email-delivery configuration. Provider credentials are stored
+  // only as authenticated ciphertext; the encryption key is a Worker secret.
+  `CREATE TABLE IF NOT EXISTS email_settings (
+    id TEXT PRIMARY KEY CHECK (id = 'workspace'),
+    provider TEXT NOT NULL DEFAULT 'manual' CHECK (provider IN ('manual','resend','brevo','smtp')),
+    sender_name TEXT NOT NULL DEFAULT '',
+    sender_email TEXT NOT NULL DEFAULT '',
+    reply_to TEXT NOT NULL DEFAULT '',
+    api_key_ciphertext TEXT,
+    api_key_provider TEXT,
+    smtp_host TEXT NOT NULL DEFAULT '',
+    smtp_port INTEGER NOT NULL DEFAULT 587,
+    smtp_security TEXT NOT NULL DEFAULT 'starttls' CHECK (smtp_security IN ('starttls','implicit_tls')),
+    smtp_username TEXT NOT NULL DEFAULT '',
+    smtp_password_ciphertext TEXT,
+    invoice_subject TEXT NOT NULL,
+    invoice_body TEXT NOT NULL,
+    quote_subject TEXT NOT NULL,
+    quote_body TEXT NOT NULL,
+    credit_subject TEXT NOT NULL,
+    credit_body TEXT NOT NULL,
     updated_by TEXT,
     updated_at TEXT NOT NULL
   )`,

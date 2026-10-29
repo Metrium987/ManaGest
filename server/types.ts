@@ -4,6 +4,10 @@ export interface Env {
   DB: D1Database;
   ASSETS?: Fetcher;
   ENVIRONMENT?: string;
+  MAIL_CONFIG_ENCRYPTION_KEY?: string;
+  RESEND_API_KEY?: string;
+  BREVO_API_KEY?: string;
+  SMTP_PASSWORD?: string;
 }
 
 export interface CompanyRow {

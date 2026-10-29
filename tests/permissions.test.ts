@@ -38,6 +38,7 @@ const ALLOWLIST = new Set([
   'public-links.ts /:token',
   'public-links.ts /:token/pdf',
   'public-links.ts /:token/accept',
+  'email.ts /:kind/:id',
 ]);
 
 /** The search router is guarded at router level, not per line: verify it stays. */

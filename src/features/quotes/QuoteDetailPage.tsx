@@ -38,6 +38,16 @@ export function QuoteDetailPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const sendEmail = useMutation({
+    mutationFn: () => api.post(`/email/quote/${id}`),
+    onSuccess: () => {
+      toast.success(t('email.documentSent'));
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['activity'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const convert = useMutation({
     mutationFn: () => api.post<{ id: string; number: string }>(`/quotes/${id}/convert`),
     onSuccess: (result) => {
@@ -77,6 +87,11 @@ export function QuoteDetailPage() {
               {t('common.download')}
             </a>
             {can('quotes.write') ? <ShareButton entityType="quote" entityId={data.id} /> : null}
+            {can('quotes.write') && data.client_email ? (
+              <Button variant="secondary" loading={sendEmail.isPending} onClick={() => sendEmail.mutate()} icon={<Send className="h-4 w-4" aria-hidden="true" />}>
+                {t('email.sendDocument')}
+              </Button>
+            ) : null}
             {data.status === 'draft' && can('quotes.write') ? (
               <Button variant="secondary" onClick={() => action.mutate('send')} loading={action.isPending} icon={<Send className="h-4 w-4" aria-hidden="true" />}>{t('quotes.send')}</Button>
             ) : null}

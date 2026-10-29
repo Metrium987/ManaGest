@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { Field, FormGrid, Input, Select, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/Modal';
+import { EmailSettingsPanel } from './EmailSettingsPanel';
 
 const TABS = [
   { value: 'company', label: 'settings.company' },
@@ -23,6 +24,7 @@ const TABS = [
   { value: 'periods', label: 'periods.title' },
   { value: 'security', label: 'settings.security' },
   { value: 'legal', label: 'settings.legal' },
+  { value: 'email', label: 'settings.emailDelivery' },
 ];
 
 export function SettingsPage() {
@@ -502,6 +504,8 @@ export function SettingsPage() {
               <p className="rounded-xl bg-surface px-4 py-3 text-xs text-muted">{t('auth.secured')} · PBKDF2-SHA256 · CSRF · {t('settings.sessionIdle').toLowerCase()}</p>
             </>
           ) : null}
+
+          {tab === 'email' ? (can('settings.write') ? <EmailSettingsPanel /> : <p className="text-sm text-muted">{t('settings.permissionDenied')}</p>) : null}
 
           {tab === 'legal' ? (
             <>
