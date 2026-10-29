@@ -168,10 +168,10 @@ BUILD-PLAN, TODO (23 tasks + 4 R4 spec rows), module files M0-M12, VERIFICATION-
 - Owner answers recorded (OQ-021, locations, multi-company prep = CONFIRMED; override welcome).
 - Coverage proof added to TRACEABILITY.md (0 unmapped, 2 justified exceptions).
 - M0 built and verified: per-entity numbering + placeholder validation + gap register; TVA status model (unit tested); retention guard (live 409); settings extras; schema v4 additive migration. 49/49 unit tests; typecheck + build clean; live negative permission tests 403/manual fallbacks.
-- Module report: docs/build/reports/M0.md. STOP after M0 per owner instruction — awaiting approval for M1.
+- Module report: docs/archive/build-reports/M0.md. STOP after M0 per owner instruction — awaiting approval for M1.
 
 ## 2026-10-28 — M1 permissions core (T-008) DONE
-- Static route-guard + role-matrix invariant tests; no unguarded route; live negative walk executed; full suite 3 files green; typecheck/build clean. Report: docs/build/reports/M1.md. STOP before M2 per protocol.
+- Static route-guard + role-matrix invariant tests; no unguarded route; live negative walk executed; full suite 3 files green; typecheck/build clean. Report: docs/archive/build-reports/M1.md. STOP before M2 per protocol.
 
 ## 2026-10-28 — T-006 in-app CSV export DONE (M7 start, continuing per owner authorisation)
 - server/routes/export.ts (9 entity specs, `.read` permission per entity, q filter, 5000-row cap, journal entry) + server/lib/csv.ts (RFC-compliant escape, semicolon delim, UTF-8 BOM) + tests/csv.test.ts.
@@ -214,7 +214,7 @@ BUILD-PLAN, TODO (23 tasks + 4 R4 spec rows), module files M0-M12, VERIFICATION-
 - Gate: 84/84 tests (7 new invoice-import tests), typecheck and build clean; live walk [EXECUTED]: preview grouped 2 rows into 1 document, commit 201 (FAC-2026-9001, draft, total 80 040 = 69 000 HT + 16 %), re-import refused 409, export header identical to the template with one row per line.
 
 ## 2026-10-29 — R1 release gate executed
-- Full end-to-end walk on the running application (14 checks): client → quote → approve → convert → send → payment → paid → refund credit note → send → apply to another invoice → export → import → journal → viewer permission refusal. Report: `docs/build/reports/R1-release-gate.md`.
+- Full end-to-end walk on the running application (14 checks): client → quote → approve → convert → send → payment → paid → refund credit note → send → apply to another invoice → export → import → journal → viewer permission refusal. Report: `docs/archive/build-reports/R1-release-gate.md`.
 - Defect found and fixed: the invoice-side credit application updated the credit's counters manually and left a fully used credit in status « envoyé ». It now recomputes the credit from its allocations (`recalcCredit`), so the status reads « utilisé ». Re-verified live in the same walk.
 - Regression: 84/84 unit tests, typecheck and build clean after the fix.
 

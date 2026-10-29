@@ -9,7 +9,7 @@
 6. Sensitive actions produce activity-journal entries (verified in test assertions).
 
 ## Module gate
-All task gates of the module; money/tax/numbering/status rules re-tested incl. Polynesian cases (XPF zero decimals; taxable/exonéré/franchise wording; numbering continuity & gap register; Tahiti-day boundaries); full regression of all previously completed modules green; end-to-end walk of the module's critical flows recorded [EXECUTED]/[OBSERVED]; data migration without loss, no orphans; user-facing behaviour documentation updated; module report `docs/build/reports/<module>.md`.
+All task gates of the module; money/tax/numbering/status rules re-tested incl. Polynesian cases (XPF zero decimals; taxable/exonéré/franchise wording; numbering continuity & gap register; Tahiti-day boundaries); full regression of all previously completed modules green; end-to-end walk of the module's critical flows recorded [EXECUTED]/[OBSERVED]; data migration without loss, no orphans; user-facing behaviour documentation updated; module report `docs/archive/build-reports/<module>.md`.
 
 ## Release gate
 Full regression; end-to-end walk of critical flows (setup wizard, client creation, quote→invoice→payment, credit note, import/export round-trip, settings, permissions incl. denial paths); re-check of [VALIDATE LOCALLY] items; parity matrix updated; owner report.
@@ -21,4 +21,4 @@ Full regression; end-to-end walk of critical flows (setup wizard, client creatio
 - Stop rule: gates failing → fix cause → re-run; spec/audit flaw → PLAN-OPEN-QUESTIONS.md; unrunnable check reported honestly (e.g. browser unavailable) — never claimed as passed.
 
 ## Note
-Legacy critical-flow walk evidence lives in `docs/audit/14-session-run.md`; each module re-walks its flows per the module gate.
+Legacy critical-flow walk evidence lives in `docs/archive/audit-2026-10-28/14-session-run.md`; each module re-walks its flows per the module gate.

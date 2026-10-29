@@ -1,6 +1,6 @@
 # ManaGest — Build Plan (2026-10-28; plans only, no code)
 
-Sources cited per item: audit files `docs/audit/00-18`, specification sheets `docs/audit/11-specification-sheets/`.
+Sources cited per item: audit files `docs/archive/audit-2026-10-28/00-18`, specification sheets `docs/archive/audit-2026-10-28/11-specification-sheets/`.
 
 ## Guiding principles
 1. **Audit-driven**: every task cites a backlog ID (`06-correction-backlog.md`), parity row, spec-sheet section or owner decision. Anything not in the audit lands in "Suggestions", not the plan.

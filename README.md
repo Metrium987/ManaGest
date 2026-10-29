@@ -156,6 +156,11 @@ que masquer les actions non autorisées. Voir [`docs/SECURITE.md`](docs/SECURITE
 - [`docs/CONFORMITE.md`](docs/CONFORMITE.md) — TVA, mentions légales, sources.
 - [`docs/UTILISATION.md`](docs/UTILISATION.md) — prise en main pas à pas.
 - [`docs/AUDIT.md`](docs/AUDIT.md) — état des lieux, couverture des modules et feuille de route.
+- [`docs/build/TODO.md`](docs/build/TODO.md) — plan d'exécution et preuve de chaque tâche.
+- [`docs/build/PENDING.md`](docs/build/PENDING.md) — registre unique de ce qui reste suspendu, différé ou non vérifié.
+
+Les documents d'origine (17 FRD, audit daté du 28 octobre, rapports de module) sont rangés dans
+[`docs/archive/`](docs/archive/README.md) : ils ne sont plus mis à jour.
 
 ---
 

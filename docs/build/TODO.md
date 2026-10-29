@@ -4,6 +4,9 @@ Ordering rule: a task starts only when everything it depends on is DONE. Phases 
 
 Legend: Eff S/M/L/XL · statuses TODO | IN PROGRESS | DONE | BLOCKED.
 
+Everything that is not planned here — owner decisions, platform dependencies, deferred R4 specs,
+unplanned gaps, known limits and unverified behaviour — lives in one place: [`PENDING.md`](PENDING.md).
+
 ## Dependency graph (start here)
 
 ```
