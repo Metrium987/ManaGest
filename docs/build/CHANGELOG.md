@@ -1,3 +1,9 @@
+## 2026-10-29 — The roles seam, without changing who may do what (T-202a)
+- **`roles` (schema v11) and one resolution function.** A **system role always resolves from the code**, so the five fixed roles cannot drift; a custom key resolves from its stored list, and that list is **filtered against the declared permissions** — an unknown name, a duplicate, a non-string or malformed JSON grants nothing. The five fixed roles are seeded idempotently so the matrix screen can list them.
+- **The wiring is deliberately deferred to T-202b.** Moving `requirePermission` onto the resolved set before an account can actually receive a custom role would re-baseline every route guard test while changing nothing observable, and it would put the authorisation path in flux with no role to exercise it. The seam is ready; the switch happens where assignment exists.
+- Gate: typecheck clean, **194/194 tests over 16 files** (8 new), production build clean.
+- **Not claimed:** no custom role can be created or assigned yet, nothing in the UI lists roles, and no route reads the stored list today.
+
 ## 2026-10-29 — R4 extension points written down (T-401, T-402, T-404)
 - **Documents, not code**, as the owner decided: `docs/build/R4-EXTENSION-POINTS.md` specifies the client portal wrapper, the payment pending/failed states with a method registry, and the command palette.
 - **Each row states what already exists**, so the later build reuses it instead of inventing a parallel mechanism: per-document links, allocations-based balances, the permission-aware search endpoint.

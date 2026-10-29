@@ -2,7 +2,7 @@
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (
@@ -647,4 +647,15 @@ export const SCHEMA_STATEMENTS: string[] = [
     UNIQUE (invoice_id, level)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_invoice_reminders_invoice ON invoice_reminders(invoice_id)`,
+
+  // Roles seam (T-202a): the five fixed roles stay in code, and a custom role is
+  // a row whose permission list is filtered against the declared permissions.
+  `CREATE TABLE IF NOT EXISTS roles (
+    key TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    permissions TEXT NOT NULL DEFAULT '[]',
+    is_system INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
 ];
