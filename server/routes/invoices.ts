@@ -1,3 +1,5 @@
+import { discountPercentOf } from '../lib/approvals';
+import { assertSeparation, requireApprovalIfNeeded } from '../services/approvals';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { addDays, todayIn } from '../lib/dates';
@@ -258,12 +260,26 @@ invoiceRoutes.post('/:id/send', requirePermission('invoices.write'), async (c) =
   const id = c.req.param('id');
   const user = c.get('user')!;
   const invoice = await c.env.DB.prepare(
-    `SELECT id, number, status, date FROM invoices WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT id, number, status, date, subtotal, discount_type, discount_value, total
+     FROM invoices WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(id)
-    .first<{ id: string; number: string; status: string; date: string }>();
+    .first<{
+      id: string; number: string; status: string; date: string; subtotal: number;
+      discount_type: string; discount_value: number; total: number;
+    }>();
   if (!invoice) return fail(404, 'NOT_FOUND');
   if (invoice.status !== 'draft') return fail(409, 'INVALID_TRANSITION');
+
+  // T-302: a discount above the configured threshold must be approved before the
+  // document leaves the workspace.
+  await requireApprovalIfNeeded(c.env.DB, {
+    entityType: 'invoice',
+    entityId: id,
+    amount: invoice.total,
+    discountPercent: discountPercentOf(invoice.discount_type, invoice.discount_value, invoice.subtotal),
+    requestedBy: user.id,
+  });
   await assertPeriodOpen(c.env.DB, invoice.date);
 
   await c.env.DB.prepare(
@@ -384,13 +400,19 @@ invoiceRoutes.post('/:id/mark-paid', requirePermission('payments.write'), async 
   );
 
   const invoice = await c.env.DB.prepare(
-    `SELECT id, client_id, number, status, balance, total, date FROM invoices WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT id, client_id, number, status, balance, total, date, created_by
+     FROM invoices WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(id)
-    .first<{ id: string; client_id: string; number: string; status: string; balance: number; total: number; date: string }>();
+    .first<{
+      id: string; client_id: string; number: string; status: string;
+      balance: number; total: number; date: string; created_by: string | null;
+    }>();
   if (!invoice) return fail(404, 'NOT_FOUND');
   if (invoice.balance <= 0) return fail(409, 'INVOICE_ALREADY_PAID');
   if (invoice.status === 'cancelled') return fail(409, 'INVOICE_CANCELLED');
+  // T-302: when separation of duties is enabled, the creator cannot collect it.
+  await assertSeparation(c.env.DB, invoice.created_by, user.id);
 
   const today = todayIn(company.timezone);
   // The payment is dated today: only the payment's own period must be open.

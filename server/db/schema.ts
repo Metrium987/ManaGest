@@ -2,7 +2,7 @@
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
  */
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (
@@ -724,4 +724,22 @@ export const SCHEMA_STATEMENTS: string[] = [
     revoked_at TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id)`,
+
+  // Approvals by threshold (AUDIT §7 P0.5). One row per document that crossed a
+  // configured threshold; the decision is a second person's act, kept in the row.
+  `CREATE TABLE IF NOT EXISTS approvals (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    amount INTEGER NOT NULL DEFAULT 0,
+    rule TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    requested_by TEXT,
+    decided_by TEXT,
+    note TEXT,
+    created_at TEXT NOT NULL,
+    decided_at TEXT,
+    UNIQUE (entity_type, entity_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status)`,
 ];

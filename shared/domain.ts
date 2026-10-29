@@ -32,6 +32,7 @@ export const PERMISSIONS = [
   'bank.read', 'bank.write',
   'reports.read',
   'accounting.read', 'accounting.write',
+  'approvals.read', 'approvals.write',
   'settings.read', 'settings.write',
   'periods.read', 'periods.write',
   'users.read', 'users.write',
@@ -53,7 +54,9 @@ const OPERATIONAL_READ: Permission[] = PERMISSIONS.filter(
     && p !== 'periods.read'
     // The general ledger is accounting evidence, not operational data: a
     // read-only or sales account must not see the books.
-    && p !== 'accounting.read',
+    && p !== 'accounting.read'
+    // Approving is a control act, not everyday operational reading.
+    && p !== 'approvals.read',
 );
 
 const FINANCE_WRITE: Permission[] = [
@@ -100,7 +103,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   owner: [...PERMISSIONS],
   admin: [...PERMISSIONS],
   // The accountant closes and reopens periods: that is their core control.
-  accountant: [...OPERATIONAL_READ, 'activity.read', 'periods.read', 'periods.write', ...FINANCE_WRITE, 'accounting.read', 'accounting.write'],
+  accountant: [...OPERATIONAL_READ, 'activity.read', 'periods.read', 'periods.write', ...FINANCE_WRITE, 'accounting.read', 'accounting.write', 'approvals.read', 'approvals.write'],
   sales: [...SALES_READ, ...SALES_WRITE],
   viewer: [...OPERATIONAL_READ],
 };

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Activity, BarChart3, Briefcase, Building2, Calculator, ChevronDown, CreditCard, FileText, FolderKanban,
+  Activity, BarChart3, Briefcase, Building2, Calculator, ChevronDown, ClipboardCheck, CreditCard, FileText, FolderKanban,
   Landmark, LayoutDashboard, ListChecks, LogOut, Menu, Package, Plus, Receipt, RefreshCw,
   Search, Settings, ShieldCheck, ShoppingCart, Upload, Users, Wallet, X,
 } from 'lucide-react';
@@ -62,6 +62,7 @@ const NAV: NavSection[] = [
     items: [
       { to: '/banque', label: 'nav.bank', icon: Landmark, permission: 'bank.read' },
       { to: '/comptabilite', label: 'nav.accounting', icon: Calculator, permission: 'accounting.read' },
+      { to: '/approbations', label: 'nav.approvals', icon: ClipboardCheck, permission: 'approvals.read' },
     ],
   },
   {

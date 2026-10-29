@@ -1,3 +1,4 @@
+import { requireApprovalIfNeeded } from '../services/approvals';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { nowISO } from '../db';
@@ -163,6 +164,17 @@ creditRoutes.post('/', requirePermission('credits.write'), async (c) => {
 });
 
 creditRoutes.post('/:id/send', requirePermission('credits.write'), async (c) => {
+  // T-302: an amount above the configured threshold must be approved first.
+  const creditForApproval = await c.env.DB.prepare(
+    `SELECT id, total FROM credits WHERE id = ? AND deleted_at IS NULL`,
+  ).bind(c.req.param('id')).first<{ id: string; total: number }>();
+  if (!creditForApproval) return fail(404, 'NOT_FOUND');
+  await requireApprovalIfNeeded(c.env.DB, {
+    entityType: 'credit',
+    entityId: creditForApproval.id,
+    amount: creditForApproval.total,
+    requestedBy: c.get('user')!.id,
+  });
   const id = c.req.param('id');
   const credit = await c.env.DB.prepare(`SELECT status, date FROM credits WHERE id = ? AND deleted_at IS NULL`)
     .bind(id)

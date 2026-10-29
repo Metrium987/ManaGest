@@ -3,7 +3,7 @@
  * the routes that read them (PDF layout, language, retention, franchise
  * ceiling) and the settings screen agree on the same keys and defaults.
  */
-export const EXTRA_KEYS = ['retention_years', 'ui_language', 'franchise_threshold', 'pdf_layout', 'attachment_max_mb', 'reminder_interval_days', 'api_token_lifetime_days', 'api_token_max_per_user'] as const;
+export const EXTRA_KEYS = ['retention_years', 'ui_language', 'franchise_threshold', 'pdf_layout', 'attachment_max_mb', 'reminder_interval_days', 'api_token_lifetime_days', 'api_token_max_per_user', 'approval_credit_amount', 'approval_expense_amount', 'approval_discount_percent', 'separation_of_duties'] as const;
 
 export type ExtraKey = (typeof EXTRA_KEYS)[number];
 
@@ -26,6 +26,14 @@ export const EXTRA_DEFAULTS: Record<ExtraKey, string> = {
   // are ordinary settings, editable without redeploying.
   api_token_lifetime_days: '365',
   api_token_max_per_user: '10',
+  // T-302: approval thresholds. `0` disables a rule, so these defaults only
+  // block the operations they are meant to block, and every one is editable.
+  approval_credit_amount: '100000',
+  approval_expense_amount: '250000',
+  approval_discount_percent: '20',
+  // Separation of duties stays off until a workspace has more than one person:
+  // enabling it for a single-owner business would stop them collecting anything.
+  separation_of_duties: '0',
 };
 
 export function isExtraKey(value: string): value is ExtraKey {
