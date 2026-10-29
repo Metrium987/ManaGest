@@ -1,3 +1,14 @@
+## 2026-10-29 — Named API tokens, scoped and revocable (AUDIT §7 P0.6)
+
+- **One credential per use, named and limited.** Schema v15 `api_tokens`: the value (`mg_<prefix>_<secret>`) is shown once and only its SHA-256 digest is stored. It is presented as `X-API-TOKEN` — Invoice Ninja's header, which the research confirmed — or as `Authorization: Bearer`.
+- **A token can never exceed its owner.** Abilities are intersected with the creator's resolved permissions at creation, and again with the owner's *current* permissions at every request: a later promotion does not widen an old token, and a later demotion closes it immediately.
+- **No privilege circle.** A token-authenticated request cannot list or mint tokens (`403 TOKEN_SCOPE`) — otherwise a narrow credential could mint a wider one.
+- **Everything parameterisable.** Lifetime (365 days) and maximum per account (10) are `settings_extra` keys with documented defaults, editable in Paramètres → Sécurité, not constants in the route.
+- **Revocation is a timestamp**, so the journal retains that the credential existed; `activity.api_token_created|revoked` record the name, the ability count and the actor.
+- 6 unit tests. **Live walk [EXECUTED]:** token narrowed to `clients.read` → clients `200`, invoices `403`; token cannot manage tokens (`403`); Bearer accepted (`200`); revoke `200`; reuse `401 INVALID_API_TOKEN`; a read-only account asking for `users.write` refused `422`.
+- Gate: typecheck clean, **227/227 tests over 20 files**, production build clean.
+- **Not claimed:** no browser walk of the profile panel; no per-token rate limit.
+
 ## 2026-10-29 — The accounting core the audit asked for (AUDIT §7 P0.1–P0.2)
 - **A chart of accounts, journals and double-entry lines derived from the documents.** Schema v14 adds `accounts`, `journal_entries` and `journal_lines`. Seven PCG accounts cover what the documents need (401, 411, 445660, 445710, 512, 606, 706).
 - **Posting is derived, never typed twice.** An idempotent pass reads issued invoices, credits, completed payments and expenses and creates only the entries that are missing, keyed by `(source_type, source_id, event)`. A cancelled invoice posts a **reversal**, the same accounts reversed — nothing is deleted from the journal.

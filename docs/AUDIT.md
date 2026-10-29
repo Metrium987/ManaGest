@@ -217,7 +217,7 @@ Cet audit reste la référence datée du 28 octobre. Les manques listés au §6 
 | Bilan | **Non dérivé volontairement** — sans soldes d'ouverture, un bilan serait faux ; il exige une reprise de balance | documenté |
 | Approbations par seuil / séparation des tâches | **Absent** — la même personne peut toujours créer, envoyer et encaisser | à planifier |
 | Réinitialisation de mot de passe en libre-service | **Absent** — dépend de l'envoi d'e-mail (PQ-2) | dépendance |
-| Jetons d'API nommés et révocables | **Absent** — seul le jeton machine du passage quotidien existe | à planifier |
+| Jetons d'API nommés et révocables | **Comblé** — jetons liés à un compte, portée limitée à ses permissions, expiration et nombre paramétrables, valeur affichée une fois, révocation immédiate et journalisée | T-303, marche réelle : `clients 200`, `invoices 403`, jeton révoqué `401` |
 | Multi-devises, PWA, portail client | **Absent / spécifié** — portail et paiements en attente spécifiés en R4, pas construits | R4 |
 | Sauvegarde et restauration testées | **Absent** — dépend de l'hébergeur | à planifier |
 
