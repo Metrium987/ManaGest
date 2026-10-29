@@ -1,7 +1,7 @@
 import { useDeferredValue, useState, type FormEvent } from 'react';
 import { useNewRecordFlag } from '@/lib/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Paperclip, Plus, Trash2, Wallet } from 'lucide-react';
+import { Eye, Paperclip, Plus, Trash2, Wallet } from 'lucide-react';
 import { PAYMENT_METHODS } from '@shared/domain';
 import { toMinor } from '@shared/money';
 import { api, toQuery } from '@/lib/api';
@@ -17,6 +17,9 @@ import { AttachmentsPanel } from '@/components/domain/AttachmentsPanel';
 import { Modal, useConfirm } from '@/components/ui/Modal';
 import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
+import { GatedButton } from '@/components/ui/GatedButton';
+import { showRecord } from '@/components/ui/RecordDrawer';
+import { SavedFilterBar } from '@/components/domain/SavedFilterBar';
 
 export function PaymentsPage() {
   const { company, can } = useSession();
@@ -100,11 +103,13 @@ export function PaymentsPage() {
         subtitle={t('payments.subtitle')}
         actions={<>
           <ExportCsvButton entity="payments" />
-          {can('payments.write') ? (
-          <Button onClick={() => setOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('payments.new')}</Button>
-        ) : null}
+          <GatedButton permission="payments.write" onClick={() => setOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('payments.new')}</GatedButton>
         </>}
       />
+
+      <div className="mb-3">
+        <SavedFilterBar list="payments" query={search} onApply={(value) => { setSearch(value); setPage(1); }} />
+      </div>
 
       <SectionCard
         title={t('payments.title')}
@@ -136,6 +141,26 @@ export function PaymentsPage() {
                   <td className="text-right font-medium tabular-nums">{formatMoney(payment.amount, currency)}</td>
                   <td className="text-right tabular-nums text-muted">{formatMoney(payment.applied ?? 0, currency)}</td>
                   <td className="text-right">
+                    <button
+                      type="button"
+                      className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-ink"
+                      aria-label={`${t('records.view')} ${payment.number}`}
+                      onClick={() => showRecord({
+                        title: payment.number ?? t('payments.title'),
+                        subtitle: payment.client_name,
+                        status: payment.status,
+                        fields: [
+                          { label: t('common.date'), value: formatDate(payment.date) },
+                          { label: t('invoices.client'), value: payment.client_name },
+                          { label: t('common.amount'), value: formatMoney(payment.amount, currency) },
+                          { label: t('payments.applied'), value: formatMoney(payment.applied ?? 0, currency) },
+                          { label: t('payments.method'), value: t(`methods.${payment.method}`) },
+                          { label: t('common.reference'), value: payment.reference },
+                        ],
+                      })}
+                    >
+                      <Eye className="h-4 w-4" aria-hidden="true" />
+                    </button>
                     <button
                       type="button"
                       className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-ink"

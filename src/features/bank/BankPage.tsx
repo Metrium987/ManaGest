@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Landmark, Link2, Plus, Upload, XCircle } from 'lucide-react';
+import { BookOpen, Eye, Landmark, Link2, Plus, Upload, XCircle } from 'lucide-react';
 import { toMinor } from '@shared/money';
 import { api, toQuery } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
@@ -8,10 +8,32 @@ import { t } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { formatDate, formatMoney } from '@/lib/format';
 import type { BankAccount, BankTransaction, InvoiceSummary, ListResponse } from '@/lib/types';
+
+interface MatchSuggestion {
+  invoice_id: string;
+  number: string;
+  client_name: string | null;
+  balance: number;
+  date: string;
+  score: number;
+  reasons: string[];
+}
+
+interface LedgerEntry {
+  date: string;
+  kind: 'invoice' | 'payment' | 'expense';
+  reference: string;
+  label: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
 import { EmptyState, PageHeader, SectionCard, Skeleton, StatusBadge } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Field, FormGrid, Input, Select } from '@/components/ui/Form';
 import { Modal } from '@/components/ui/Modal';
+import { showRecord } from '@/components/ui/RecordDrawer';
+import { GatedButton } from '@/components/ui/GatedButton';
 import { useToast } from '@/components/ui/Toast';
 
 function parseCsv(raw: string): { date: string; label: string; amount: number; reference: string }[] {
@@ -58,6 +80,25 @@ export function BankPage() {
     queryFn: () => api.get<ListResponse<InvoiceSummary>>('/invoices?per_page=100'),
     enabled: Boolean(matchTx),
   });
+
+  // T-204: the rules propose, the user decides. Nothing is matched automatically.
+  const suggestions = useQuery({
+    queryKey: ['bank-suggestions', selectedAccount],
+    queryFn: () => api.get<{ data: { transaction_id: string; suggestions: MatchSuggestion[] }[] }>(
+      `/bank/suggestions${toQuery({ account_id: selectedAccount })}`,
+    ),
+    enabled: Boolean(selectedAccount),
+  });
+  const ledger = useQuery({
+    queryKey: ['bank-ledger', selectedAccount],
+    queryFn: () => api.get<{ data: LedgerEntry[]; opening_balance: number }>(
+      `/bank/ledger${toQuery({ account_id: selectedAccount })}`,
+    ),
+    enabled: Boolean(selectedAccount),
+  });
+  const suggestionsFor = (id: string) =>
+    suggestions.data?.data.find((entry) => entry.transaction_id === id)?.suggestions ?? [];
+  const ledgerRows = ledger.data?.data ?? [];
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['bank-accounts'] });
@@ -122,12 +163,12 @@ export function BankPage() {
       <PageHeader
         title={t('bank.title')}
         subtitle={t('bank.subtitle')}
-        actions={can('bank.write') ? (
+        actions={
           <>
-            <Button variant="secondary" onClick={() => setAccountOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('bank.newAccount')}</Button>
-            <Button onClick={() => setImportOpen(true)} disabled={!selectedAccount} icon={<Upload className="h-4 w-4" aria-hidden="true" />}>{t('bank.import')}</Button>
+            <GatedButton permission="bank.write" variant="secondary" onClick={() => setAccountOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('bank.newAccount')}</GatedButton>
+            <GatedButton permission="bank.write" onClick={() => setImportOpen(true)} disabled={!selectedAccount} icon={<Upload className="h-4 w-4" aria-hidden="true" />}>{t('bank.import')}</GatedButton>
           </>
-        ) : null}
+        }
       />
 
       {accounts.isLoading ? <Skeleton className="h-28" /> : (
@@ -174,8 +215,29 @@ export function BankPage() {
                   <tr key={tx.id}>
                     <td className="text-muted">{formatDate(tx.date)}</td>
                     <td>
-                      <p className="font-medium">{tx.label}</p>
+                      <button
+                        type="button"
+                        className="text-left font-medium hover:text-brand-700"
+                        onClick={() => showRecord({
+                          title: tx.label,
+                          subtitle: tx.reference ?? undefined,
+                          status: tx.status,
+                          fields: [
+                            { label: t('common.date'), value: formatDate(tx.date) },
+                            { label: t('common.amount'), value: formatMoney(tx.amount, currency) },
+                            { label: t('common.reference'), value: tx.reference },
+                            { label: t('common.status'), value: <StatusBadge status={tx.status} /> },
+                          ],
+                        })}
+                      >
+                        {tx.label}
+                      </button>
                       {tx.reference ? <p className="text-xs text-muted">{tx.reference}</p> : null}
+                      {tx.status === 'unmatched' && suggestionsFor(tx.id).length ? (
+                        <p className="text-[11px] text-brand-700">
+                          {suggestionsFor(tx.id)[0].number} · {suggestionsFor(tx.id)[0].reasons.map((reason) => t(`bankMatch.reason${reason === 'amount_exact' ? 'AmountExact' : reason === 'amount_partial' ? 'AmountPartial' : reason === 'number_in_label' ? 'Number' : 'Client'}`)).join(' · ')}
+                        </p>
+                      ) : null}
                     </td>
                     <td className={`text-right font-medium tabular-nums ${tx.amount < 0 ? 'text-danger-600' : 'text-success-700'}`}>
                       {formatMoney(tx.amount, currency)}
@@ -184,6 +246,19 @@ export function BankPage() {
                     <td>
                       {tx.status === 'unmatched' && can('bank.write') ? (
                         <div className="flex justify-end gap-1">
+                          <button type="button" className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-ink" aria-label={`${t('records.view')} ${tx.label}`} onClick={() => showRecord({
+                            title: tx.label,
+                            subtitle: tx.reference ?? undefined,
+                            status: tx.status,
+                            fields: [
+                              { label: t('common.date'), value: formatDate(tx.date) },
+                              { label: t('common.amount'), value: formatMoney(tx.amount, currency) },
+                              { label: t('common.reference'), value: tx.reference },
+                              { label: t('common.status'), value: <StatusBadge status={tx.status} /> },
+                            ],
+                          })}>
+                            <Eye className="h-4 w-4" aria-hidden="true" />
+                          </button>
                           <Button size="sm" variant="secondary" disabled={tx.amount <= 0} onClick={() => setMatchTx(tx)} icon={<Link2 className="h-3.5 w-3.5" aria-hidden="true" />}>{t('bank.match')}</Button>
                           <Button size="sm" variant="ghost" onClick={() => ignore.mutate(tx.id)} icon={<XCircle className="h-3.5 w-3.5" aria-hidden="true" />}>{t('bank.ignore')}</Button>
                         </div>
@@ -245,6 +320,49 @@ export function BankPage() {
         </form>
       </Modal>
 
+      <div className="mt-4">
+        <SectionCard
+          title={t('bankMatch.ledger')}
+          subtitle={ledger.data ? `${t('bankMatch.openingBalance')} : ${formatMoney(ledger.data.opening_balance, currency)}` : undefined}
+          bodyClassName="table-wrap"
+          actions={<BookOpen className="h-4 w-4 text-muted" aria-hidden="true" />}
+        >
+          {!ledgerRows.length ? (
+            <p className="px-5 py-6 text-sm text-muted">{t('bank.empty')}</p>
+          ) : (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">{t('common.date')}</th>
+                  <th scope="col">{t('common.reference')}</th>
+                  <th scope="col">{t('common.description')}</th>
+                  <th scope="col" className="text-right">{t('common.amount')}</th>
+                  <th scope="col" className="text-right">{t('bankMatch.balance')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ledgerRows.map((entry, index) => (
+                  <tr key={`${entry.reference}-${index}`}>
+                    <td className="text-muted">{formatDate(entry.date)}</td>
+                    <td className="font-medium">
+                      {entry.reference}
+                      <span className="ml-2 text-[11px] text-muted">
+                        {t(`bankMatch.${entry.kind}`)}
+                      </span>
+                    </td>
+                    <td className="text-muted">{entry.label || '—'}</td>
+                    <td className={`text-right tabular-nums ${entry.credit ? 'text-danger-600' : 'text-success-700'}`}>
+                      {formatMoney(entry.credit || entry.debit, currency)}
+                    </td>
+                    <td className="text-right font-medium tabular-nums">{formatMoney(entry.balance, currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </SectionCard>
+      </div>
+
       <Modal
         open={Boolean(matchTx)}
         onClose={() => setMatchTx(null)}
@@ -252,6 +370,27 @@ export function BankPage() {
         description={matchTx ? `${matchTx.label} · ${formatMoney(matchTx.amount, currency)}` : undefined}
         footer={<><Button variant="secondary" onClick={() => setMatchTx(null)}>{t('common.cancel')}</Button><Button loading={match.isPending} onClick={() => match.mutate()}>{t('common.confirm')}</Button></>}
       >
+        {matchTx && suggestionsFor(matchTx.id).length ? (
+          <div className="mb-4 rounded-xl border border-brand-200 bg-brand-50/60 p-3">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-brand-700">{t('bankMatch.title')}</p>
+            <ul className="space-y-1.5">
+              {suggestionsFor(matchTx.id).map((suggestion) => (
+                <li key={suggestion.invoice_id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span>
+                    <span className="font-medium">{suggestion.number}</span>
+                    {' — '}{suggestion.client_name ?? '—'}{' — '}{formatMoney(suggestion.balance, currency)}
+                    <span className="ml-2 text-muted">
+                      {suggestion.reasons.map((reason) => t(`bankMatch.reason${reason === 'amount_exact' ? 'AmountExact' : reason === 'amount_partial' ? 'AmountPartial' : reason === 'number_in_label' ? 'Number' : 'Client'}`)).join(' · ')}
+                    </span>
+                  </span>
+                  <Button size="sm" variant="ghost" onClick={() => setInvoiceId(suggestion.invoice_id)}>{t('bankMatch.use')}</Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : matchTx ? (
+          <p className="mb-4 rounded-xl bg-surface px-3 py-2 text-xs text-muted">{t('bankMatch.none')}</p>
+        ) : null}
         <Field label={t('bank.selectInvoice')} htmlFor="match_invoice">
           <Select id="match_invoice" value={invoiceId} onChange={(event) => setInvoiceId(event.target.value)}>
             <option value="">{t('common.none')}</option>

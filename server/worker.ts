@@ -8,6 +8,7 @@ import { clientRoutes } from './routes/clients';
 import { creditRoutes } from './routes/credits';
 import { dashboardRoutes, reportRoutes, searchRoutes } from './routes/dashboard';
 import { exportRoutes } from './routes/export';
+import { filterRoutes } from './routes/filters';
 import { emailRoutes } from './routes/email';
 import { importRoutes } from './routes/import';
 import { invoiceRoutes } from './routes/invoices';
@@ -77,6 +78,7 @@ app.route('/api/activity', activityRoutes);
 app.route('/api/public-links', publicLinkRoutes);
 app.route('/api/runs', runRoutes);
 app.route('/api/roles', roleRoutes);
+app.route('/api/filters', filterRoutes);
 app.route('/api/public/documents', publicDocumentRoutes);
 
 app.all('/api/*', (c) => c.json({ error: { code: 'NOT_FOUND' } }, 404));

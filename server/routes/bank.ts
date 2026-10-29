@@ -8,6 +8,7 @@ import { nextNumber } from '../lib/numbering';
 import { parseInput } from '../lib/validation';
 import { requireAuth, requirePermission } from '../middleware';
 import { recalcInvoice } from '../services/documents';
+import { buildLedger, suggestMatches, type LedgerDocument } from '../lib/bank-match';
 import type { AppEnv } from '../types';
 
 export const bankRoutes = new Hono<AppEnv>();
@@ -53,6 +54,77 @@ bankRoutes.get('/transactions', requirePermission('bank.read'), async (c) => {
     `SELECT t.* FROM bank_transactions t WHERE ${filters.join(' AND ')} ORDER BY t.date DESC LIMIT 200`,
   ).bind(...bindings).all();
   return c.json({ data: rows.results ?? [] });
+});
+
+/**
+ * Matching suggestions (T-204): the rules live in `lib/bank-match.ts`; this route
+ * only loads the open candidates and says which lines the screen should propose.
+ */
+bankRoutes.get('/suggestions', requirePermission('bank.read'), async (c) => {
+  const accountId = c.req.query('account_id') ?? '';
+  if (!accountId) return fail(422, 'VALIDATION_ERROR', { account_id: 'required' });
+
+  const transactions = await c.env.DB.prepare(
+    `SELECT id, date, label, amount, reference FROM bank_transactions
+     WHERE account_id = ? AND status = 'unmatched' AND amount > 0 ORDER BY date DESC LIMIT 50`,
+  ).bind(accountId).all<{ id: string; date: string; label: string; amount: number; reference: string | null }>();
+
+  const invoices = await c.env.DB.prepare(
+    `SELECT i.id, i.number, i.balance, i.date, cl.display_name AS client_name
+     FROM invoices i LEFT JOIN clients cl ON cl.id = i.client_id
+     WHERE i.deleted_at IS NULL AND i.status IN ('sent','partial') AND i.balance > 0
+     ORDER BY i.date ASC LIMIT 500`,
+  ).all<{ id: string; number: string; balance: number; date: string; client_name: string | null }>();
+
+  const data = (transactions.results ?? []).map((transaction) => ({
+    transaction_id: transaction.id,
+    suggestions: suggestMatches(transaction, invoices.results ?? []),
+  }));
+
+  return c.json({ data });
+});
+
+/** Ledger view: every document, chronologically, with the running balance. */
+bankRoutes.get('/ledger', requirePermission('bank.read'), async (c) => {
+  const accountId = c.req.query('account_id') ?? '';
+  const account = accountId
+    ? await c.env.DB.prepare(`SELECT id, opening_balance FROM bank_accounts WHERE id = ?`)
+        .bind(accountId).first<{ id: string; opening_balance: number }>()
+    : await c.env.DB.prepare(`SELECT id, opening_balance FROM bank_accounts ORDER BY created_at ASC LIMIT 1`)
+        .first<{ id: string; opening_balance: number }>();
+  if (!account) return c.json({ data: [], opening_balance: 0 });
+
+  const invoices = await c.env.DB.prepare(
+    `SELECT i.date, i.number AS reference, i.total, cl.display_name AS client_name
+     FROM invoices i LEFT JOIN clients cl ON cl.id = i.client_id
+     WHERE i.deleted_at IS NULL AND i.status != 'cancelled' ORDER BY i.date ASC LIMIT 500`,
+  ).all<{ date: string; reference: string; total: number; client_name: string | null }>();
+  const payments = await c.env.DB.prepare(
+    `SELECT p.date, COALESCE(p.number, 'REG') AS reference, p.amount, cl.display_name AS client_name
+     FROM payments p LEFT JOIN clients cl ON cl.id = p.client_id
+     WHERE p.status = 'completed' ORDER BY p.date ASC LIMIT 500`,
+  ).all<{ date: string; reference: string; amount: number; client_name: string | null }>();
+  const expenses = await c.env.DB.prepare(
+    `SELECT e.date, COALESCE(e.reference, 'DEP') AS reference, e.amount, e.category
+     FROM expenses e WHERE e.deleted_at IS NULL ORDER BY e.date ASC LIMIT 500`,
+  ).all<{ date: string; reference: string; amount: number; category: string }>();
+
+  const documents: LedgerDocument[] = [
+    ...(invoices.results ?? []).map((row) => ({
+      date: row.date, kind: 'invoice' as const, reference: row.reference,
+      label: row.client_name ?? '', debit: row.total, credit: 0,
+    })),
+    ...(payments.results ?? []).map((row) => ({
+      date: row.date, kind: 'payment' as const, reference: row.reference,
+      label: row.client_name ?? '', debit: 0, credit: row.amount,
+    })),
+    ...(expenses.results ?? []).map((row) => ({
+      date: row.date, kind: 'expense' as const, reference: row.reference,
+      label: row.category, debit: 0, credit: row.amount,
+    })),
+  ];
+
+  return c.json({ data: buildLedger(documents, account.opening_balance ?? 0), opening_balance: account.opening_balance ?? 0 });
 });
 
 bankRoutes.post('/transactions/import', requirePermission('bank.write'), async (c) => {

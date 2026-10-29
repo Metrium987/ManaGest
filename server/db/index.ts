@@ -52,6 +52,9 @@ const COLUMN_MIGRATIONS: { table: string; column: string; definition: string }[]
   // keys because SQLite cannot widen a CHECK constraint without rebuilding the
   // table — which is not a migration worth running on a user table.
   { table: 'users', column: 'role_key', definition: 'TEXT' },
+  // T-205: a task remembers the invoice that billed it, so it can never be
+  // billed twice and the kanban can show what is still owed to the client.
+  { table: 'tasks', column: 'invoice_id', definition: 'TEXT' },
   { table: 'activities', column: 'before_json', definition: 'TEXT' },
   { table: 'activities', column: 'after_json', definition: 'TEXT' },
   { table: 'activities', column: 'ip', definition: 'TEXT' },

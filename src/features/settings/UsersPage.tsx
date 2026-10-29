@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { KeyRound, Plus, Trash2, UserCog } from 'lucide-react';
+import { Eye, KeyRound, Plus, Trash2, UserCog } from 'lucide-react';
 import { ROLES, ROLE_LABELS, type Role } from '@shared/domain';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, FormGrid, Input, Select } from '@/components/ui/Form';
 import { Modal, useConfirm } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { GatedButton } from '@/components/ui/GatedButton';
+import { showRecord } from '@/components/ui/RecordDrawer';
 
 export function UsersPage() {
   const { user: currentUser, can } = useSession();
@@ -77,7 +79,7 @@ export function UsersPage() {
       <PageHeader
         title={t('users.title')}
         subtitle={t('users.subtitle')}
-        actions={can('users.write') ? <Button onClick={() => setCreateOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('settings.addUser')}</Button> : null}
+        actions={<GatedButton permission="users.write" onClick={() => setCreateOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('settings.addUser')}</GatedButton>}
       />
 
       <SectionCard title={t('users.title')} subtitle={t('settings.roleHint')} bodyClassName="table-wrap">
@@ -108,7 +110,26 @@ export function UsersPage() {
                     </div>
                   </td>
                   <td className="text-muted">{user.email}</td>
-                  <td>{ROLE_LABELS[user.role]}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 hover:text-brand-700"
+                      aria-label={`${t('records.view')} ${user.email}`}
+                      onClick={() => showRecord({
+                        title: `${user.first_name} ${user.last_name}`,
+                        subtitle: user.email,
+                        fields: [
+                          { label: t('common.email'), value: user.email },
+                          { label: t('roles.assign'), value: ROLE_LABELS[user.role] },
+                          { label: t('settings.lastLogin'), value: user.last_login_at ? formatDateTime(user.last_login_at) : t('settings.never') },
+                          { label: t('common.status'), value: user.is_active ? '✓' : '—' },
+                        ],
+                      })}
+                    >
+                      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                      {ROLE_LABELS[user.role]}
+                    </button>
+                  </td>
                   <td className="text-muted">{user.last_login_at ? formatDateTime(user.last_login_at) : t('settings.never')}</td>
                   <td>
                     <span className={`badge ${user.is_active === 0 ? 'border-slate-200 bg-slate-100 text-slate-600' : 'border-success-200 bg-success-50 text-success-700'}`}>

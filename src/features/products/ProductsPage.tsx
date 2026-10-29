@@ -1,7 +1,7 @@
 import { useDeferredValue, useState } from 'react';
 import { useNewRecordFlag } from '@/lib/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Package, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Eye, Package, Pencil, Plus, Trash2 } from 'lucide-react';
 import { fromMinor, toMinor } from '@shared/money';
 import { TVA_RATES } from '@shared/domain';
 import { api, toQuery } from '@/lib/api';
@@ -16,6 +16,8 @@ import { Checkbox, Field, FormGrid, Input, SearchInput, Select, Textarea } from 
 import { Modal, useConfirm } from '@/components/ui/Modal';
 import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
+import { GatedButton } from '@/components/ui/GatedButton';
+import { showRecord } from '@/components/ui/RecordDrawer';
 
 interface ProductForm {
   name: string;
@@ -90,7 +92,7 @@ export function ProductsPage() {
         subtitle={t('products.subtitle')}
         actions={<>
           <ExportCsvButton entity="products" />
-          {can('products.write') ? <Button onClick={() => openForm()} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('products.new')}</Button> : null}
+          <GatedButton permission="products.write" onClick={() => openForm()} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('products.new')}</GatedButton>
         </>}
       />
 
@@ -119,7 +121,27 @@ export function ProductsPage() {
                     <p className="font-medium">{product.name}</p>
                     {product.description ? <p className="max-w-md truncate text-xs text-muted">{product.description}</p> : null}
                   </td>
-                  <td className="text-muted">{product.product_key ?? '—'}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-muted hover:text-brand-700"
+                      aria-label={`${t('records.view')} ${product.name}`}
+                      onClick={() => showRecord({
+                        title: product.name,
+                        subtitle: product.product_key ?? undefined,
+                        fields: [
+                          { label: t('common.amount'), value: formatMoney(product.unit_price, currency) },
+                          { label: t('products.cost'), value: formatMoney(product.cost, currency) },
+                          { label: t('products.stock'), value: product.quantity_milli },
+                          { label: t('products.taxRate'), value: `${product.tax_rate} %` },
+                          { label: t('common.description'), value: product.description, wide: true },
+                        ],
+                      })}
+                    >
+                      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                      {product.product_key ?? '—'}
+                    </button>
+                  </td>
                   <td className="text-right tabular-nums">{formatMoney(product.unit_price, currency)}</td>
                   <td className="text-right tabular-nums">
                     {product.track_quantity ? (

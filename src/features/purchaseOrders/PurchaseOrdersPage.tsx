@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Briefcase, Plus } from 'lucide-react';
+import { Briefcase, Eye, Plus } from 'lucide-react';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { t } from '@/lib/i18n';
@@ -13,6 +13,8 @@ import { Field, FormGrid, Input, Select } from '@/components/ui/Form';
 import { Modal } from '@/components/ui/Modal';
 import { LineItemsEditor, emptyLine } from '@/components/domain/LineItemsEditor';
 import { useToast } from '@/components/ui/Toast';
+import { GatedButton } from '@/components/ui/GatedButton';
+import { showRecord } from '@/components/ui/RecordDrawer';
 
 export function PurchaseOrdersPage() {
   const { company, can } = useSession();
@@ -56,7 +58,7 @@ export function PurchaseOrdersPage() {
       <PageHeader
         title={t('purchaseOrders.title')}
         subtitle={t('purchaseOrders.subtitle')}
-        actions={can('purchase_orders.write') ? <Button onClick={() => setOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('purchaseOrders.new')}</Button> : null}
+        actions={<GatedButton permission="purchase_orders.write" onClick={() => setOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('purchaseOrders.new')}</GatedButton>}
       />
 
       <SectionCard title={t('purchaseOrders.title')} bodyClassName="table-wrap">
@@ -78,7 +80,34 @@ export function PurchaseOrdersPage() {
             <tbody>
               {orders.data.data.map((order) => (
                 <tr key={order.id}>
-                  <td className="font-medium">{order.number}</td>
+                  <td className="font-medium">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-left hover:text-brand-700"
+                      aria-label={`${t('records.view')} ${order.number}`}
+                      onClick={() => showRecord({
+                        title: order.number ?? t('purchaseOrders.title'),
+                        subtitle: order.vendor_name,
+                        status: order.status,
+                        fields: [
+                          { label: t('common.date'), value: formatDate(order.date) },
+                          { label: t('purchaseOrders.expectedDate'), value: formatDate(order.expected_date) },
+                          { label: t('common.amount'), value: formatMoney(order.total, currency) },
+                          { label: t('common.status'), value: <StatusBadge status={order.status} /> },
+                        ],
+                        sections: order.line_items.length ? [{
+                          title: t('invoices.lines'),
+                          fields: order.line_items.map((line: LineItem, index: number) => ({
+                            label: `${index + 1}. ${line.description}`,
+                            value: `${line.quantity} × ${formatMoney(line.unit_price, currency)} · ${line.tax_rate} %`,
+                          })),
+                        }] : undefined,
+                      })}
+                    >
+                      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                      {order.number}
+                    </button>
+                  </td>
                   <td>{order.vendor_name}</td>
                   <td className="text-muted">{formatDate(order.date)}</td>
                   <td className="text-muted">{formatDate(order.expected_date)}</td>

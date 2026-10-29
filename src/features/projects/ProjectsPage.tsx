@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FolderKanban, Plus } from 'lucide-react';
+import { Eye, FolderKanban, Plus } from 'lucide-react';
 import { toMinor } from '@shared/money';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
@@ -13,9 +13,11 @@ import { Button } from '@/components/ui/Button';
 import { Field, FormGrid, Input, Select, Textarea } from '@/components/ui/Form';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { GatedButton } from '@/components/ui/GatedButton';
+import { showRecord } from '@/components/ui/RecordDrawer';
 
 export function ProjectsPage() {
-  const { company, can } = useSession();
+  const { company } = useSession();
   const queryClient = useQueryClient();
   const toast = useToast();
   const currency = company?.currency ?? 'XPF';
@@ -43,7 +45,7 @@ export function ProjectsPage() {
       <PageHeader
         title={t('projects.title')}
         subtitle={t('projects.subtitle')}
-        actions={can('projects.write') ? <Button onClick={() => setOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('projects.new')}</Button> : null}
+        actions={<GatedButton permission="projects.write" onClick={() => setOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('projects.new')}</GatedButton>}
       />
 
       {projects.isLoading ? <Skeleton className="h-64" /> : projects.data?.data.length ? (
@@ -54,6 +56,26 @@ export function ProjectsPage() {
                 <div>
                   <h2 className="font-display text-base font-semibold text-ink-950">{project.name}</h2>
                   <p className="text-xs text-muted">{project.client_name ?? t('common.none')}</p>
+                  <button
+                    type="button"
+                    className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-brand-700 hover:underline"
+                    onClick={() => showRecord({
+                      title: project.name,
+                      subtitle: project.client_name ?? undefined,
+                      status: project.status,
+                      fields: [
+                        { label: t('projects.budget'), value: formatMoney(project.budget, currency) },
+                        { label: t('common.date'), value: formatDate(project.start_date) },
+                        { label: t('projects.deadline'), value: formatDate(project.deadline) },
+                        { label: t('projects.tasks'), value: project.task_count ?? 0 },
+                        { label: t('projects.timeSpent'), value: formatDuration(project.total_minutes ?? 0) },
+                        { label: t('common.description'), value: project.description, wide: true },
+                      ],
+                    })}
+                  >
+                    <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                    {t('records.view')}
+                  </button>
                 </div>
                 <StatusBadge status={project.status} />
               </div>

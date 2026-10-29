@@ -3,14 +3,16 @@ import { z } from 'zod';
 import { nowISO } from '../db';
 import { diffSnapshot, logActivity } from '../lib/audit';
 import { fail } from '../lib/errors';
+import { addDays, todayIn } from '../lib/dates';
 import { assertPeriodOpen } from '../lib/locks';
-import { nextSimpleNumber } from '../lib/numbering';
+import { nextNumber, nextSimpleNumber } from '../lib/numbering';
 import { computeTotals } from '../lib/tax';
+import { invoiceClientOf, toInvoiceLines } from '../lib/task-billing';
 import {
-  lineItemsSchema, offsetOf, optionalIsoDate, optionalText, paginationSchema, parseInput,
+  lineItemsSchema, offsetOf, optionalIsoDate, optionalText, paginationSchema, parseInput, percentRate,
 } from '../lib/validation';
 import { clientIp, requireAuth, requirePermission } from '../middleware';
-import { safeLines, serialiseLines } from '../services/documents';
+import { safeLines, serialiseLines, syncInvoiceFromRow } from '../services/documents';
 import type { AppEnv } from '../types';
 
 /* ------------------------------------------------------------------ expenses */
@@ -414,6 +416,108 @@ taskRoutes.patch('/:id', requirePermission('tasks.write'), async (c) => {
   await c.env.DB.prepare(
     `UPDATE tasks SET project_id = ?, client_id = ?, title = ?, description = ?, status = ?, minutes = ?, hourly_rate = ?, billable = ?, updated_at = ? WHERE id = ?`,
   ).bind(body.project_id || null, body.client_id || null, body.title, body.description, body.status, body.minutes, body.hourly_rate, body.billable ? 1 : 0, nowISO(), id).run();
+  return c.json({ ok: true });
+});
+
+/**
+ * Billable tasks → one draft invoice (T-205). The client is derived from the
+ * tasks: mixing clients is refused rather than silently billed to the first one,
+ * and each task is stamped with the invoice that paid it so a second pass cannot
+ * bill the same hours twice.
+ */
+taskRoutes.post('/invoice', requirePermission('invoices.write'), async (c) => {
+  const company = c.get('company')!;
+  const user = c.get('user')!;
+  const body = parseInput(
+    z.object({
+      task_ids: z.array(z.string().min(8).max(60)).min(1).max(200),
+      date: optionalIsoDate,
+      tax_rate: percentRate.optional(),
+    }),
+    await c.req.json().catch(() => ({})),
+  );
+
+  const placeholders = body.task_ids.map(() => '?').join(',');
+  const rows = await c.env.DB.prepare(
+    `SELECT id, title, client_id, minutes, hourly_rate, billable, invoice_id, status
+     FROM tasks WHERE deleted_at IS NULL AND id IN (${placeholders})`,
+  ).bind(...body.task_ids).all<{
+    id: string; title: string; client_id: string | null; minutes: number;
+    hourly_rate: number; billable: number; invoice_id: string | null; status: string;
+  }>();
+  const tasks = rows.results ?? [];
+  if (tasks.length !== new Set(body.task_ids).size) return fail(404, 'NOT_FOUND');
+
+  const clientId = invoiceClientOf(tasks);
+  if (clientId === 'NO_TASKS') return fail(409, 'NO_BILLABLE_TASKS');
+  if (clientId === 'MIXED_CLIENTS') return fail(409, 'MIXED_CLIENTS');
+  if (clientId === 'NO_CLIENT') return fail(409, 'CLIENT_REQUIRED');
+
+  const client = await c.env.DB.prepare(
+    `SELECT id, currency, is_tax_exempt FROM clients WHERE id = ? AND deleted_at IS NULL`,
+  ).bind(clientId).first<{ id: string; currency: string | null; is_tax_exempt: number }>();
+  if (!client) return fail(404, 'NOT_FOUND');
+
+  const date = body.date ?? todayIn(company.timezone);
+  await assertPeriodOpen(c.env.DB, date);
+
+  const lines = toInvoiceLines(tasks, body.tax_rate ?? company.default_tax_rate);
+  if (!lines.length) return fail(409, 'NO_BILLABLE_TASKS');
+  const totals = computeTotals(lines, { discount_type: 'percent', discount_value: 0 }, Boolean(client.is_tax_exempt));
+  const id = crypto.randomUUID();
+  const number = await nextNumber(c.env.DB, 'invoice', 'FAC', company.number_pattern, date);
+
+  await c.env.DB.prepare(
+    `INSERT INTO invoices (id, client_id, number, status, date, due_date, currency, subtotal, discount_type, discount_value,
+      discount_total, tax_total, total, paid_total, balance, tax_exempt, po_number, line_items, notes, terms, footer, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, 'percent', 0, ?, ?, ?, 0, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    id, clientId, number, date, addDays(date, company.payment_terms), client.currency || company.currency,
+    totals.subtotal, totals.discount_total, totals.tax_total, totals.total, totals.total,
+    client.is_tax_exempt, serialiseLines(lines), null, company.invoice_terms, company.invoice_footer,
+    user.id, nowISO(), nowISO(),
+  ).run();
+
+  await c.env.DB.prepare(
+    `UPDATE tasks SET invoice_id = ?, updated_at = ? WHERE id IN (${placeholders})`,
+  ).bind(id, nowISO(), ...body.task_ids).run();
+
+  // The VAT mirror is rebuilt from the stored lines, so it cannot disagree with
+  // what the invoice actually carries.
+  await syncInvoiceFromRow(c.env.DB, {
+    id,
+    line_items: serialiseLines(lines),
+    discount_type: 'percent',
+    discount_value: 0,
+    tax_exempt: client.is_tax_exempt,
+  });
+  await logActivity(c.env.DB, {
+    userId: user.id, action: 'created', entityType: 'invoice', entityId: id,
+    summary: 'activity.invoice_from_tasks',
+    meta: { number, tasks: lines.length, total: totals.total }, ip: clientIp(c),
+  });
+
+  return c.json({ id, number, total: totals.total, tasks: lines.length }, 201);
+});
+
+/** Kanban drag (T-205): moving a card changes the status only. */
+taskRoutes.patch('/:id/status', requirePermission('tasks.write'), async (c) => {
+  const id = c.req.param('id');
+  const body = parseInput(
+    z.object({ status: z.enum(['todo', 'in_progress', 'done']) }),
+    await c.req.json().catch(() => ({})),
+  );
+  const existing = await c.env.DB.prepare(
+    `SELECT id, status, invoice_id FROM tasks WHERE id = ? AND deleted_at IS NULL`,
+  ).bind(id).first<{ id: string; status: string; invoice_id: string | null }>();
+  if (!existing) return fail(404, 'NOT_FOUND');
+  await c.env.DB.prepare(`UPDATE tasks SET status = ?, updated_at = ? WHERE id = ?`)
+    .bind(body.status, nowISO(), id).run();
+  await logActivity(c.env.DB, {
+    userId: c.get('user')!.id, action: 'updated', entityType: 'task', entityId: id,
+    summary: 'activity.task_status_changed',
+    before: { status: existing.status }, after: { status: body.status }, ip: clientIp(c),
+  });
   return c.json({ ok: true });
 });
 

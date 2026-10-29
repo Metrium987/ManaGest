@@ -12,6 +12,7 @@ import { t } from '@/lib/i18n';
 import { initials } from '@/lib/format';
 import { useSession } from '@/lib/session';
 import { Avatar } from '@/components/ui/Layout';
+import { RecordDrawerHost } from '@/components/ui/RecordDrawer';
 
 interface NavItem {
   to: string;
@@ -407,6 +408,8 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      {/* One detail drawer for every list (T-201a/b/c). */}
+      <RecordDrawerHost />
     </div>
   );
 }

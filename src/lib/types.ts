@@ -258,6 +258,7 @@ export interface Expense {
   vendor_id: string | null;
   vendor_name: string | null;
   client_id: string | null;
+  client_name?: string | null;
   category: string;
   date: string;
   amount: number;
@@ -322,6 +323,7 @@ export interface Task {
   minutes: number;
   hourly_rate: number;
   billable: number;
+  invoice_id?: string | null;
 }
 
 export interface RecurringInvoice {

@@ -2,7 +2,7 @@
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
  */
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (
@@ -658,4 +658,16 @@ export const SCHEMA_STATEMENTS: string[] = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
+
+  // Saved filters (T-206): one named query string per list, per workspace.
+  `CREATE TABLE IF NOT EXISTS saved_filters (
+    id TEXT PRIMARY KEY,
+    list_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    query TEXT NOT NULL DEFAULT '',
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (list_key, name)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_saved_filters_list ON saved_filters(list_key)`,
 ];

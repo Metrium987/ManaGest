@@ -15,6 +15,7 @@ import { Field, FormGrid, Input, Select, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/Modal';
 import { EmailSettingsPanel } from './EmailSettingsPanel';
+import { RolesPanel } from './RolesPanel';
 
 const TABS = [
   { value: 'company', label: 'settings.company' },
@@ -25,6 +26,7 @@ const TABS = [
   { value: 'security', label: 'settings.security' },
   { value: 'legal', label: 'settings.legal' },
   { value: 'email', label: 'settings.emailDelivery' },
+  { value: 'roles', label: 'roles.title' },
 ];
 
 export function SettingsPage() {
@@ -179,7 +181,9 @@ export function SettingsPage() {
 
   const set = <K extends keyof Company>(key: K, value: Company[K]) => setForm((current) => (current ? { ...current, [key]: value } : current));
   const readOnly = !can('settings.write');
-  const visibleTabs = TABS.filter((item) => item.value !== 'periods' || can('periods.read'));
+  const visibleTabs = TABS.filter((item) =>
+    (item.value !== 'periods' || can('periods.read')) && (item.value !== 'roles' || can('users.read')),
+  );
 
   return (
     <>
@@ -490,6 +494,8 @@ export function SettingsPage() {
               </SectionCard>
             </>
           ) : null}
+
+          {tab === 'roles' ? <RolesPanel /> : null}
 
           {tab === 'security' ? (
             <>

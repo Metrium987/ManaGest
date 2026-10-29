@@ -1,6 +1,6 @@
 import { useDeferredValue, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Building2, Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import { api, toQuery } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { t } from '@/lib/i18n';
@@ -12,6 +12,8 @@ import { Button } from '@/components/ui/Button';
 import { Field, FormGrid, Input, SearchInput, Textarea } from '@/components/ui/Form';
 import { Modal, useConfirm } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
+import { GatedButton } from '@/components/ui/GatedButton';
+import { showRecord } from '@/components/ui/RecordDrawer';
 
 interface VendorForm {
   name: string;
@@ -73,7 +75,7 @@ export function VendorsPage() {
       <PageHeader
         title={t('vendors.title')}
         subtitle={t('vendors.subtitle')}
-        actions={can('vendors.write') ? <Button onClick={() => openForm()} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('vendors.new')}</Button> : null}
+        actions={<GatedButton permission="vendors.write" onClick={() => openForm()} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('vendors.new')}</GatedButton>}
       />
 
       <SectionCard
@@ -98,7 +100,32 @@ export function VendorsPage() {
             <tbody>
               {vendors.data.data.map((vendor) => (
                 <tr key={vendor.id}>
-                  <td className="font-medium">{vendor.name}</td>
+                  <td className="font-medium">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-left hover:text-brand-700"
+                      aria-label={`${t('records.view')} ${vendor.name}`}
+                      onClick={() => showRecord({
+                        title: vendor.name,
+                        subtitle: vendor.number ?? undefined,
+                        fields: [
+                          { label: t('common.email'), value: vendor.email },
+                          { label: t('common.phone'), value: vendor.phone },
+                          { label: t('settings.address'), value: vendor.address1, wide: true },
+                          { label: t('settings.city'), value: vendor.city },
+                          { label: t('settings.postalCode'), value: vendor.postal_code },
+                          { label: t('settings.country'), value: vendor.country },
+                          { label: t('settings.tahitiNumber'), value: vendor.tax_id },
+                          { label: t('purchaseOrders.title'), value: vendor.po_count ?? 0 },
+                          { label: t('common.amount'), value: formatMoney(vendor.po_total ?? 0, currency) },
+                          { label: t('common.notes'), value: vendor.notes, wide: true },
+                        ],
+                      })}
+                    >
+                      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                      {vendor.name}
+                    </button>
+                  </td>
                   <td className="text-muted">{vendor.city ?? '—'}</td>
                   <td className="text-muted">{vendor.email ?? '—'}</td>
                   <td className="text-right tabular-nums">{vendor.po_count ?? 0}</td>

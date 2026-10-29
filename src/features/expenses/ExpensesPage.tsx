@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNewRecordFlag } from '@/lib/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Paperclip, Plus, ShoppingCart, Trash2 } from 'lucide-react';
+import { Eye, Paperclip, Plus, ShoppingCart, Trash2 } from 'lucide-react';
 import { PAYMENT_METHODS } from '@shared/domain';
 import { toMinor } from '@shared/money';
 import { api, toQuery } from '@/lib/api';
@@ -17,6 +17,8 @@ import { AttachmentsPanel } from '@/components/domain/AttachmentsPanel';
 import { Modal, useConfirm } from '@/components/ui/Modal';
 import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
+import { GatedButton } from '@/components/ui/GatedButton';
+import { showRecord } from '@/components/ui/RecordDrawer';
 
 export function ExpensesPage() {
   const { company, can } = useSession();
@@ -84,7 +86,7 @@ export function ExpensesPage() {
         subtitle={t('expenses.subtitle')}
         actions={<>
           <ExportCsvButton entity="expenses" />
-          {can('expenses.write') ? <Button onClick={() => setOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('expenses.new')}</Button> : null}
+          <GatedButton permission="expenses.write" onClick={() => setOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('expenses.new')}</GatedButton>
         </>}
       />
 
@@ -123,7 +125,31 @@ export function ExpensesPage() {
                   <td className="text-muted">{formatDate(expense.date)}</td>
                   <td>{categoryLabel(expense.category)}</td>
                   <td className="text-muted">{expense.vendor_name ?? '—'}</td>
-                  <td className="text-muted">{expense.reference ?? '—'}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-muted hover:text-brand-700"
+                      aria-label={`${t('records.view')} ${expense.reference ?? categoryLabel(expense.category)}`}
+                      onClick={() => showRecord({
+                        title: categoryLabel(expense.category),
+                        subtitle: expense.vendor_name ?? expense.client_name ?? undefined,
+                        fields: [
+                          { label: t('common.date'), value: formatDate(expense.date) },
+                          { label: t('common.amount'), value: formatMoney(expense.amount, currency) },
+                          { label: t('settings.taxValue'), value: formatMoney(expense.tax_amount, currency) },
+                          { label: t('expenses.vendor'), value: expense.vendor_name },
+                          { label: t('invoices.client'), value: expense.client_name },
+                          { label: t('payments.method'), value: t(`methods.${expense.payment_method}`) },
+                          { label: t('common.reference'), value: expense.reference },
+                          { label: t('expenses.billable'), value: expense.is_billable ? '✓' : '—' },
+                          { label: t('common.notes'), value: expense.notes, wide: true },
+                        ],
+                      })}
+                    >
+                      <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                      {expense.reference ?? '—'}
+                    </button>
+                  </td>
                   <td className="text-right font-medium tabular-nums">{formatMoney(expense.amount, currency)}</td>
                   <td className="text-right">
                     <button
