@@ -12,6 +12,8 @@ import { lineItemsSchema, offsetOf, optionalIsoDate, paginationSchema, parseInpu
 import { requireAuth, requirePermission } from '../middleware';
 import { safeLines, serialiseLines, syncInvoiceFromRow } from '../services/documents';
 import { buildDocumentPdf } from '../services/pdf-documents';
+import { resolveLayout } from '../services/pdf-style';
+import { getExtra } from '../lib/settings-extra';
 import type { AppEnv } from '../types';
 
 const quoteSchema = z.object({
@@ -88,7 +90,8 @@ quoteRoutes.get('/:id/pdf', requirePermission('quotes.read'), async (c) => {
   ).bind(c.req.param('id')).first<Record<string, unknown>>();
   if (!quote) return fail(404, 'NOT_FOUND');
 
-  // T-108a: quotes now print with the same wording rules as invoices.
+  // T-108a/T-108: same wording rules as invoices, workspace or per-document layout.
+  const layout = resolveLayout(c.req.query('layout'), await getExtra(c.env.DB, 'pdf_layout'));
   const bytes = await buildDocumentPdf('quote', company, {
     number: quote.number as string | null,
     date: String(quote.date),
@@ -113,7 +116,7 @@ quoteRoutes.get('/:id/pdf', requirePermission('quotes.read'), async (c) => {
       country: (quote.client_country as string | null) ?? null,
       tax_id: (quote.client_tax_id as string | null) ?? null,
     },
-  });
+  }, layout);
   return new Response(bytes, {
     headers: {
       'Content-Type': 'application/pdf',

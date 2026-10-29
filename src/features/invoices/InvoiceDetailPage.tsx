@@ -143,6 +143,12 @@ export function InvoiceDetailPage() {
             >
               {t('invoices.pdf')}
             </Button>
+            <Button
+              variant="ghost"
+              onClick={() => downloadPdf(`/invoices/${data.id}/pdf?layout=compact`, `${data.number}-compact.pdf`).catch(() => toast.error(t('errors.generic')))}
+            >
+              {t('invoices.pdfCompact')}
+            </Button>
             {data.status === 'draft' && can('invoices.write') ? (
               <Button variant="secondary" loading={action.isPending} onClick={() => action.mutate('send')} icon={<Send className="h-4 w-4" aria-hidden="true" />}>
                 {t('invoices.send')}

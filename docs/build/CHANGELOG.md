@@ -1,3 +1,10 @@
+## 2026-10-29 — T-108 second PDF layout + per-document choice DONE (M4, OQ-010 / BK-015)
+- `server/services/pdf-style.ts`: two documented layouts only — `classic` (colour header band, filled table header, accent total block) and `compact` (thin rule, accent text headers, denser totals). No layout designer, as the owner decided.
+- The workspace default is the `pdf_layout` setting (Paramètres → Facturation → « Modèle de document PDF », journalled, 422 for an unknown value). A single document can use the other layout through `?layout=` on the invoice, quote and credit PDF routes, so the choice is per document without a schema change.
+- `GET /extras` now lists four keys; the shared key/default list moved to `server/lib/settings-extra.ts` so the settings screen and the PDF routes cannot drift apart.
+- « PDF compact » button on the invoice record; other screens follow the workspace default.
+- Gate: 99/99 tests (5 new), typecheck + build clean; live walk [EXECUTED]: invoice classic 2 723 B vs compact 2 706 B, quote and credit compact both 200 with %PDF magic, `?layout=fancy` falls back to the classic output, switching the default to compact makes the plain URL return the compact file, invalid default 422, restored to classic.
+
 ## 2026-10-29 — T-010 English interface DONE (M0, R-A / OQ-014)
 - `src/lib/i18n-en.ts`: the full English dictionary, key-for-key identical to the French tree (774 keys). `t()` now resolves through the active dictionary and falls back to French for any key a future language does not define yet.
 - `tests/i18n.test.ts` enforces the contract: same key set both ways, no empty value, placeholder interpolation, and unknown keys returned verbatim — so a missing translation fails the build instead of showing a blank label.

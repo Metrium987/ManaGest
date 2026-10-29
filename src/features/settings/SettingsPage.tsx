@@ -95,6 +95,15 @@ export function SettingsPage() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  const savePdfLayout = useMutation({
+    mutationFn: (value: string) => api.put('/settings/extras/pdf_layout', { value }),
+    onSuccess: () => {
+      toast.success(t('settings.saved'));
+      queryClient.invalidateQueries({ queryKey: ['settings-extras'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const periods = useQuery({
     queryKey: ['periods'],
     queryFn: () => api.get<{ data: PeriodLock[] }>(`/settings/periods${toQuery({ page: 1, per_page: 100 })}`),
@@ -246,6 +255,17 @@ export function SettingsPage() {
                 </Field>
                 <Field label={t('settings.numberPattern')} htmlFor="number_pattern" hint={t('settings.numberPatternHint')}>
                   <Input id="number_pattern" value={form.number_pattern} onChange={(event) => set('number_pattern', event.target.value)} disabled={readOnly} />
+                </Field>
+                <Field label={t('settings.pdfLayout')} htmlFor="pdf_layout" hint={t('settings.pdfLayoutHint')}>
+                  <Select
+                    id="pdf_layout"
+                    value={extras.data?.extras.find((item) => item.key === 'pdf_layout')?.value ?? 'classic'}
+                    onChange={(event) => savePdfLayout.mutate(event.target.value)}
+                    disabled={readOnly || savePdfLayout.isPending}
+                  >
+                    <option value="classic">{t('settings.pdfLayoutClassic')}</option>
+                    <option value="compact">{t('settings.pdfLayoutCompact')}</option>
+                  </Select>
                 </Field>
               </FormGrid>
               <Field label={t('settings.invoiceTerms')} htmlFor="invoice_terms">

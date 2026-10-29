@@ -12,6 +12,8 @@ import { assertPeriodOpen } from '../lib/locks';
 import { requireAuth, requirePermission } from '../middleware';
 import { recalcCredit, recalcInvoice, safeLines, serialiseLines } from '../services/documents';
 import { buildDocumentPdf } from '../services/pdf-documents';
+import { resolveLayout } from '../services/pdf-style';
+import { getExtra } from '../lib/settings-extra';
 import type { AppEnv } from '../types';
 
 const creditSchema = z.object({
@@ -77,8 +79,9 @@ creditRoutes.get('/:id/pdf', requirePermission('credits.read'), async (c) => {
   ).bind(c.req.param('id')).first<Record<string, unknown>>();
   if (!credit) return fail(404, 'NOT_FOUND');
 
-  // T-108a: the avoir prints with a positive total, labelled "Total avoir".
+  // T-108a/T-108: the avoir prints with a positive total, labelled "Total avoir".
   const statusLabels: Record<string, string> = { draft: 'Brouillon', sent: 'Envoyé', partial: 'Partiellement utilisé', applied: 'Utilisé' };
+  const layout = resolveLayout(c.req.query('layout'), await getExtra(c.env.DB, 'pdf_layout'));
   const bytes = await buildDocumentPdf('credit', company, {
     number: credit.number as string | null,
     date: String(credit.date),
@@ -103,7 +106,7 @@ creditRoutes.get('/:id/pdf', requirePermission('credits.read'), async (c) => {
       country: (credit.client_country as string | null) ?? null,
       tax_id: (credit.client_tax_id as string | null) ?? null,
     },
-  });
+  }, layout);
   return new Response(bytes, {
     headers: {
       'Content-Type': 'application/pdf',

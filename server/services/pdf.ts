@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { currencyDecimals, fromMinor } from '../lib/money';
 import { computeTotals, type LineItem } from '../lib/tax';
+import { styleFor, type DocLayout } from './pdf-style';
 import type { CompanyRow } from '../types';
 
 const PAGE_W = 595.28;
@@ -47,7 +48,10 @@ export async function buildInvoicePdf(
   company: CompanyRow,
   invoice: Record<string, unknown>,
   lines: LineItem[],
+  layout: DocLayout = 'classic',
 ): Promise<Uint8Array> {
+  const style = styleFor(layout);
+  const compact = layout === 'compact';
   const doc = await PDFDocument.create();
   const regular = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
@@ -70,30 +74,39 @@ export async function buildInvoicePdf(
   const ctx: PdfContext = { page, y: PAGE_H - MARGIN };
 
   const drawHeader = (target: PDFPage, isFirst: boolean) => {
-    target.drawRectangle({ x: 0, y: PAGE_H - 108, width: PAGE_W, height: 108, color: rgb(0.03, 0.2, 0.23) });
-    target.drawText(company.name, { x: MARGIN, y: PAGE_H - 58, size: 20, font: bold, color: rgb(1, 1, 1) });
+    const heading = isFirst ? 'FACTURE' : 'FACTURE (suite)';
+    const titleSize = compact ? 15 : 22;
+    if (style.band) {
+      target.drawRectangle({ x: 0, y: PAGE_H - 108, width: PAGE_W, height: 108, color: rgb(0.03, 0.2, 0.23) });
+    } else {
+      target.drawLine({ start: { x: MARGIN, y: PAGE_H - 96 }, end: { x: PAGE_W - MARGIN, y: PAGE_H - 96 }, thickness: 2, color: ACCENT });
+    }
+    const headingColor = style.band ? rgb(1, 1, 1) : INK;
+    const bodyColor = style.band ? rgb(0.83, 0.89, 0.89) : MUTED;
+    const faintColor = style.band ? rgb(0.72, 0.82, 0.82) : MUTED;
+    target.drawText(company.name, { x: MARGIN, y: PAGE_H - 58, size: compact ? 16 : 20, font: bold, color: headingColor });
     const subtitle = [company.legal_name, company.city].filter(Boolean).join(' · ');
     if (subtitle) {
-      target.drawText(subtitle.slice(0, 90), { x: MARGIN, y: PAGE_H - 78, size: 9, font: regular, color: rgb(0.83, 0.89, 0.89) });
+      target.drawText(subtitle.slice(0, 90), { x: MARGIN, y: PAGE_H - 78, size: 9, font: regular, color: bodyColor });
     }
     if (company.tax_id) {
       target.drawText(`Numéro TAHITI : ${company.tax_id}`, {
-        x: MARGIN, y: PAGE_H - 92, size: 8, font: regular, color: rgb(0.72, 0.82, 0.82),
+        x: MARGIN, y: PAGE_H - 92, size: 8, font: regular, color: faintColor,
       });
     }
-    target.drawText(isFirst ? 'FACTURE' : 'FACTURE (suite)', {
-      x: PAGE_W - MARGIN - bold.widthOfTextAtSize(isFirst ? 'FACTURE' : 'FACTURE (suite)', 22),
+    target.drawText(heading, {
+      x: PAGE_W - MARGIN - bold.widthOfTextAtSize(heading, titleSize),
       y: PAGE_H - 58,
-      size: 22,
+      size: titleSize,
       font: bold,
-      color: rgb(1, 1, 1),
+      color: headingColor,
     });
     target.drawText(String(invoice.number ?? ''), {
       x: PAGE_W - MARGIN - regular.widthOfTextAtSize(String(invoice.number ?? ''), 11),
       y: PAGE_H - 76,
       size: 11,
       font: regular,
-      color: rgb(0.83, 0.89, 0.89),
+      color: bodyColor,
     });
   };
 
@@ -151,12 +164,17 @@ export async function buildInvoicePdf(
   const colTotal = PAGE_W - MARGIN;
 
   const tableHeader = () => {
-    ctx.page.drawRectangle({ x: MARGIN, y: ctx.y - 20, width: PAGE_W - MARGIN * 2, height: 22, color: ACCENT });
-    ctx.page.drawText('DÉSIGNATION', { x: colDesc + 6, y: ctx.y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-    ctx.page.drawText('QTÉ', { x: colQty, y: ctx.y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-    ctx.page.drawText('P.U. HT', { x: colUnit, y: ctx.y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-    ctx.page.drawText('TVA', { x: colTax, y: ctx.y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-    ctx.page.drawText('TOTAL HT', { x: colTotal - bold.widthOfTextAtSize('TOTAL HT', 8), y: ctx.y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
+    const headColor = style.tableHeaderFill ? rgb(1, 1, 1) : ACCENT;
+    if (style.tableHeaderFill) {
+      ctx.page.drawRectangle({ x: MARGIN, y: ctx.y - 20, width: PAGE_W - MARGIN * 2, height: 22, color: ACCENT });
+    } else {
+      ctx.page.drawLine({ start: { x: MARGIN, y: ctx.y - 20 }, end: { x: PAGE_W - MARGIN, y: ctx.y - 20 }, thickness: 1, color: ACCENT });
+    }
+    ctx.page.drawText('DÉSIGNATION', { x: colDesc + 6, y: ctx.y - 14, size: 8, font: bold, color: headColor });
+    ctx.page.drawText('QTÉ', { x: colQty, y: ctx.y - 14, size: 8, font: bold, color: headColor });
+    ctx.page.drawText('P.U. HT', { x: colUnit, y: ctx.y - 14, size: 8, font: bold, color: headColor });
+    ctx.page.drawText('TVA', { x: colTax, y: ctx.y - 14, size: 8, font: bold, color: headColor });
+    ctx.page.drawText('TOTAL HT', { x: colTotal - bold.widthOfTextAtSize('TOTAL HT', 8), y: ctx.y - 14, size: 8, font: bold, color: headColor });
     ctx.y -= 32;
   };
 
@@ -205,11 +223,19 @@ export async function buildInvoicePdf(
 
   for (const [label, value, strong] of totalRows) {
     if (strong) {
-      ctx.page.drawRectangle({ x: totalsX, y: ctx.y - 6, width: 230, height: 26, color: ACCENT });
-      ctx.page.drawText(label, { x: totalsX + 8, y: ctx.y + 2, size: 10.5, font: bold, color: rgb(1, 1, 1) });
-      ctx.page.drawText(value, {
-        x: PAGE_W - MARGIN - 8 - bold.widthOfTextAtSize(value, 10.5), y: ctx.y + 2, size: 10.5, font: bold, color: rgb(1, 1, 1),
-      });
+      if (style.totalsBlock) {
+        ctx.page.drawRectangle({ x: totalsX, y: ctx.y - 6, width: 230, height: 26, color: ACCENT });
+        ctx.page.drawText(label, { x: totalsX + 8, y: ctx.y + 2, size: 10.5, font: bold, color: rgb(1, 1, 1) });
+        ctx.page.drawText(value, {
+          x: PAGE_W - MARGIN - 8 - bold.widthOfTextAtSize(value, 10.5), y: ctx.y + 2, size: 10.5, font: bold, color: rgb(1, 1, 1),
+        });
+      } else {
+        ctx.page.drawLine({ start: { x: totalsX, y: ctx.y + 12 }, end: { x: PAGE_W - MARGIN, y: ctx.y + 12 }, thickness: 1, color: ACCENT });
+        ctx.page.drawText(label, { x: totalsX + 8, y: ctx.y, size: 11, font: bold, color: INK });
+        ctx.page.drawText(value, {
+          x: PAGE_W - MARGIN - 8 - bold.widthOfTextAtSize(value, 11), y: ctx.y, size: 11, font: bold, color: INK,
+        });
+      }
       ctx.y -= 34;
     } else {
       ctx.page.drawText(label, { x: totalsX + 8, y: ctx.y, size: 9.5, font: regular, color: MUTED });

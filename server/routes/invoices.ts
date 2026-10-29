@@ -15,6 +15,8 @@ import {
   serialiseLines, recalcInvoice, safeLines, syncInvoiceTaxLines,
 } from '../services/documents';
 import { buildInvoicePdf } from '../services/pdf';
+import { resolveLayout } from '../services/pdf-style';
+import { getExtra } from '../lib/settings-extra';
 import { deriveInvoiceStatus, isOverdue, refundableAmount } from '../services/status';
 import { recalcCredit } from '../services/documents';
 import type { AppEnv } from '../types';
@@ -592,7 +594,10 @@ invoiceRoutes.get('/:id/pdf', requirePermission('invoices.read'), async (c) => {
     .first<Record<string, unknown>>();
   if (!invoice) return fail(404, 'NOT_FOUND');
 
-  const bytes = await buildInvoicePdf(company, invoice, safeLines(invoice.line_items));
+  // T-108: `?layout=compact` picks the other layout for this one document;
+  // otherwise the workspace default applies.
+  const layout = resolveLayout(c.req.query('layout'), await getExtra(c.env.DB, 'pdf_layout'));
+  const bytes = await buildInvoicePdf(company, invoice, safeLines(invoice.line_items), layout);
   return new Response(bytes, {
     headers: {
       'Content-Type': 'application/pdf',

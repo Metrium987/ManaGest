@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { computeTotals, type LineItem } from '../lib/tax';
 import { money, wrap } from './pdf';
+import { styleFor, type DocLayout } from './pdf-style';
 import type { CompanyRow } from '../types';
 
 /**
@@ -55,7 +56,10 @@ export async function buildDocumentPdf(
   kind: DocumentKind,
   company: CompanyRow,
   doc: DocumentInput,
+  layout: DocLayout = 'classic',
 ): Promise<Uint8Array> {
+  const style = styleFor(layout);
+  const compact = layout === 'compact';
   const pdf = await PDFDocument.create();
   const regular = await pdf.embedFont(StandardFonts.Helvetica);
   const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
@@ -76,9 +80,16 @@ export async function buildDocumentPdf(
     });
   };
 
-  // Header band
-  page.drawRectangle({ x: 0, y: PAGE_H - 118, width: PAGE_W, height: 118, color: ACCENT });
-  text(company.name, { x: MARGIN, y: PAGE_H - 52, size: 16, font: bold, color: rgb(1, 1, 1) });
+  // Header: full band in the classic layout, a thin rule in the compact one.
+  const titleSize = compact ? 14 : 20;
+  if (style.band) {
+    page.drawRectangle({ x: 0, y: PAGE_H - 118, width: PAGE_W, height: 118, color: ACCENT });
+  } else {
+    page.drawLine({ start: { x: MARGIN, y: PAGE_H - 104 }, end: { x: PAGE_W - MARGIN, y: PAGE_H - 104 }, thickness: 2, color: ACCENT });
+  }
+  const headingColor = style.band ? rgb(1, 1, 1) : INK;
+  const bodyColor = style.band ? rgb(1, 1, 1) : MUTED;
+  text(company.name, { x: MARGIN, y: PAGE_H - 52, size: compact ? 14 : 16, font: bold, color: headingColor });
   const companyLines = [
     company.address1,
     [company.postal_code, company.city].filter(Boolean).join(' '),
@@ -86,15 +97,15 @@ export async function buildDocumentPdf(
     company.email,
   ].filter((value): value is string => Boolean(value));
   companyLines.slice(0, 3).forEach((value, index) => {
-    text(value, { x: MARGIN, y: PAGE_H - 70 - index * 12, size: 8.5, color: rgb(1, 1, 1) });
+    text(value, { x: MARGIN, y: PAGE_H - 70 - index * 12, size: 8.5, color: bodyColor });
   });
 
-  text(TITLES[kind], { x: PAGE_W - MARGIN - bold.widthOfTextAtSize(TITLES[kind], 20), y: PAGE_H - 52, size: 20, font: bold, color: rgb(1, 1, 1) });
+  text(TITLES[kind], { x: PAGE_W - MARGIN - bold.widthOfTextAtSize(TITLES[kind], titleSize), y: PAGE_H - 52, size: titleSize, font: bold, color: headingColor });
   if (doc.number) {
-    text(doc.number, { x: PAGE_W - MARGIN - bold.widthOfTextAtSize(doc.number, 11), y: PAGE_H - 70, size: 11, font: bold, color: rgb(1, 1, 1) });
+    text(doc.number, { x: PAGE_W - MARGIN - bold.widthOfTextAtSize(doc.number, 11), y: PAGE_H - 70, size: 11, font: bold, color: headingColor });
   }
   const issued = `Émis le ${doc.date}`;
-  text(issued, { x: PAGE_W - MARGIN - regular.widthOfTextAtSize(issued, 8.5), y: PAGE_H - 84, size: 8.5, color: rgb(1, 1, 1) });
+  text(issued, { x: PAGE_W - MARGIN - regular.widthOfTextAtSize(issued, 8.5), y: PAGE_H - 84, size: 8.5, color: bodyColor });
 
   y = PAGE_H - 150;
 
@@ -129,12 +140,17 @@ export async function buildDocumentPdf(
   const colTax = PAGE_W - MARGIN - 95;
   const colTotal = PAGE_W - MARGIN;
   const tableHeader = () => {
-    page.drawRectangle({ x: MARGIN, y: y - 20, width: PAGE_W - MARGIN * 2, height: 22, color: ACCENT });
-    text('DÉSIGNATION', { x: colDesc + 6, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-    text('QTÉ', { x: colQty, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-    text('P.U. HT', { x: colUnit, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-    text('TVA', { x: colTax, y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
-    text('TOTAL HT', { x: colTotal - bold.widthOfTextAtSize('TOTAL HT', 8), y: y - 14, size: 8, font: bold, color: rgb(1, 1, 1) });
+    const headColor = style.tableHeaderFill ? rgb(1, 1, 1) : ACCENT;
+    if (style.tableHeaderFill) {
+      page.drawRectangle({ x: MARGIN, y: y - 20, width: PAGE_W - MARGIN * 2, height: 22, color: ACCENT });
+    } else {
+      page.drawLine({ start: { x: MARGIN, y: y - 20 }, end: { x: PAGE_W - MARGIN, y: y - 20 }, thickness: 1, color: ACCENT });
+    }
+    text('DÉSIGNATION', { x: colDesc + 6, y: y - 14, size: 8, font: bold, color: headColor });
+    text('QTÉ', { x: colQty, y: y - 14, size: 8, font: bold, color: headColor });
+    text('P.U. HT', { x: colUnit, y: y - 14, size: 8, font: bold, color: headColor });
+    text('TVA', { x: colTax, y: y - 14, size: 8, font: bold, color: headColor });
+    text('TOTAL HT', { x: colTotal - bold.widthOfTextAtSize('TOTAL HT', 8), y: y - 14, size: 8, font: bold, color: headColor });
     y -= 32;
   };
   tableHeader();
@@ -176,9 +192,15 @@ export async function buildDocumentPdf(
 
   for (const [label, value, strong] of rows) {
     if (strong) {
-      page.drawRectangle({ x: totalsX, y: y - 6, width: 230, height: 26, color: ACCENT });
-      text(label, { x: totalsX + 8, y: y + 2, size: 10.5, font: bold, color: rgb(1, 1, 1) });
-      text(value, { x: PAGE_W - MARGIN - 8 - bold.widthOfTextAtSize(value, 10.5), y: y + 2, size: 10.5, font: bold, color: rgb(1, 1, 1) });
+      if (style.totalsBlock) {
+        page.drawRectangle({ x: totalsX, y: y - 6, width: 230, height: 26, color: ACCENT });
+        text(label, { x: totalsX + 8, y: y + 2, size: 10.5, font: bold, color: rgb(1, 1, 1) });
+        text(value, { x: PAGE_W - MARGIN - 8 - bold.widthOfTextAtSize(value, 10.5), y: y + 2, size: 10.5, font: bold, color: rgb(1, 1, 1) });
+      } else {
+        page.drawLine({ start: { x: totalsX, y: y + 12 }, end: { x: PAGE_W - MARGIN, y: y + 12 }, thickness: 1, color: ACCENT });
+        text(label, { x: totalsX + 8, y, size: 11, font: bold, color: INK });
+        text(value, { x: PAGE_W - MARGIN - 8 - bold.widthOfTextAtSize(value, 11), y, size: 11, font: bold, color: INK });
+      }
       y -= 34;
     } else {
       text(label, { x: totalsX + 8, y, size: 9.5, color: MUTED });

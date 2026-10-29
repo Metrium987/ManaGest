@@ -24,14 +24,14 @@ T-204 bank matching ──> T-205 projects/kanban
 |---|---|---|---|---|---|---|---|
 | T-100 | Fiscal defaults as settings: retention years, franchise ceiling, tax-regime wording | M0 | OQ-004/005/006/019; owner decision 2026-10-29 (no accountant) | — | — | S | **DONE** (Paramètres → Taxes: « Valeurs fiscales par défaut », 10 ans / 10 000 000 XPF, editable, journalled; live GET/PATCH/422 verified) |
 | T-107 | Expense categories management screen (remove the fixed enum) | M6 | BK-016; CC-RA-2 (DEF-SESSION-02) | T-100 | — | S | DONE |
-| T-010 | Full English translation + language switch (variant is a setting, French stays default) | M0-fallback | OQ-014 | T-100 | — | M | TODO |
+| T-010 | Full English translation + language switch (variant is a setting, French stays default) | M0-fallback | OQ-014 | T-100 | — | M | DONE |
 
 ## Phase 2 — Document output (must precede sharing)
 
 | ID | Title | Module | Evidence | Deps | Blockers | Eff | Status / gate |
 |---|---|---|---|---|---|---|---|
 | T-108a | Quote and credit-note PDF output (same builder, same wording rules) | M4 | parity PAR-OUT-001 corrected 2026-10-29: no quote/credit PDF existed | T-002 | — | M | **DONE** (new builder `pdf-documents.ts`; `GET /quotes/:id/pdf` and `GET /credits/:id/pdf`; links on the quote detail and each credit row; 3 unit tests; live 200 application/pdf, %PDF magic, anonymous 401) |
-| T-108 | Second PDF layout + per-document choice | M4 | BK-015; OQ-010 | T-108a | — | M | TODO |
+| T-108 | Second PDF layout + per-document choice | M4 | BK-015; OQ-010 | T-108a | — | M | **DONE** (second layout `compact` in `pdf-style.ts`; workspace default `settings_extra.pdf_layout` + per-document `?layout=` on invoice/quote/credit PDFs; Paramètres → Facturation select, « PDF compact » button on the invoice record; 5 unit tests; live 200 %PDF for both layouts, unknown value falls back to the default, default switch verified and restored) |
 
 ## Phase 3 — Sharing and files
 

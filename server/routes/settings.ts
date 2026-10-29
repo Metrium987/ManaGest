@@ -7,6 +7,7 @@ import { hashPassword } from '../lib/crypto';
 import { fail } from '../lib/errors';
 import { validatePassword } from '../lib/passwords';
 import { todayIn } from '../lib/dates';
+import { EXTRA_DEFAULTS, EXTRA_KEYS } from '../lib/settings-extra';
 import { optionalText, paginationSchema, parseInput } from '../lib/validation';
 import { clientIp, requireAuth, requirePermission } from '../middleware';
 import { rebuildAllInvoiceTaxLines } from '../services/documents';
@@ -100,19 +101,10 @@ settingsRoutes.put('/numbering/:entity', requirePermission('settings.write'), as
   return c.json({ ok: true });
 });
 
-// --- M0 (T-003/T-009): key/value extension settings (retention years, UI language variant) ---
-const EXTRA_KEYS = ['retention_years', 'ui_language', 'franchise_threshold'] as const;
-
-/**
- * Standard defaults adopted while no accountant has reviewed them (owner
- * decision 2026-10-29): 10 years of retention, the DICP franchise ceiling of
- * 10 000 000 XPF, French UI. They are ordinary settings, editable without code.
- */
-const EXTRA_DEFAULTS: Record<string, string> = {
-  retention_years: '10',
-  franchise_threshold: '10000000',
-  ui_language: 'fr',
-};
+// --- M0 (T-003/T-009) / T-108: key/value extension settings ---
+// The key list and their documented defaults live in server/lib/settings-extra.ts
+// so the routes that read them (PDF layout, language, retention, franchise
+// ceiling) and this screen can never drift apart.
 
 settingsRoutes.get('/extras', requirePermission('settings.read'), async (c) => {
   const rows = await c.env.DB.prepare(`SELECT key, value FROM settings_extra`).all<{ key: string; value: string }>();
@@ -133,6 +125,7 @@ settingsRoutes.patch('/extras', requirePermission('settings.write'), async (c) =
     z.object({
       retention_years: z.coerce.string().regex(/^[1-9]\d{0,2}$/).optional(),
       franchise_threshold: z.coerce.string().regex(/^\d{1,12}$/).optional(),
+      pdf_layout: z.enum(['classic', 'compact']).optional(),
     }).refine((value) => Object.keys(value).length > 0, { message: 'empty' }),
     await c.req.json().catch(() => ({})),
   );
@@ -162,6 +155,9 @@ settingsRoutes.put('/extras/:key', requirePermission('settings.write'), async (c
     return fail(422, 'VALIDATION_ERROR', { value: 'invalid' });
   }
   if (key === 'ui_language' && !['fr', 'en'].includes(body.value)) {
+    return fail(422, 'VALIDATION_ERROR', { value: 'invalid' });
+  }
+  if (key === 'pdf_layout' && !['classic', 'compact'].includes(body.value)) {
     return fail(422, 'VALIDATION_ERROR', { value: 'invalid' });
   }
   const user = c.get('user')!;
