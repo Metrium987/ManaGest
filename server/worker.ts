@@ -11,6 +11,7 @@ import { exportRoutes } from './routes/export';
 import { emailRoutes } from './routes/email';
 import { importRoutes } from './routes/import';
 import { invoiceRoutes } from './routes/invoices';
+import { roleRoutes } from './routes/roles';
 import { runRoutes } from './routes/runs';
 import {
   expenseRoutes, projectRoutes, purchaseOrderRoutes, taskRoutes, vendorRoutes,
@@ -75,6 +76,7 @@ app.route('/api/users', userRoutes);
 app.route('/api/activity', activityRoutes);
 app.route('/api/public-links', publicLinkRoutes);
 app.route('/api/runs', runRoutes);
+app.route('/api/roles', roleRoutes);
 app.route('/api/public/documents', publicDocumentRoutes);
 
 app.all('/api/*', (c) => c.json({ error: { code: 'NOT_FOUND' } }, 404));

@@ -3,7 +3,7 @@ import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { CSRF_COOKIE, SESSION_COOKIE } from '../../shared/domain';
 import { nowISO } from '../db';
 import { randomToken, sha256Hex } from '../lib/crypto';
-import { permissionsForRole } from '../lib/permissions';
+import { resolveUserPermissions } from './roles';
 import type { AppEnv, AppSession, AuthenticatedUser, CompanyRow, SessionRow, UserRow } from '../types';
 
 const IDLE_REFRESH_MS = 60_000;
@@ -61,7 +61,7 @@ export async function createSession(
     created_at: nowISO(),
     expires_at: expiresAt,
     absolute_expires_at: absoluteExpiresAt,
-    user: toAuthenticatedUser(user),
+    user: await toAuthenticatedUser(c.env.DB, user),
   };
 }
 
@@ -74,7 +74,7 @@ export async function loadSession(
     .prepare(
       `SELECT s.id AS session_id, s.csrf_secret, s.created_at AS session_created_at,
               s.last_seen_at, s.expires_at, s.absolute_expires_at,
-              u.id, u.email, u.first_name, u.last_name, u.role, u.is_active,
+              u.id, u.email, u.first_name, u.last_name, u.role, u.role_key, u.is_active,
               u.mfa_secret, u.mfa_enabled, u.mfa_codes,
               u.password_hash, u.last_login_at, u.created_at, u.updated_at, u.deleted_at
        FROM sessions s
@@ -121,6 +121,7 @@ export async function loadSession(
     first_name: row.first_name,
     last_name: row.last_name,
     role: row.role,
+    role_key: row.role_key ?? null,
     is_active: row.is_active,
     mfa_secret: row.mfa_secret,
     mfa_enabled: row.mfa_enabled,
@@ -139,7 +140,7 @@ export async function loadSession(
       created_at: row.session_created_at,
       expires_at: expiresAt,
       absolute_expires_at: row.absolute_expires_at,
-      user: toAuthenticatedUser(user),
+      user: await toAuthenticatedUser(database, user),
     },
     user,
   };
@@ -163,13 +164,13 @@ export async function currentUser(c: Context<AppEnv>): Promise<AuthenticatedUser
   return loaded?.session.user ?? null;
 }
 
-export function toAuthenticatedUser(user: UserRow): AuthenticatedUser {
+export async function toAuthenticatedUser(database: D1Database, user: UserRow): Promise<AuthenticatedUser> {
   return {
     id: user.id,
     email: user.email,
     first_name: user.first_name,
     last_name: user.last_name,
     role: user.role,
-    permissions: permissionsForRole(user.role),
+    permissions: await resolveUserPermissions(database, user),
   };
 }

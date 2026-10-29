@@ -5,6 +5,8 @@ import {
   isSystemRole,
   parsePermissions,
   resolveRolePermissions,
+  resolveUserPermissions,
+  roleKeyOf,
 } from '../server/services/roles';
 
 describe('system roles keep their static matrix (no behaviour change in T-202a)', () => {
@@ -50,5 +52,52 @@ describe('stored permission lists are filtered, never trusted', () => {
   it('gives an unknown custom role nothing at all', () => {
     expect(resolveRolePermissions('ghost', null)).toEqual([]);
     expect(resolveRolePermissions('ghost', undefined)).toEqual([]);
+  });
+});
+
+/** Minimal D1 stand-in: only the single query used by loadRolePermissions matters here. */
+function fakeDatabase(stored: string | null, onQuery?: () => void): D1Database {
+  return {
+    prepare: () => ({
+      bind: () => ({
+        first: async () => {
+          onQuery?.();
+          return stored === null ? null : { permissions: stored };
+        },
+      }),
+    }),
+  } as unknown as D1Database;
+}
+
+describe('an account carries its assigned role (T-202b)', () => {
+  it('a custom key wins over the fixed role column', async () => {
+    const permissions = await resolveUserPermissions(
+      fakeDatabase('["clients.read"]'),
+      { role: 'viewer', role_key: 'terrain' },
+    );
+    expect(permissions).toEqual(['clients.read']);
+  });
+
+  it('no custom key falls back to the fixed role, without touching the database', async () => {
+    let queried = false;
+    const database = fakeDatabase(null, () => {
+      queried = true;
+    });
+    const permissions = await resolveUserPermissions(database, { role: 'sales', role_key: null });
+    expect(permissions).toEqual(ROLE_PERMISSIONS.sales);
+    expect(queried).toBe(false);
+  });
+
+  it('an assigned key that no longer exists grants nothing', async () => {
+    const permissions = await resolveUserPermissions(fakeDatabase(null), {
+      role: 'viewer',
+      role_key: 'deleted_role',
+    });
+    expect(permissions).toEqual([]);
+  });
+
+  it('the fixed column is what governs when no custom key is set', () => {
+    expect(roleKeyOf({ role: 'accountant' })).toBe('accountant');
+    expect(roleKeyOf({ role: 'viewer', role_key: 'terrain' })).toBe('terrain');
   });
 });

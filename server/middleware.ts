@@ -4,7 +4,6 @@ import { CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE, type Permission } from '../sh
 import { ensureSchema } from './db';
 import { constantTimeEqual } from './lib/crypto';
 import { ApiError, fail } from './lib/errors';
-import { assertPermission } from './lib/permissions';
 import { loadSession } from './services/session';
 import type { AppEnv, CompanyRow } from './types';
 
@@ -123,8 +122,11 @@ export function requirePermission(permission: Permission): MiddlewareHandler<App
   return async (c, next) => {
     const user = c.get('user');
     if (!user) return fail(401, 'UNAUTHENTICATED');
+    // T-202b: the guard reads the permissions resolved for this session, not the
+    // role name. A fixed role resolves exactly as before; a custom role resolves
+    // from its stored list.
     try {
-      assertPermission(user.role, permission);
+      if (!user.permissions.includes(permission)) throw new ApiError(403, 'FORBIDDEN');
     } catch (error) {
       if (error instanceof ApiError) throw error;
       return fail(403, 'FORBIDDEN');

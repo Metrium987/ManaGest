@@ -51,6 +51,17 @@ Chaque requête non sûre (POST, PATCH, DELETE) est contrôlée :
 - Permissions de la forme `{domaine}.{action}` (`invoices.write`, `users.read`…).
 - Matrice de rôles centralisée dans `shared/domain.ts`, appliquée **côté serveur**
   par `requirePermission`.
+- **Rôles personnalisés (T-202b).** Un compte peut porter un rôle personnalisé
+  (`users.role_key`) dont la liste de permissions est stockée. La résolution se fait
+  au chargement de session : un rôle **système** se résout toujours depuis le code
+  (les cinq rôles fixes ne peuvent pas dériver), un rôle personnalisé depuis sa
+  liste, **filtrée contre les permissions déclarées** — une faute de frappe, un
+  doublon, une valeur non textuelle ou un JSON malformé n'accorde rien. Un rôle
+  système ne peut être ni modifié ni supprimé, un rôle encore attribué ne peut pas
+  être supprimé, une permission inconnue est refusée en `422` (jamais réduite en
+  silence) et retirer le dernier propriétaire actif est refusé. Toute création,
+  modification, suppression et attribution est journalisée avec sa valeur
+  précédente.
 - Toute route protégée vérifie d'abord la session, puis la permission.
 - Les données sont toujours filtrées par la société du déploiement ; aucun identifiant
   de société n'est accepté depuis le client.

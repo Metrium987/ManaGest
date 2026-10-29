@@ -54,6 +54,8 @@ export interface UserRow {
   first_name: string;
   last_name: string;
   role: Role;
+  /** T-202b: custom role key, when the account holds one. */
+  role_key: string | null;
   is_active: number;
   mfa_secret: string | null;
   mfa_enabled: number;

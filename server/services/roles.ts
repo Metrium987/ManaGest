@@ -51,6 +51,18 @@ export async function loadRolePermissions(database: D1Database, roleKey: string)
   return parsePermissions(row?.permissions);
 }
 
+/** The role key that governs a session: a custom role wins over the fixed column. */
+export function roleKeyOf(user: { role: string; role_key?: string | null }): string {
+  return user.role_key ?? user.role;
+}
+
+export async function resolveUserPermissions(
+  database: D1Database,
+  user: { role: string; role_key?: string | null },
+): Promise<Permission[]> {
+  return loadRolePermissions(database, roleKeyOf(user));
+}
+
 /** Seeds the five fixed roles so the matrix screen (T-202c) lists them. Idempotent. */
 export async function ensureSystemRoles(database: D1Database, now: string): Promise<void> {
   await database.batch(

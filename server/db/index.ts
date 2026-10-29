@@ -48,6 +48,10 @@ const COLUMN_MIGRATIONS: { table: string; column: string; definition: string }[]
   { table: 'users', column: 'mfa_secret', definition: 'TEXT' },
   { table: 'users', column: 'mfa_enabled', definition: 'INTEGER NOT NULL DEFAULT 0' },
   { table: 'users', column: 'mfa_codes', definition: 'TEXT' },
+  // T-202b: a custom role is stored here; `role` keeps one of the five fixed
+  // keys because SQLite cannot widen a CHECK constraint without rebuilding the
+  // table — which is not a migration worth running on a user table.
+  { table: 'users', column: 'role_key', definition: 'TEXT' },
   { table: 'activities', column: 'before_json', definition: 'TEXT' },
   { table: 'activities', column: 'after_json', definition: 'TEXT' },
   { table: 'activities', column: 'ip', definition: 'TEXT' },
