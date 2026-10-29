@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNewRecordFlag } from '@/lib/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, ShoppingCart, Trash2 } from 'lucide-react';
+import { Paperclip, Plus, ShoppingCart, Trash2 } from 'lucide-react';
 import { PAYMENT_METHODS } from '@shared/domain';
 import { toMinor } from '@shared/money';
 import { api, toQuery } from '@/lib/api';
@@ -13,6 +13,7 @@ import type { Client, Expense, ListResponse, Vendor } from '@/lib/types';
 import { EmptyState, PageHeader, SectionCard, Skeleton } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, FormGrid, Input, Select, Textarea } from '@/components/ui/Form';
+import { AttachmentsPanel } from '@/components/domain/AttachmentsPanel';
 import { Modal, useConfirm } from '@/components/ui/Modal';
 import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
@@ -36,6 +37,7 @@ export function ExpensesPage() {
   const [to, setTo] = useState('');
   const startNew = useNewRecordFlag();
   const [open, setOpen] = useState(startNew);
+  const [attachmentsFor, setAttachmentsFor] = useState<Expense | null>(null);
   const [form, setForm] = useState({
     vendor_id: '', client_id: '', category: 'other', date: todayISO(),
     amount: 0, tax_amount: 0, payment_method: 'transfer', reference: '', notes: '', is_billable: false,
@@ -124,6 +126,14 @@ export function ExpensesPage() {
                   <td className="text-muted">{expense.reference ?? '—'}</td>
                   <td className="text-right font-medium tabular-nums">{formatMoney(expense.amount, currency)}</td>
                   <td className="text-right">
+                    <button
+                      type="button"
+                      className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-ink"
+                      aria-label={`${t('attachments.title')} — ${expense.reference ?? formatDate(expense.date)}`}
+                      onClick={() => setAttachmentsFor(expense)}
+                    >
+                      <Paperclip className="h-4 w-4" aria-hidden="true" />
+                    </button>
                     {can('expenses.delete') ? (
                       <button
                         type="button"
@@ -199,6 +209,18 @@ export function ExpensesPage() {
             <Textarea id="expense_notes" value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} />
           </Field>
         </div>
+      </Modal>
+
+      <Modal
+        open={Boolean(attachmentsFor)}
+        onClose={() => setAttachmentsFor(null)}
+        title={t('attachments.title')}
+        description={attachmentsFor ? `${formatDate(attachmentsFor.date)} — ${formatMoney(attachmentsFor.amount, currency)}` : undefined}
+        size="lg"
+      >
+        {attachmentsFor ? (
+          <AttachmentsPanel entity="expense" entityId={attachmentsFor.id} canWrite={can('expenses.write')} />
+        ) : null}
       </Modal>
     </>
   );

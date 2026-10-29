@@ -17,8 +17,8 @@ fuseau `Pacific/Tahiti` (UTC−10) et mentions légales adaptées.
 | Domaine | Modules |
 |---|---|
 | **Commercial** | Clients et contacts, devis (envoi, acceptation, refus, conversion), factures, avoirs, factures récurrentes |
-| **Encaissements** | Paiements avec affectation automatique ou manuelle, règlement direct d'une facture, rapprochement bancaire |
-| **Achats** | Fournisseurs, bons de commande, dépenses catégorisées |
+| **Encaissements** | Paiements avec affectation automatique ou manuelle, règlement direct d'une facture, rapprochement bancaire, preuve de paiement jointe |
+| **Achats** | Fournisseurs, bons de commande, dépenses catégorisées avec justificatif joint |
 | **Produits** | Catalogue, prix de vente et coût, suivi de stock |
 | **Projets** | Projets, budget, tâches, temps facturable |
 | **Analyse** | Tableau de bord, chiffre d'affaires, résultat, TVA collectée, balance âgée, ventes par client, dépenses, export CSV |

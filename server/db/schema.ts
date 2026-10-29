@@ -2,7 +2,7 @@
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (
@@ -589,4 +589,27 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id)`,
   `CREATE INDEX IF NOT EXISTS idx_activities_user ON activities(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_recurring_next_run ON recurring_invoices(status, next_run_date)`,
+
+  // Receipts for expenses and proofs for payments (T-101). The bytes are kept
+  // in the database, chunked, so the feature works without an object bucket.
+  `CREATE TABLE IF NOT EXISTS attachments (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL CHECK (entity_type IN ('expense','payment')),
+    entity_id TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    checksum TEXT NOT NULL,
+    storage TEXT NOT NULL DEFAULT 'database' CHECK (storage IN ('database')),
+    uploaded_by TEXT,
+    created_at TEXT NOT NULL,
+    deleted_at TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_attachments_entity ON attachments(entity_type, entity_id)`,
+  `CREATE TABLE IF NOT EXISTS attachment_chunks (
+    attachment_id TEXT NOT NULL,
+    seq INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    PRIMARY KEY (attachment_id, seq)
+  )`,
 ];

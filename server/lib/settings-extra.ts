@@ -3,7 +3,7 @@
  * the routes that read them (PDF layout, language, retention, franchise
  * ceiling) and the settings screen agree on the same keys and defaults.
  */
-export const EXTRA_KEYS = ['retention_years', 'ui_language', 'franchise_threshold', 'pdf_layout'] as const;
+export const EXTRA_KEYS = ['retention_years', 'ui_language', 'franchise_threshold', 'pdf_layout', 'attachment_max_mb'] as const;
 
 export type ExtraKey = (typeof EXTRA_KEYS)[number];
 
@@ -18,6 +18,8 @@ export const EXTRA_DEFAULTS: Record<ExtraKey, string> = {
   franchise_threshold: '10000000',
   ui_language: 'fr',
   pdf_layout: 'classic',
+  // T-101: receipts are capped at 10 MB until the workspace changes it (1–25).
+  attachment_max_mb: '10',
 };
 
 export function isExtraKey(value: string): value is ExtraKey {

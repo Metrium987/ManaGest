@@ -1,7 +1,7 @@
 import { useDeferredValue, useState, type FormEvent } from 'react';
 import { useNewRecordFlag } from '@/lib/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, Wallet } from 'lucide-react';
+import { Paperclip, Plus, Trash2, Wallet } from 'lucide-react';
 import { PAYMENT_METHODS } from '@shared/domain';
 import { toMinor } from '@shared/money';
 import { api, toQuery } from '@/lib/api';
@@ -13,6 +13,7 @@ import type { Client, ListResponse, PaymentSummary } from '@/lib/types';
 import { EmptyState, PageHeader, Pagination, SectionCard, Skeleton } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, FormGrid, Input, SearchInput, Select } from '@/components/ui/Form';
+import { AttachmentsPanel } from '@/components/domain/AttachmentsPanel';
 import { Modal, useConfirm } from '@/components/ui/Modal';
 import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
@@ -36,6 +37,7 @@ export function PaymentsPage() {
   const [reference, setReference] = useState('');
   const [autoApply, setAutoApply] = useState(true);
   const [error, setError] = useState('');
+  const [attachmentsFor, setAttachmentsFor] = useState<PaymentSummary | null>(null);
 
   const payments = useQuery({
     queryKey: ['payments', deferred, page],
@@ -134,6 +136,14 @@ export function PaymentsPage() {
                   <td className="text-right font-medium tabular-nums">{formatMoney(payment.amount, currency)}</td>
                   <td className="text-right tabular-nums text-muted">{formatMoney(payment.applied ?? 0, currency)}</td>
                   <td className="text-right">
+                    <button
+                      type="button"
+                      className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-ink"
+                      aria-label={`${t('attachments.title')} — ${payment.number}`}
+                      onClick={() => setAttachmentsFor(payment)}
+                    >
+                      <Paperclip className="h-4 w-4" aria-hidden="true" />
+                    </button>
                     {can('payments.delete') ? (
                       <button
                         type="button"
@@ -217,6 +227,18 @@ export function PaymentsPage() {
             onChange={(event) => setAutoApply(event.target.checked)}
           />
         </form>
+      </Modal>
+
+      <Modal
+        open={Boolean(attachmentsFor)}
+        onClose={() => setAttachmentsFor(null)}
+        title={t('attachments.title')}
+        description={attachmentsFor ? `${attachmentsFor.number} — ${formatMoney(attachmentsFor.amount, currency)}` : undefined}
+        size="lg"
+      >
+        {attachmentsFor ? (
+          <AttachmentsPanel entity="payment" entityId={attachmentsFor.id} canWrite={can('payments.write')} />
+        ) : null}
       </Modal>
     </>
   );

@@ -125,3 +125,23 @@ En HTTPS :
 > sortant bloqué (vérifié séparément : Resend répond `401` sans clé). Le chemin SMTP n'a jamais ouvert de
 > connexion. En production, l'envoi transmet les factures à un sous-traitant : prévoir le contrat et la
 > mention correspondante avant de l'activer.
+
+## 10. Fichiers joints (justificatifs et preuves de paiement)
+
+- **Portée** : un fichier est rattaché à **une** dépense ou **un** paiement, jamais à un client ni à un
+  document partagé. La permission exigée est celle de la pièce concernée (`expenses.*` ou `payments.*`),
+  vérifiée à chaque lecture, chaque téléchargement et chaque suppression.
+- **Formats et taille** : PDF, JPEG, PNG, WebP uniquement ; plafond paramétrable de 1 à 25 Mo (10 Mo par
+  défaut). La taille retenue est celle des **octets décodés**, jamais celle annoncée par le navigateur.
+- **Noms** : le nom d'origine est conservé pour l'affichage, mais réduit à son dernier segment et privé de
+  caractères de contrôle — un nom ne peut pas désigner un chemin.
+- **Conservation** : la suppression est logique (la ligne reste, les octets partent) et l'action est
+  journalisée avec le nom et la taille, ce qui laisse une trace après coup.
+- **Téléchargement** : servi en pièce jointe (`Content-Disposition: attachment`), avec `nosniff` et
+  `Cache-Control: private, no-store` ; un fichier n'est jamais rendu en ligne dans l'application.
+
+> **Limites assumées.** Le type MIME est celui déclaré par le navigateur : il n'est pas déduit du contenu,
+> donc un fichier renommé peut être stocké (il ne sera jamais exécuté ni affiché en ligne). Aucun antivirus
+> n'est appliqué. Les octets résident dans la base : les sauvegardes D1 les couvrent, mais un volume
+> important de justificatifs pèse sur la base — un bucket objet serait préférable si le volume devient
+> significatif.

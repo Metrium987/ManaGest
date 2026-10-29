@@ -39,6 +39,13 @@ const ALLOWLIST = new Set([
   'public-links.ts /:token/pdf',
   'public-links.ts /:token/accept',
   'email.ts /:kind/:id',
+  // Attachments ask the permission of the record they belong to (expense or
+  // payment), so the check cannot sit on the route line; pinned by the
+  // FILE_LEVEL_GUARDS entry below.
+  'attachments.ts /limits',
+  'attachments.ts /',
+  'attachments.ts /:id/download',
+  'attachments.ts /:id',
 ]);
 
 /** The search router is guarded at router level, not per line: verify it stays. */
@@ -49,6 +56,9 @@ const FILE_LEVEL_GUARDS: Record<string, string> = {
   // E-mail sending: the permission depends on the document kind, so the allowlisted
   // route must keep checking it by hand — and keep its 404 for an unknown kind.
   'email.ts': "if (!hasPermission(actor.role, definition.permission as Permission)) return fail(403, 'FORBIDDEN');",
+  // Attachments (T-101): the permission is the one of the record the file hangs
+  // from, so it is asserted through one helper that every route must call.
+  'attachments.ts': 'assertPermission(role, ENTITY_PERMISSIONS[entity][action] as Permission)',
 };
 
 function routeLines(): { file: string; path: string; line: number; text: string }[] {

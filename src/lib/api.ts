@@ -62,7 +62,7 @@ export const api = {
   delete: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'DELETE', body }),
 };
 
-export async function downloadPdf(path: string, filename: string): Promise<void> {
+export async function downloadFile(path: string, filename: string): Promise<void> {
   const response = await fetch(`/api${path}`, { credentials: 'same-origin' });
   if (!response.ok) throw new ApiError(response.status, 'DOWNLOAD_FAILED');
   const blob = await response.blob();
@@ -75,6 +75,9 @@ export async function downloadPdf(path: string, filename: string): Promise<void>
   anchor.remove();
   URL.revokeObjectURL(url);
 }
+
+/** PDF downloads are the common case; the helper itself is format-agnostic. */
+export const downloadPdf = downloadFile;
 
 export function toQuery(params: Record<string, string | number | boolean | undefined | null>): string {
   const search = new URLSearchParams();
