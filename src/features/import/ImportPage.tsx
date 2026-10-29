@@ -19,7 +19,7 @@ import { useToast } from '@/components/ui/Toast';
 export function ImportPage() {
   const toast = useToast();
   const { can } = useSession();
-  const [entity, setEntity] = useState<'clients' | 'products'>('clients');
+  const [entity, setEntity] = useState<'clients' | 'products' | 'invoices'>('clients');
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState('');
@@ -28,7 +28,9 @@ export function ImportPage() {
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const allowed = entity === 'clients' ? can('clients.write') : can('products.write');
+  const allowed = entity === 'clients'
+    ? can('clients.write')
+    : entity === 'products' ? can('products.write') : can('invoices.write');
   const columns = useMemo<ImportColumn[]>(() => [], []);
 
   const readFile = async (file: File | undefined) => {
@@ -92,11 +94,12 @@ export function ImportPage() {
               <Select
                 id="import-entity"
                 value={entity}
-                onChange={(event) => setEntity(event.target.value as 'clients' | 'products')}
+                onChange={(event) => setEntity(event.target.value as 'clients' | 'products' | 'invoices')}
                 disabled={step !== 1}
               >
                 <option value="clients">{t('import.clients')}</option>
                 <option value="products">{t('import.products')}</option>
+                <option value="invoices">{t('import.invoices')}</option>
               </Select>
             </Field>
             <Field label={t('import.template')} htmlFor="import-template">
@@ -227,8 +230,8 @@ export function ImportPage() {
               <p className="text-xs text-muted">{result.identifiers.join(' · ')}</p>
             ) : null}
             <div className="flex flex-wrap gap-2">
-              <Link to={entity === 'clients' ? '/clients' : '/produits'} className="btn btn-primary">
-                {entity === 'clients' ? t('import.seeClients') : t('import.seeProducts')}
+              <Link to={entity === 'clients' ? '/clients' : entity === 'products' ? '/produits' : '/factures'} className="btn btn-primary">
+                {entity === 'clients' ? t('import.seeClients') : entity === 'products' ? t('import.seeProducts') : t('import.seeInvoices')}
               </Link>
               <Button variant="secondary" onClick={restart}>{t('import.restart')}</Button>
             </div>

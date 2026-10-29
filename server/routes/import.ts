@@ -2,72 +2,50 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { nowISO } from '../db';
 import { logActivity } from '../lib/audit';
+import { computeTotals } from '../lib/tax';
 import { csvResponse, toCsv } from '../lib/csv';
 import { fail } from '../lib/errors';
+import { parseCsv, templateCsv, toBoolean, validateImport, type ImportEntity } from '../lib/import';
 import {
-  IMPORT_COLUMNS,
-  parseCsv,
-  templateCsv,
-  toBoolean,
-  validateImport,
-  type ImportEntity,
-  type ValidationResult,
-} from '../lib/import';
-import { hasPermission } from '../lib/permissions';
+  INVOICE_COLUMNS,
+  invoiceTemplateCsv,
+  validateInvoiceImport,
+  type ClientIndexEntry,
+} from '../lib/import-invoices';
+import { assertPeriodOpen } from '../lib/locks';
 import { nextNumber } from '../lib/numbering';
+import { hasPermission } from '../lib/permissions';
 import { parseInput } from '../lib/validation';
 import { requireAuth } from '../middleware';
+import { syncInvoiceTaxLines } from '../services/documents';
 import type { MiddlewareHandler } from 'hono';
 import type { AppEnv } from '../types';
 
 /**
- * Import (T-102a / OQ-015): template download, preview with row-level errors,
- * and an all-or-nothing commit. The preview and the commit run the same
- * validation, so a client that skips the preview can never store unchecked rows.
+ * Import (T-102a/T-102c / OQ-015): template download, preview with row-level
+ * errors, and an all-or-nothing commit. Preview and commit run the same
+ * validation, so a client that skips the preview cannot store unchecked rows.
  */
 
-const ENTITIES: ImportEntity[] = ['clients', 'products'];
+type Entity = ImportEntity | 'invoices';
+
+const ENTITIES: Entity[] = ['clients', 'products', 'invoices'];
 
 const bodySchema = z.object({
-  text: z.string().min(1).max(2_000_000),
+  text: z.string().min(1).max(4_000_000),
   /** Explicit user choice: rows still in error are excluded, never silently dropped. */
   skip_invalid: z.coerce.boolean().default(false),
 });
 
-function permissionFor(entity: ImportEntity) {
-  return entity === 'clients' ? 'clients.write' : 'products.write';
+function permissionFor(entity: Entity) {
+  if (entity === 'clients') return 'clients.write';
+  if (entity === 'products') return 'products.write';
+  return 'invoices.write';
 }
 
-function assertEntity(value: string): ImportEntity {
-  if (!ENTITIES.includes(value as ImportEntity)) {
-    fail(404, 'NOT_FOUND');
-  }
-  return value as ImportEntity;
-}
-
-/** Existing keys, so the preview can tell "create" from "update". */
-async function existingKeys(database: D1Database, entity: ImportEntity): Promise<Set<string>> {
-  const sql = entity === 'clients'
-    ? `SELECT lower(email) AS key FROM clients WHERE deleted_at IS NULL AND email IS NOT NULL
-       UNION SELECT number AS key FROM clients WHERE deleted_at IS NULL`
-    : `SELECT product_key AS key FROM products WHERE deleted_at IS NULL AND product_key IS NOT NULL`;
-  const rows = await database.prepare(sql).all<{ key: string }>();
-  return new Set((rows.results ?? []).map((row) => String(row.key).toLowerCase()));
-}
-
-function report(result: ValidationResult, existing: Set<string>) {
-  return {
-    missing_columns: result.missingColumns,
-    valid_count: result.validCount,
-    invalid_count: result.invalidCount,
-    rows: result.rows.map((row) => ({
-      row: row.row,
-      values: row.values,
-      valid: row.valid,
-      action: row.key && existing.has(row.key.toLowerCase()) ? 'update' : 'create',
-      issues: row.issues,
-    })),
-  };
+function assertEntity(value: string): Entity {
+  if (!ENTITIES.includes(value as Entity)) fail(404, 'NOT_FOUND');
+  return value as Entity;
 }
 
 /** Per-entity permission guard, declared on each registration line. */
@@ -77,29 +55,92 @@ const entityGuard: MiddlewareHandler<AppEnv> = async (c, next) => {
   await next();
 };
 
+async function existingKeys(database: D1Database, entity: Entity): Promise<Set<string>> {
+  const sql = entity === 'clients'
+    ? `SELECT lower(email) AS key FROM clients WHERE deleted_at IS NULL AND email IS NOT NULL
+       UNION SELECT number AS key FROM clients WHERE deleted_at IS NULL`
+    : entity === 'products'
+      ? `SELECT product_key AS key FROM products WHERE deleted_at IS NULL AND product_key IS NOT NULL`
+      : `SELECT number AS key FROM invoices WHERE deleted_at IS NULL AND number IS NOT NULL`;
+  const rows = await database.prepare(sql).all<{ key: string }>();
+  return new Set((rows.results ?? []).map((row) => String(row.key).toLowerCase()));
+}
+
+async function clientIndex(database: D1Database): Promise<ClientIndexEntry[]> {
+  const rows = await database
+    .prepare(`SELECT id, display_name, email, number, is_tax_exempt, currency FROM clients WHERE deleted_at IS NULL`)
+    .all<ClientIndexEntry>();
+  return rows.results ?? [];
+}
+
 export const importRoutes = new Hono<AppEnv>();
 importRoutes.use('*', requireAuth);
 
 importRoutes.get('/template/:entity', requireAuth, entityGuard, async (c) => {
   const entity = assertEntity(c.req.param('entity'));
+  if (entity === 'invoices') return csvResponse(invoiceTemplateCsv(), 'modele-factures.csv');
   return csvResponse(templateCsv(entity), `modele-${entity}.csv`);
 });
 
 importRoutes.get('/columns/:entity', requireAuth, entityGuard, async (c) => {
   const entity = assertEntity(c.req.param('entity'));
-  return c.json({ columns: IMPORT_COLUMNS[entity] });
+  const columns = entity === 'invoices'
+    ? INVOICE_COLUMNS
+    : (await import('../lib/import')).IMPORT_COLUMNS[entity];
+  return c.json({ columns });
 });
 
 importRoutes.post('/preview/:entity', requireAuth, entityGuard, async (c) => {
   const entity = assertEntity(c.req.param('entity'));
   const body = parseInput(bodySchema, await c.req.json().catch(() => ({})));
   const parsed = parseCsv(body.text);
+
+  if (entity === 'invoices') {
+    const result = validateInvoiceImport(parsed, await clientIndex(c.env.DB), await existingKeys(c.env.DB, 'invoices'));
+    if (result.missingColumns.length > 0) {
+      return fail(422, 'IMPORT_COLUMNS_MISSING', { columns: result.missingColumns.join(', ') });
+    }
+    return c.json({
+      delimiter: parsed.delimiter,
+      missing_columns: [],
+      valid_count: result.validCount,
+      invalid_count: result.invalidCount,
+      documents: result.groups.map((group) => ({
+        number: group.number,
+        client: group.client?.display_name ?? null,
+        date: group.date,
+        lines: group.lines.length,
+        valid: group.valid,
+        issues: group.issues,
+      })),
+      rows: result.rows.map((row) => ({
+        row: row.row,
+        values: row.values,
+        valid: row.valid,
+        action: 'create',
+        issues: row.issues,
+      })),
+    });
+  }
+
   const result = validateImport(entity, parsed);
   if (result.missingColumns.length > 0) {
     return fail(422, 'IMPORT_COLUMNS_MISSING', { columns: result.missingColumns.join(', ') });
   }
   const existing = await existingKeys(c.env.DB, entity);
-  return c.json({ delimiter: parsed.delimiter, ...report(result, existing) });
+  return c.json({
+    delimiter: parsed.delimiter,
+    missing_columns: [],
+    valid_count: result.validCount,
+    invalid_count: result.invalidCount,
+    rows: result.rows.map((row) => ({
+      row: row.row,
+      values: row.values,
+      valid: row.valid,
+      action: row.key && existing.has(row.key.toLowerCase()) ? 'update' : 'create',
+      issues: row.issues,
+    })),
+  });
 });
 
 importRoutes.post('/commit/:entity', requireAuth, entityGuard, async (c) => {
@@ -108,24 +149,91 @@ importRoutes.post('/commit/:entity', requireAuth, entityGuard, async (c) => {
   const user = c.get('user')!;
   const body = parseInput(bodySchema, await c.req.json().catch(() => ({})));
   const parsed = parseCsv(body.text);
-  const result = validateImport(entity, parsed);
+  const now = nowISO();
+  const today = new Date(now).toISOString().slice(0, 10);
 
+  if (entity === 'invoices') {
+    const result = validateInvoiceImport(parsed, await clientIndex(c.env.DB), await existingKeys(c.env.DB, 'invoices'));
+    if (result.missingColumns.length > 0) {
+      return fail(422, 'IMPORT_COLUMNS_MISSING', { columns: result.missingColumns.join(', ') });
+    }
+    const invalidGroups = result.groups.filter((group) => !group.valid);
+    if (result.rows.length === 0) return fail(422, 'IMPORT_EMPTY');
+    if ((result.invalidCount > 0 || invalidGroups.length > 0) && !body.skip_invalid) {
+      return fail(409, 'IMPORT_ROWS_INVALID', { rows: String(result.invalidCount + invalidGroups.length) });
+    }
+
+    const statements: D1PreparedStatement[] = [];
+    const created: string[] = [];
+    for (const group of result.groups) {
+      if (!group.valid || !group.client || group.lines.length === 0) continue;
+      // Imported documents follow the same accounting lock as manual ones.
+      await assertPeriodOpen(c.env.DB, group.date);
+      const totals = computeTotals(
+        group.lines.map((line, position) => ({ ...line, id: `import-${position}` })),
+        { discount_type: 'percent', discount_value: 0 },
+        Boolean(group.client.is_tax_exempt),
+      );
+      const id = crypto.randomUUID();
+      const number = group.number
+        || await nextNumber(c.env.DB, 'invoice', 'FAC', company.number_pattern, group.date);
+      statements.push(
+        c.env.DB.prepare(
+          `INSERT INTO invoices (id, client_id, number, status, date, due_date, currency, subtotal,
+             discount_type, discount_value, discount_total, tax_total, total, paid_total, balance, tax_exempt,
+             line_items, notes, terms, created_by, created_at, updated_at)
+           VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, 'percent', 0, 0, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).bind(
+          id, group.client.id, number, group.date, group.due_date,
+          group.client.currency || company.currency, totals.subtotal, totals.tax_total, totals.total,
+          totals.total, group.client.is_tax_exempt,
+          JSON.stringify(group.lines.map((line, position) => ({
+            id: `import-${position}`,
+            product_id: null,
+            description: line.description,
+            quantity: line.quantity,
+            unit_price: line.unit_price,
+            tax_rate: line.tax_rate,
+            tax_status: line.tax_status,
+          }))),
+          group.notes, company.invoice_terms, user.id, now, now,
+        ),
+      );
+      await syncInvoiceTaxLines(c.env.DB, id, totals.tax_buckets);
+      created.push(number);
+    }
+
+    if (statements.length > 0) await c.env.DB.batch(statements);
+    await logActivity(c.env.DB, {
+      userId: user.id,
+      action: 'imported',
+      entityType: 'invoices',
+      entityId: null,
+      summary: 'activity.data_imported',
+      meta: { entity, created: created.length, updated: 0, skipped: result.invalidCount + invalidGroups.length },
+    });
+    return c.json({
+      created: created.length,
+      updated: 0,
+      skipped: result.invalidCount + invalidGroups.length,
+      invalid_count: result.invalidCount + invalidGroups.length,
+      identifiers: created,
+    }, 201);
+  }
+
+  const result = validateImport(entity, parsed);
   if (result.missingColumns.length > 0) {
     return fail(422, 'IMPORT_COLUMNS_MISSING', { columns: result.missingColumns.join(', ') });
   }
   if (result.invalidCount > 0 && !body.skip_invalid) {
     return fail(409, 'IMPORT_ROWS_INVALID', { rows: String(result.invalidCount) });
   }
-  if (result.rows.length === 0) {
-    return fail(422, 'IMPORT_EMPTY');
-  }
+  if (result.rows.length === 0) return fail(422, 'IMPORT_EMPTY');
 
   const existing = await existingKeys(c.env.DB, entity);
-  const now = nowISO();
   const statements: D1PreparedStatement[] = [];
   const created: string[] = [];
   const updated: string[] = [];
-  const today = new Date(now).toISOString().slice(0, 10);
 
   for (const row of result.rows) {
     if (!row.valid) continue;

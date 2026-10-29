@@ -2,6 +2,8 @@ import { Hono } from 'hono';
 import { logActivity } from '../lib/audit';
 import { fail } from '../lib/errors';
 import { csvResponse, toCsv } from '../lib/csv';
+import { INVOICE_COLUMNS } from '../lib/import-invoices';
+import { safeLines } from '../services/documents';
 import { requireAuth } from '../middleware';
 import { hasPermission } from '../lib/permissions';
 import type { Permission } from '../../shared/domain';
@@ -239,6 +241,32 @@ exportRoutes.get('/:entity', async (c) => {
     summary: 'activity.data_exported',
     meta: { rows: rows.length, entity },
   });
+
+  // Invoices export one row per line item, mirroring the import template so a
+  // file can leave and come back unchanged (OQ-015 round-trip).
+  if (entity === 'invoices') {
+    const expanded: Record<string, unknown>[] = [];
+    for (const invoice of rows as Record<string, unknown>[]) {
+      for (const line of safeLines(invoice.line_items)) {
+        expanded.push({
+          number: invoice.number,
+          client: invoice.client_name,
+          date: invoice.date,
+          due_date: invoice.due_date,
+          description: line.description,
+          quantity: line.quantity,
+          unit_price: line.unit_price,
+          tax_rate: line.tax_rate,
+          tax_status: line.tax_status === 'exempt' ? 'exonéré' : 'taxable',
+          notes: invoice.notes,
+        });
+      }
+    }
+    return csvResponse(
+      toCsv(INVOICE_COLUMNS.map(({ key, label }) => ({ key, label })), expanded),
+      spec.filename,
+    );
+  }
 
   return csvResponse(toCsv(spec.columns, rows as Record<string, unknown>[]), spec.filename);
 });

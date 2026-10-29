@@ -25,7 +25,7 @@ Legend: Eff S/M/L/XL; status TODO|IN PROGRESS|DONE|BLOCKED; every row cites evid
 | T-101 | Attachments: R2 bucket binding + uploads for receipts/proofs (configurable size, default 10 MB) | M6 | BK-010; OQ-009 (owner-accepted) | T-003 | PQ-3 (ceiling display) | M | G-R2.1 |
 | T-102a | Import backend: upload/parse/validate/commit (CSV, transactional) | M7 | OQ-015 | T-006 | — | M | DONE (template/columns/preview/commit endpoints; 11 parser+validation tests; live 401 anon, 422 missing column, 409 invalid rows, 201 create/update, journal) |
 | T-102b | Import wizard UI: templates, preview, row errors, result report | M7 | OQ-015 | T-102a | — | M | DONE (5-step page at /importer, nav « Importer des données »; template download, file or paste, per-row create/update + French issues, explicit exclude-invalid consent, result report; typecheck/build/tests green, browser render not verified) |
-| T-102c | Import invoices entity (per OQ-015, last) | M7 | OQ-015 | T-102b | — | M | TODO |
+| T-102c | Import invoices entity (per OQ-015, last) | M7 | OQ-015 | T-102b | — | M | DONE (one row per line item, grouped by number; client resolved by email/number/name; header conflicts, unknown client and existing number refused; live: 2 lines → 1 draft FAC-2026-9001 total 80 040, duplicate 409; export now line-per-row round-trip) |
 | T-103 | Public per-document links (token/expiry/revocation/log) + accept-quote action | M4 | OQ-001 interim; portal sheet security rows | T-008 | — | M | G-R2.3 |
 | T-104a | Daily-run endpoint: bearer secret + rate limit + Tahiti-day idempotency | M5 | OQ-003 | T-005 | — | M | TODO |
 | T-104b | Run pipeline: recurring + reminders + journal + stored result | M5 | BK-003 | T-104a | — | M | TODO |
