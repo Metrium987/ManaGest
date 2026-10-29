@@ -61,7 +61,7 @@ runRoutes.post('/daily', async (c) => {
     summary = await runDailyPipeline(c.env.DB, company, { day, triggerIp: ip });
     status = runStatusFor(summary.generated.length, summary.failed.length, summary.skipped_reason);
   } catch {
-    summary = { day, generated: [], failed: [{ id: 'run', code: 'INTERNAL_ERROR' }], templates: 0, truncated: false };
+    summary = { day, generated: [], failed: [{ id: 'run', code: 'INTERNAL_ERROR' }], templates: 0, reminders: 0, truncated: false };
     status = 'failed';
   }
 

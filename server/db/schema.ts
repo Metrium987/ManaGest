@@ -2,7 +2,7 @@
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (
@@ -633,4 +633,18 @@ export const SCHEMA_STATEMENTS: string[] = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_daily_run_attempts_at ON daily_run_attempts(created_at)`,
+
+  // One row per invoice and reminder level (T-105). The unique pair is what
+  // stops the daily pass from nagging the same client every morning.
+  `CREATE TABLE IF NOT EXISTS invoice_reminders (
+    id TEXT PRIMARY KEY,
+    invoice_id TEXT NOT NULL,
+    level INTEGER NOT NULL,
+    channel TEXT NOT NULL CHECK (channel IN ('manual','automatic')),
+    days_overdue INTEGER NOT NULL,
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (invoice_id, level)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_invoice_reminders_invoice ON invoice_reminders(invoice_id)`,
 ];

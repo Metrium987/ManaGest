@@ -1,3 +1,10 @@
+## 2026-10-29 — Reminders that remember what was already said (T-105)
+- **The gap was memory, not scheduling**: a reminder existed only as a journal line, so nothing could tell whether this client had already been reminded. `invoice_reminders` stores (**invoice**, **level**) as a unique pair — levels 1, 2, 3, one per interval (7 days by default, a setting).
+- **A pass records every missing level, in order**, so a client who fell three levels behind while the scheduler was off gets the sequence once instead of a single confusing entry — and never a repeat.
+- **Manual and automatic cannot double up**: « Relancer » now records its level in the same table, so the next morning's pass knows the person already acted.
+- Gate: typecheck clean, **186/186 tests over 15 files** (10 new), production build clean. Live [EXECUTED]: two invoices 10 days late → one pass recorded 3 levels with 3 journal entries; a following pass recorded **0** and the table stayed at 3 rows; a manual reminder on a draft invoice was correctly refused `409 INVOICE_NOT_OPEN`.
+- **Not claimed:** no message leaves the machine — PQ-2 still gates delivery, so a reminder is a recorded, auditable intention; no screen shows the reminder history yet; the manual path was verified by its refusal and by unit tests rather than by a live success.
+
 ## 2026-10-29 — A daily pass that cannot run twice (T-104a/b)
 - **The scheduler's entry point exists**: `POST /api/runs/daily`, authenticated by a platform secret in **constant time**, with **no session accepted** — a machine token, not a browser cookie. 10 attempts per hour per IP, missing or wrong token refused, missing secret refused with a message naming the secret.
 - **Twice a day is a no-op, not a duplicate**: the Tahiti day is the primary key of `daily_runs`, claimed by a conditional insert, so the second call returns the first run's stored summary and generates nothing. A failed or skipped day remains retryable, and only one caller wins that retry.

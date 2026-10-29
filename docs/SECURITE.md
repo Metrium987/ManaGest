@@ -159,7 +159,12 @@ En HTTPS :
   passage ; le second reçoit le résumé du premier et n'écrit rien. Une journée en échec reste
   réessayable, la reprise étant elle aussi conditionnelle.
 - **Traçabilité** : chaque passage réel écrit `activity.daily_run_completed` avec le nombre de factures
-  créées, le nombre d'échecs, le nombre de modèles traités et l'adresse de l'appelant.
+  créées, le nombre de rappels enregistrés, le nombre d'échecs, le nombre de modèles traités et l'adresse
+  de l'appelant.
+- **Rappels** : un rappel est enregistré dans `invoice_reminders` avec son **niveau** (1 à 3, un par
+  intervalle de 7 jours par défaut) sous une contrainte d'unicité par facture et par niveau. Aucun message
+  n'est envoyé : tant qu'aucun fournisseur n'est configuré, un rappel est une intention datée et
+  journalisée (`activity.reminder_automatic`), jamais un envoi silencieux.
 
 > **Limite assumée.** Le déclencheur externe reste à la charge du propriétaire (PQ-1) : cet hébergement
 > n'attache aucun planificateur, et aucun appelant réel n'a été configuré. La limitation de débit a été

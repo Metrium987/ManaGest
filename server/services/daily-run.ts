@@ -1,7 +1,9 @@
 import { nowISO } from '../db';
 import { logActivity } from '../lib/audit';
 import { assertPeriodOpen } from '../lib/locks';
+import { getExtra } from '../lib/settings-extra';
 import { advanceRunDate, generateRecurringInvoice } from './recurring';
+import { DEFAULT_REMINDER_INTERVAL_DAYS, runReminderPass } from './reminders';
 import type { CompanyRow } from '../types';
 
 /**
@@ -23,6 +25,8 @@ export interface RunSummary {
   generated: string[];
   failed: { id: string; code: string }[];
   templates: number;
+  /** Reminder levels recorded by this pass (T-105). */
+  reminders: number;
   skipped_reason?: string;
   /** True when more templates were due than this pass was allowed to touch. */
   truncated: boolean;
@@ -157,7 +161,7 @@ export async function runDailyPipeline(
   options: { day: string; triggerIp: string | null },
 ): Promise<RunSummary> {
   const { day } = options;
-  const summary: RunSummary = { day, generated: [], failed: [], templates: 0, truncated: false };
+  const summary: RunSummary = { day, generated: [], failed: [], templates: 0, reminders: 0, truncated: false };
 
   if (!(await periodOpen(database, day))) {
     summary.skipped_reason = 'PERIOD_LOCKED';
@@ -208,6 +212,20 @@ export async function runDailyPipeline(
     }
   }
 
+  // Reminders ride the same pass (T-105): they are recorded after the invoices
+  // exist, so an invoice generated today is never reminded in the same breath.
+  const reminderInterval = Number.parseInt(
+    await getExtra(database, 'reminder_interval_days'),
+    10,
+  );
+  const reminders = await runReminderPass(database, {
+    day,
+    intervalDays: Number.isFinite(reminderInterval) && reminderInterval > 0
+      ? reminderInterval
+      : DEFAULT_REMINDER_INTERVAL_DAYS,
+  });
+  summary.reminders = reminders.recorded;
+
   await logActivity(database, {
     userId: null,
     action: 'ran',
@@ -218,6 +236,7 @@ export async function runDailyPipeline(
       generated: summary.generated.length,
       failed: summary.failed.length,
       templates: summary.templates,
+      reminders: summary.reminders,
       truncated: summary.truncated,
     },
     ip: options.triggerIp,

@@ -19,6 +19,7 @@ import { resolveLayout } from '../services/pdf-style';
 import { getExtra } from '../lib/settings-extra';
 import { deriveInvoiceStatus, isOverdue, refundableAmount } from '../services/status';
 import { recalcCredit } from '../services/documents';
+import { recordManualReminder } from '../services/reminders';
 import type { AppEnv } from '../types';
 
 const invoiceSchema = z.object({
@@ -534,7 +535,15 @@ invoiceRoutes.post('/:id/remind', requirePermission('invoices.write'), async (c)
     summary: 'activity.invoice_reminded',
     meta: { number: invoice.number, due_date: invoice.due_date },
   });
-  return c.json({ ok: true });
+  // T-105: a manual reminder also records its level, so the daily pass does not
+  // send the same one again the next morning.
+  const reminderInterval = Number.parseInt(await getExtra(c.env.DB, 'reminder_interval_days'), 10);
+  const level = await recordManualReminder(c.env.DB, invoice, {
+    day: today,
+    userId: user.id,
+    intervalDays: Number.isFinite(reminderInterval) && reminderInterval > 0 ? reminderInterval : undefined,
+  });
+  return c.json({ ok: true, level });
 });
 
 invoiceRoutes.post('/:id/credit-note', requirePermission('credits.write'), async (c) => {
