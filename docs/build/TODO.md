@@ -37,7 +37,7 @@ T-204 bank matching ──> T-205 projects/kanban
 
 | ID | Title | Module | Evidence | Deps | Blockers | Eff | Status / gate |
 |---|---|---|---|---|---|---|---|
-| T-103 | Public per-document links: token, expiry, revocation, access log, accept-quote | M4 | OQ-001 interim; portal sheet security rows | T-108a | — | M | TODO |
+| T-103 | Public per-document links: token, expiry, revocation, access log, accept-quote | M4 | OQ-001 interim; portal sheet security rows | T-108a | — | M | **DONE** (schema v6 `public_links` + `public_link_access`; SHA-256 token digest only, 1–365-day expiry, revocation; `GET /api/public/documents/:token`, `/pdf`, `POST /accept`; owner routes create/list/revoke/access-log; public page `/p/:token`; « Partager » dialog on invoice and quote records; 4 unit tests; live 201/200/410/409 verified) |
 | T-101 | Attachments for expense receipts and payment proofs (configurable size, default 10 MB) | M6 | BK-010; OQ-009 | T-100 | PQ-3 only to display the platform ceiling | M | TODO |
 
 ## Phase 4 — Automation

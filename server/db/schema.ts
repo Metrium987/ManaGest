@@ -2,7 +2,7 @@
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (
@@ -28,6 +28,33 @@ export const SCHEMA_STATEMENTS: string[] = [
     ('equipment', 'Équipement', 0, '2026-01-01T00:00:00.000Z'),
     ('other', 'Autre', 0, '2026-01-01T00:00:00.000Z')`,
 
+
+  // T-103: public per-document links. Only the SHA-256 digest of the token is
+  // stored, so a database dump never yields a working link.
+  `CREATE TABLE IF NOT EXISTS public_links (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    token_hint TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    revoked_at TEXT,
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    access_count INTEGER NOT NULL DEFAULT 0,
+    last_access_at TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_public_links_entity ON public_links(entity_type, entity_id)`,
+
+  `CREATE TABLE IF NOT EXISTS public_link_access (
+    id TEXT PRIMARY KEY,
+    link_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    ip TEXT,
+    user_agent TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_public_link_access_link ON public_link_access(link_id, created_at)`,
 
   `CREATE TABLE IF NOT EXISTS app_meta (
     key TEXT PRIMARY KEY,

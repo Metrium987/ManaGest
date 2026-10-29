@@ -22,6 +22,10 @@ const ROUTES_DIR = 'server/routes';
  * - export: per-entity permission differs per entity, so the 403 test lives in the
  *   handler (`hasPermission(user.role, spec.permission)`) — asserted below by the
  *   FILE_LEVEL_GUARDS entry; unknown entities 404 before any DB access.
+ * - public links (T-103): the anonymous document routes are guarded by the token
+ *   itself (256-bit, hashed at rest, expiring, revocable), and link creation calls
+ *   `assertPermission` inside the handler because the required permission depends on
+ *   the document type — both asserted by the FILE_LEVEL_GUARDS entry below.
  */
 const ALLOWLIST = new Set([
   'auth.ts /login',
@@ -30,12 +34,17 @@ const ALLOWLIST = new Set([
   'setup.ts /install',
   'dashboard.ts /',
   'export.ts /:entity',
+  'public-links.ts /',
+  'public-links.ts /:token',
+  'public-links.ts /:token/pdf',
+  'public-links.ts /:token/accept',
 ]);
 
 /** The search router is guarded at router level, not per line: verify it stays. */
 const FILE_LEVEL_GUARDS: Record<string, string> = {
   'dashboard.ts': "searchRoutes.use('*', requireAuth)",
   'export.ts': 'if (!hasPermission(user.role, spec.permission as Permission)) return fail(403',
+  'public-links.ts': 'assertPermission(user.role, ENTITY_PERMISSIONS[link.entity_type].write)',
 };
 
 function routeLines(): { file: string; path: string; line: number; text: string }[] {

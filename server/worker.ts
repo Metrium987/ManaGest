@@ -17,6 +17,7 @@ import { productRoutes } from './routes/products';
 import { quoteRoutes } from './routes/quotes';
 import { recurringRoutes } from './routes/recurring';
 import { activityRoutes, settingsRoutes, taxRateRoutes, userRoutes } from './routes/settings';
+import { publicDocumentRoutes, publicLinkRoutes } from './routes/public-links';
 import { setupRoutes } from './routes/setup';
 import type { AppEnv } from './types';
 
@@ -67,6 +68,8 @@ app.route('/api/settings', settingsRoutes);
 app.route('/api/tax-rates', taxRateRoutes);
 app.route('/api/users', userRoutes);
 app.route('/api/activity', activityRoutes);
+app.route('/api/public-links', publicLinkRoutes);
+app.route('/api/public/documents', publicDocumentRoutes);
 
 app.all('/api/*', (c) => c.json({ error: { code: 'NOT_FOUND' } }, 404));
 

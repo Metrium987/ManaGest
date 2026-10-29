@@ -31,6 +31,7 @@ import { SettingsPage } from '@/features/settings/SettingsPage';
 import { UsersPage } from '@/features/settings/UsersPage';
 import { ActivityPage } from '@/features/settings/ActivityPage';
 import { ProfilePage } from '@/features/settings/ProfilePage';
+import { PublicDocumentPage } from '@/features/public/PublicDocumentPage';
 
 function ProtectedShell() {
   const { isAuthenticated, isLoading, needsSetup } = useSession();
@@ -66,6 +67,8 @@ export default function App() {
     <Routes>
       <Route path="/connexion" element={<PublicOnly><LoginPage /></PublicOnly>} />
       <Route path="/installation" element={<SetupPage />} />
+      {/* T-103: a client opens this page from a public link; no session needed. */}
+      <Route path="/p/:token" element={<PublicDocumentPage />} />
 
       <Route element={<ProtectedShell />}>
         <Route index element={<DashboardPage />} />

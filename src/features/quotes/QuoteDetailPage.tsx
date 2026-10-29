@@ -10,6 +10,7 @@ import type { Quote } from '@/lib/types';
 import { EmptyState, PageHeader, SectionCard, Skeleton, StatusBadge } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { useConfirm } from '@/components/ui/Modal';
+import { ShareButton } from '@/components/domain/ShareLinkDialog';
 import { useToast } from '@/components/ui/Toast';
 
 export function QuoteDetailPage() {
@@ -75,6 +76,7 @@ export function QuoteDetailPage() {
             >
               {t('common.download')}
             </a>
+            {can('quotes.write') ? <ShareButton entityType="quote" entityId={data.id} /> : null}
             {data.status === 'draft' && can('quotes.write') ? (
               <Button variant="secondary" onClick={() => action.mutate('send')} loading={action.isPending} icon={<Send className="h-4 w-4" aria-hidden="true" />}>{t('quotes.send')}</Button>
             ) : null}

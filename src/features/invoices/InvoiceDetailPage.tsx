@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { PAYMENT_METHODS } from '@shared/domain';
 import { api, downloadPdf } from '@/lib/api';
+import { ShareButton } from '@/components/domain/ShareLinkDialog';
 import { errorMessage } from '@/lib/errors';
 import { t } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
@@ -149,6 +150,7 @@ export function InvoiceDetailPage() {
             >
               {t('invoices.pdfCompact')}
             </Button>
+            {can('invoices.write') ? <ShareButton entityType="invoice" entityId={data.id} /> : null}
             {data.status === 'draft' && can('invoices.write') ? (
               <Button variant="secondary" loading={action.isPending} onClick={() => action.mutate('send')} icon={<Send className="h-4 w-4" aria-hidden="true" />}>
                 {t('invoices.send')}
