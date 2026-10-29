@@ -134,6 +134,8 @@ export function TasksPage() {
           <button
             type="button"
             onClick={() => toggleSelected(task.id)}
+            aria-pressed={selected.includes(task.id)}
+            title={t('kanban.billTasks')}
             className={`badge ${selected.includes(task.id) ? 'border-brand-300 bg-brand-50 text-brand-700' : 'border-line bg-surface text-muted'}`}
           >
             {selected.includes(task.id) ? '✓ ' : ''}{t('kanban.unbilled')}
@@ -169,7 +171,9 @@ export function TasksPage() {
         <div className="ml-auto flex items-center gap-2">
           {billable.length ? (
             <Button size="sm" variant="ghost" onClick={toggleAll}>
-              {selected.length === billable.length ? t('common.none') : `${t('kanban.selected', { count: billable.length })}`}
+              {selected.length === billable.length
+                ? t('kanban.clearAll')
+                : t('kanban.selectAll', { count: billable.length })}
             </Button>
           ) : null}
           <GatedButton
@@ -177,7 +181,8 @@ export function TasksPage() {
             size="sm"
             loading={bill.isPending}
             disabled={!selected.length}
-            onClick={() => (selected.length ? bill.mutate() : toast.error(t('kanban.noneBillable')))}
+            reason={!selected.length ? t('kanban.noneBillable') : undefined}
+            onClick={() => bill.mutate()}
             icon={<FileText className="h-3.5 w-3.5" aria-hidden="true" />}
           >
             {t('kanban.billTasks')}
@@ -211,7 +216,13 @@ export function TasksPage() {
                   <h2 className="text-sm font-semibold text-ink-900">{t(`status.${status}`)}</h2>
                   <span className="text-xs tabular-nums text-muted">{columnTasks.length}</span>
                 </header>
-                <div className="min-h-[80px]">{columnTasks.map(card)}</div>
+                <div className="min-h-[80px]">
+                  {columnTasks.length ? (
+                    columnTasks.map(card)
+                  ) : (
+                    <p className="px-1 py-6 text-center text-xs text-muted">{t('kanban.emptyColumn')}</p>
+                  )}
+                </div>
               </section>
             );
           })}

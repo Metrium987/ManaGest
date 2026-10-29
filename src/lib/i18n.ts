@@ -50,6 +50,9 @@ export const fr = {
     hint: 'Glissez une carte dans une autre colonne pour changer son statut.',
     invoiced: 'Facturée',
     unbilled: 'À facturer',
+    selectAll: 'Sélectionner les {count} tâches facturables',
+    clearAll: 'Tout désélectionner',
+    emptyColumn: 'Aucune tâche ici.',
   },
   bankMatch: {
     title: 'Rapprochement proposé',

@@ -99,6 +99,15 @@ export function BankPage() {
   const suggestionsFor = (id: string) =>
     suggestions.data?.data.find((entry) => entry.transaction_id === id)?.suggestions ?? [];
   const ledgerRows = ledger.data?.data ?? [];
+  // One translation for a rule reason, used by the row hint and the dialog.
+  const reasonLabel = (reason: string) => {
+    const key =
+      reason === 'amount_exact' ? 'AmountExact'
+        : reason === 'amount_partial' ? 'AmountPartial'
+          : reason === 'number_in_label' ? 'Number'
+            : 'Client';
+    return t(`bankMatch.reason${key}`);
+  };
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['bank-accounts'] });
@@ -235,7 +244,7 @@ export function BankPage() {
                       {tx.reference ? <p className="text-xs text-muted">{tx.reference}</p> : null}
                       {tx.status === 'unmatched' && suggestionsFor(tx.id).length ? (
                         <p className="text-[11px] text-brand-700">
-                          {suggestionsFor(tx.id)[0].number} · {suggestionsFor(tx.id)[0].reasons.map((reason) => t(`bankMatch.reason${reason === 'amount_exact' ? 'AmountExact' : reason === 'amount_partial' ? 'AmountPartial' : reason === 'number_in_label' ? 'Number' : 'Client'}`)).join(' · ')}
+                          {suggestionsFor(tx.id)[0].number} · {suggestionsFor(tx.id)[0].reasons.map(reasonLabel).join(' · ')}
                         </p>
                       ) : null}
                     </td>
@@ -379,9 +388,7 @@ export function BankPage() {
                   <span>
                     <span className="font-medium">{suggestion.number}</span>
                     {' — '}{suggestion.client_name ?? '—'}{' — '}{formatMoney(suggestion.balance, currency)}
-                    <span className="ml-2 text-muted">
-                      {suggestion.reasons.map((reason) => t(`bankMatch.reason${reason === 'amount_exact' ? 'AmountExact' : reason === 'amount_partial' ? 'AmountPartial' : reason === 'number_in_label' ? 'Number' : 'Client'}`)).join(' · ')}
-                    </span>
+                    <span className="ml-2 text-muted">{suggestion.reasons.map(reasonLabel).join(' · ')}</span>
                   </span>
                   <Button size="sm" variant="ghost" onClick={() => setInvoiceId(suggestion.invoice_id)}>{t('bankMatch.use')}</Button>
                 </li>

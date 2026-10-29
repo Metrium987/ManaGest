@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { t } from '@/lib/i18n';
 import { Modal } from './Modal';
 import { StatusBadge } from './Layout';
+import { Button } from './Button';
 
 /**
  * Read-only record detail (T-201a/b/c). The same drawer serves every list: a
@@ -81,7 +82,12 @@ export function RecordDrawerHost() {
       title={detail?.title ?? t('records.title')}
       description={detail?.subtitle}
       size="lg"
-      footer={<span className="text-xs text-muted">{t('records.readOnly')}</span>}
+      footer={
+        <>
+          <span className="mr-auto self-center text-xs text-muted">{t('records.readOnly')}</span>
+          <Button variant="secondary" onClick={closeRecord}>{t('records.close')}</Button>
+        </>
+      }
     >
       {detail ? (
         <div className="space-y-5">

@@ -49,6 +49,9 @@ export const en: Record<string, unknown> = {
     hint: 'Drag a card to another column to change its status.',
     invoiced: 'Invoiced',
     unbilled: 'To invoice',
+    selectAll: 'Select the {count} billable tasks',
+    clearAll: 'Clear the selection',
+    emptyColumn: 'No task here.',
   },
   bankMatch: {
     title: 'Suggested matches',
