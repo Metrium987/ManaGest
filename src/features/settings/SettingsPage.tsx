@@ -5,7 +5,7 @@ import { Lock, LockOpen, Plus, Save, Trash2, Users } from 'lucide-react';
 import { COUNTRIES, CURRENCIES } from '@shared/domain';
 import { api, toQuery } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
-import { t } from '@/lib/i18n';
+import { LANGUAGES, setLanguage, t } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { formatDate } from '@/lib/format';
 import type { Company, PeriodLock, SettingsPayload } from '@/lib/types';
@@ -83,6 +83,18 @@ export function SettingsPage() {
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
+  const saveLanguage = useMutation({
+    mutationFn: (value: string) => api.put('/settings/extras/ui_language', { value }),
+    onSuccess: (_result, value) => {
+      // The dictionaries are read synchronously by t(): switching language is
+      // applied immediately and the page reloads so every mounted screen
+      // (and the cached queries) is rendered with the new wording.
+      setLanguage(value);
+      window.location.reload();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const periods = useQuery({
     queryKey: ['periods'],
     queryFn: () => api.get<{ data: PeriodLock[] }>(`/settings/periods${toQuery({ page: 1, per_page: 100 })}`),
@@ -201,6 +213,19 @@ export function SettingsPage() {
                   </Select>
                 </Field>
               </FormGrid>
+              <Field label={t('settings.uiLanguage')} htmlFor="ui_language" hint={t('settings.uiLanguageHint')}>
+                <Select
+                  id="ui_language"
+                  value={extras.data?.extras.find((item) => item.key === 'ui_language')?.value ?? 'fr'}
+                  onChange={(event) => saveLanguage.mutate(event.target.value)}
+                  disabled={readOnly || saveLanguage.isPending}
+                  className="w-full sm:w-64"
+                >
+                  {LANGUAGES.map((language) => (
+                    <option key={language.value} value={language.value}>{t(language.labelKey)}</option>
+                  ))}
+                </Select>
+              </Field>
             </>
           ) : null}
 

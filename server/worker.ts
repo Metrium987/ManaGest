@@ -28,6 +28,21 @@ app.use('/api/*', csrfProtection);
 
 app.get('/api/health', (c) => c.json({ status: 'ok' }));
 
+/**
+ * Public interface language (T-010). The sign-in and setup screens are shown
+ * before a session exists, so the workspace language is readable without one.
+ * It exposes nothing but the language code.
+ */
+app.get('/api/public/language', async (c) => {
+  try {
+    const row = await c.env.DB.prepare(`SELECT value FROM settings_extra WHERE key = 'ui_language'`).first<{ value: string }>();
+    const value = row?.value === 'en' ? 'en' : 'fr';
+    return c.json({ language: value }, 200, { 'Cache-Control': 'no-store' });
+  } catch {
+    return c.json({ language: 'fr' }, 200, { 'Cache-Control': 'no-store' });
+  }
+});
+
 app.route('/api/setup', setupRoutes);
 app.route('/api/auth', authRoutes);
 app.route('/api/clients', clientRoutes);

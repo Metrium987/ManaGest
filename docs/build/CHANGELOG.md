@@ -1,3 +1,11 @@
+## 2026-10-29 — T-010 English interface DONE (M0, R-A / OQ-014)
+- `src/lib/i18n-en.ts`: the full English dictionary, key-for-key identical to the French tree (774 keys). `t()` now resolves through the active dictionary and falls back to French for any key a future language does not define yet.
+- `tests/i18n.test.ts` enforces the contract: same key set both ways, no empty value, placeholder interpolation, and unknown keys returned verbatim — so a missing translation fails the build instead of showing a blank label.
+- Language is a workspace setting, not a hard-coded choice: Paramètres → Entreprise → « Langue de l'interface » (fr/en), stored in `settings_extra.ui_language`, journalled, refused with 422 for an unsupported code. The English *variant* (US/GB spelling) is left to the owner, per the plan review.
+- `GET /api/public/language` lets the sign-in and setup screens read the language before a session exists; `src/main.tsx` reads it before the first render and falls back to French when offline.
+- `api.put` added to the client (the setting endpoint is a PUT).
+- Gate: 94/94 tests (7 new), typecheck + build clean; live walk [EXECUTED]: public endpoint 200, switch to en 200 → endpoint returns en, unsupported code 422, switch back to fr 200 → endpoint returns fr, two journal entries.
+
 ## 2026-10-29 — T-107 editable expense categories DONE (M6, R-A / DEF-SESSION-02)
 - New `expense_categories` table (key, label, sort, archived) seeded with the 12 former enum values, so existing expenses keep a readable label; schema bumped to v5 with an additive, idempotent migration.
 - `GET/POST/PATCH/DELETE /api/settings/expense-categories` (settings.read to list, settings.write to change); adding or renaming a category is journalled (`activity.expense_category_added|updated`), and a category that already has expenses can only be archived, never deleted, so history stays readable.

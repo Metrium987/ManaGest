@@ -1,6 +1,9 @@
+import { en } from './i18n-en';
+
 /**
- * French UI dictionary. Source code stays English; every visible string is
- * resolved through this module so wording can be reviewed in one place.
+ * UI dictionaries. Source code stays English; every visible string is resolved
+ * through this module so wording can be reviewed in one place. French is the
+ * reference tree: any key missing from another language falls back to it.
  */
 export const fr = {
   app: {
@@ -593,6 +596,9 @@ export const fr = {
     currentSession: 'Session actuelle',
     profile: 'Mon profil',
     profileSaved: 'Profil mis à jour.',
+    uiLanguage: 'Langue de l’interface',
+    uiLanguageHint: 'S’applique à tous les utilisateurs de cet espace. Les documents conservent la langue de leur propre modèle.',
+    uiLanguageSaved: 'Langue de l’interface mise à jour.',
     demoMode: 'Données de démonstration',
     demoModeHint: 'Un jeu de données de démonstration est chargé. Supprimez-le avant la mise en production.',
   },
@@ -850,20 +856,45 @@ export const fr = {
   },
   language: {
     fr: 'Français',
+    en: 'English',
     current: 'Français (Polynésie française)',
   },
 } as const;
 
 type Dict = typeof fr;
 
-function lookup(key: string): string | undefined {
+export type Language = 'fr' | 'en';
+
+export const LANGUAGES: { value: Language; labelKey: string }[] = [
+  { value: 'fr', labelKey: 'language.fr' },
+  { value: 'en', labelKey: 'language.en' },
+];
+
+const DICTIONARIES: Record<Language, Record<string, unknown>> = { fr, en };
+
+let activeLanguage: Language = 'fr';
+
+/** Switch the active dictionary (set from the workspace setting at boot). */
+export function setLanguage(language: string | null | undefined): void {
+  activeLanguage = language === 'en' ? 'en' : 'fr';
+}
+
+export function getLanguage(): Language {
+  return activeLanguage;
+}
+
+function lookupIn(dictionary: Record<string, unknown>, key: string): string | undefined {
   const parts = key.split('.');
-  let node: unknown = fr;
+  let node: unknown = dictionary;
   for (const part of parts) {
     if (typeof node !== 'object' || node === null) return undefined;
     node = (node as Record<string, unknown>)[part];
   }
   return typeof node === 'string' ? node : undefined;
+}
+
+function lookup(key: string): string | undefined {
+  return lookupIn(DICTIONARIES[activeLanguage], key) ?? lookupIn(fr, key);
 }
 
 /** Translate a dotted key and interpolate `{placeholders}`. */
