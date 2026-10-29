@@ -1,3 +1,9 @@
+## 2026-10-29 — The daily pass becomes visible and triggerable (T-104c)
+- **The dashboard now says when the pass last ran**: `last_run` (day, status, start/finish, stored summary) on the dashboard payload, and a « Passage quotidien » card showing the last result, its date and the counts — in both dictionaries.
+- **A button for the workspace that has no scheduler**: `POST /api/runs/daily/manual`, requiring `recurring.write`. It is not a second implementation — it shares the day claim with the machine endpoint, so a double click, or a click while the scheduler is running, still yields at most one pass. The card itself only needs `reports.read`.
+- Gate: typecheck clean, **186/186 tests over 15 files**, production build clean. Live [EXECUTED]: dashboard returned `last_run` with its summary; the manual call answered `already_ran: true` instead of regenerating; the same call without the CSRF header was refused 403.
+- **Not claimed:** no browser walk of the card, and the button has only been pressed on a day already run — its executing path is the same pipeline proven by the scheduled walk.
+
 ## 2026-10-29 — Reminders that remember what was already said (T-105)
 - **The gap was memory, not scheduling**: a reminder existed only as a journal line, so nothing could tell whether this client had already been reminded. `invoice_reminders` stores (**invoice**, **level**) as a unique pair — levels 1, 2, 3, one per interval (7 days by default, a setting).
 - **A pass records every missing level, in order**, so a client who fell three levels behind while the scheduler was off gets the sequence once instead of a single confusing entry — and never a repeat.

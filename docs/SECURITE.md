@@ -165,6 +165,10 @@ En HTTPS :
   intervalle de 7 jours par défaut) sous une contrainte d'unicité par facture et par niveau. Aucun message
   n'est envoyé : tant qu'aucun fournisseur n'est configuré, un rappel est une intention datée et
   journalisée (`activity.reminder_automatic`), jamais un envoi silencieux.
+- **Déclenchement manuel** : `POST /api/runs/daily/manual` exige une **session** avec la permission
+  `recurring.write` et le jeton CSRF, et passe par **la même revendication de journée** que l'appelant
+  machine : un second clic ne crée rien et renvoie le résumé du passage déjà effectué. Le jeton machine
+  reste réservé au planificateur ; le bouton n'y donne pas accès.
 
 > **Limite assumée.** Le déclencheur externe reste à la charge du propriétaire (PQ-1) : cet hébergement
 > n'attache aucun planificateur, et aucun appelant réel n'a été configuré. La limitation de débit a été
