@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNewRecordFlag } from '@/lib/navigation';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, ShoppingCart, Trash2 } from 'lucide-react';
-import { EXPENSE_CATEGORIES, PAYMENT_METHODS } from '@shared/domain';
+import { PAYMENT_METHODS } from '@shared/domain';
 import { toMinor } from '@shared/money';
 import { api, toQuery } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
@@ -24,6 +24,14 @@ export function ExpensesPage() {
   const { confirm } = useConfirm();
   const currency = company?.currency ?? 'XPF';
   const [category, setCategory] = useState('');
+  // T-107: the list is a setting, not a constant.
+  const categoryList = useQuery({
+    queryKey: ['expense-categories'],
+    queryFn: () => api.get<{ categories: { key: string; label: string; archived: number }[] }>('/settings/expense-categories'),
+  });
+  const categoryOptions = (categoryList.data?.categories ?? []).filter((item) => !item.archived);
+  const categoryLabel = (key: string) =>
+    categoryList.data?.categories.find((item) => item.key === key)?.label ?? t(`categories.${key}`);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const startNew = useNewRecordFlag();
@@ -87,7 +95,7 @@ export function ExpensesPage() {
             <Input aria-label={t('common.to')} type="date" value={to} onChange={(event) => setTo(event.target.value)} className="sm:w-40" />
             <Select aria-label={t('expenses.category')} value={category} onChange={(event) => setCategory(event.target.value)} className="sm:w-44">
               <option value="">{t('common.all')}</option>
-              {EXPENSE_CATEGORIES.map((value) => <option key={value} value={value}>{t(`categories.${value}`)}</option>)}
+              {categoryOptions.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
             </Select>
           </div>
         }
@@ -111,7 +119,7 @@ export function ExpensesPage() {
               {expenses.data.data.map((expense) => (
                 <tr key={expense.id}>
                   <td className="text-muted">{formatDate(expense.date)}</td>
-                  <td>{t(`categories.${expense.category}`)}</td>
+                  <td>{categoryLabel(expense.category)}</td>
                   <td className="text-muted">{expense.vendor_name ?? '—'}</td>
                   <td className="text-muted">{expense.reference ?? '—'}</td>
                   <td className="text-right font-medium tabular-nums">{formatMoney(expense.amount, currency)}</td>
@@ -156,7 +164,7 @@ export function ExpensesPage() {
             </Field>
             <Field label={t('expenses.category')} htmlFor="expense_category">
               <Select id="expense_category" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })}>
-                {EXPENSE_CATEGORIES.map((value) => <option key={value} value={value}>{t(`categories.${value}`)}</option>)}
+                {categoryOptions.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
               </Select>
             </Field>
             <Field label={t('common.amount')} htmlFor="expense_amount">

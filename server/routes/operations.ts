@@ -18,7 +18,8 @@ import type { AppEnv } from '../types';
 const expenseSchema = z.object({
   vendor_id: z.string().max(60).nullish(),
   client_id: z.string().max(60).nullish(),
-  category: z.enum(['supplies', 'rent', 'utilities', 'transport', 'travel', 'meals', 'services', 'insurance', 'taxes', 'salary', 'equipment', 'other']),
+  // T-107: the list is editable, so the value is checked against the table below.
+  category: z.string().trim().min(1).max(40),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   amount: z.coerce.number().int().min(0).max(9_999_999_999),
   tax_amount: z.coerce.number().int().min(0).max(9_999_999_999).default(0),
@@ -62,6 +63,10 @@ expenseRoutes.get('/', requirePermission('expenses.read'), async (c) => {
 expenseRoutes.post('/', requirePermission('expenses.write'), async (c) => {
   const user = c.get('user')!;
   const body = parseInput(expenseSchema, await c.req.json().catch(() => ({})));
+  const knownCategory = await c.env.DB
+    .prepare(`SELECT key FROM expense_categories WHERE key = ? AND archived = 0`)
+    .bind(body.category).first();
+  if (!knownCategory) return fail(422, 'VALIDATION_ERROR', { category: 'unknown' });
   await assertPeriodOpen(c.env.DB, body.date);
   const id = crypto.randomUUID();
   await c.env.DB.prepare(
@@ -82,6 +87,10 @@ expenseRoutes.post('/', requirePermission('expenses.write'), async (c) => {
 expenseRoutes.patch('/:id', requirePermission('expenses.write'), async (c) => {
   const id = c.req.param('id');
   const body = parseInput(expenseSchema, await c.req.json().catch(() => ({})));
+  const knownCategory = await c.env.DB
+    .prepare(`SELECT key FROM expense_categories WHERE key = ? AND archived = 0`)
+    .bind(body.category).first();
+  if (!knownCategory) return fail(422, 'VALIDATION_ERROR', { category: 'unknown' });
   const existing = await c.env.DB.prepare(
     `SELECT id, vendor_id, client_id, category, date, amount, tax_amount, payment_method, reference, notes, is_billable
      FROM expenses WHERE id = ? AND deleted_at IS NULL`,

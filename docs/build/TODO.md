@@ -23,7 +23,7 @@ T-204 bank matching ──> T-205 projects/kanban
 | ID | Title | Module | Evidence | Deps | Blockers | Eff | Status / gate |
 |---|---|---|---|---|---|---|---|
 | T-100 | Fiscal defaults as settings: retention years, franchise ceiling, tax-regime wording | M0 | OQ-004/005/006/019; owner decision 2026-10-29 (no accountant) | — | — | S | **DONE** (Paramètres → Taxes: « Valeurs fiscales par défaut », 10 ans / 10 000 000 XPF, editable, journalled; live GET/PATCH/422 verified) |
-| T-107 | Expense categories management screen (remove the fixed enum) | M6 | BK-016; CC-RA-2 (DEF-SESSION-02) | T-100 | — | S | TODO |
+| T-107 | Expense categories management screen (remove the fixed enum) | M6 | BK-016; CC-RA-2 (DEF-SESSION-02) | T-100 | — | S | DONE |
 | T-010 | Full English translation + language switch (variant is a setting, French stays default) | M0-fallback | OQ-014 | T-100 | — | M | TODO |
 
 ## Phase 2 — Document output (must precede sharing)

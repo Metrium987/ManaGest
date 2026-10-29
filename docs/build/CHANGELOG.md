@@ -1,3 +1,10 @@
+## 2026-10-29 — T-107 editable expense categories DONE (M6, R-A / DEF-SESSION-02)
+- New `expense_categories` table (key, label, sort, archived) seeded with the 12 former enum values, so existing expenses keep a readable label; schema bumped to v5 with an additive, idempotent migration.
+- `GET/POST/PATCH/DELETE /api/settings/expense-categories` (settings.read to list, settings.write to change); adding or renaming a category is journalled (`activity.expense_category_added|updated`), and a category that already has expenses can only be archived, never deleted, so history stays readable.
+- `POST/PUT /api/expenses` now validates the category against the table (an unknown **or archived** key is refused with 422 `details.category = unknown`) instead of the removed `EXPENSE_CATEGORIES` constant; the constant is deleted from `shared/domain.ts`.
+- UI: the expense form lists the active categories from the API and links to the new management card in Paramètres → Facturation (add, rename, archive); every label comes from the dictionary, with `categories.<key>` kept only as a translation fallback for the seeded keys.
+- Gate: 87/87 tests (3 new), typecheck + build clean; live walk [EXECUTED]: 12 seeded categories listed, new « Entretien véhicules » created 201, expense with it 201, unknown key 422, archived key 422, three journal entries present.
+
 ## 2026-10-28 — build planning created (no code changed)
 BUILD-PLAN, TODO (23 tasks + 4 R4 spec rows), module files M0-M12, VERIFICATION-GATES, TRACEABILITY, PLAN-OPEN-QUESTIONS.
 

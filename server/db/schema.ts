@@ -2,9 +2,33 @@
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_STATEMENTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS expense_categories (
+    key TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    archived INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  )`,
+
+  // Seed the categories that used to be a fixed enumeration, so existing
+  // expenses keep resolving and the list becomes editable (R-A, T-107).
+  `INSERT OR IGNORE INTO expense_categories (key, label, archived, created_at) VALUES
+    ('supplies', 'Fournitures', 0, '2026-01-01T00:00:00.000Z'),
+    ('rent', 'Loyer', 0, '2026-01-01T00:00:00.000Z'),
+    ('utilities', 'Énergie & eau', 0, '2026-01-01T00:00:00.000Z'),
+    ('transport', 'Transport', 0, '2026-01-01T00:00:00.000Z'),
+    ('travel', 'Déplacements', 0, '2026-01-01T00:00:00.000Z'),
+    ('meals', 'Restauration', 0, '2026-01-01T00:00:00.000Z'),
+    ('services', 'Services', 0, '2026-01-01T00:00:00.000Z'),
+    ('insurance', 'Assurances', 0, '2026-01-01T00:00:00.000Z'),
+    ('taxes', 'Taxes & impôts', 0, '2026-01-01T00:00:00.000Z'),
+    ('salary', 'Salaires', 0, '2026-01-01T00:00:00.000Z'),
+    ('equipment', 'Équipement', 0, '2026-01-01T00:00:00.000Z'),
+    ('other', 'Autre', 0, '2026-01-01T00:00:00.000Z')`,
+
+
   `CREATE TABLE IF NOT EXISTS app_meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL

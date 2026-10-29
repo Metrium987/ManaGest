@@ -540,3 +540,59 @@ activityRoutes.get('/verify', requirePermission('activity.read'), async (c) => {
   const result = await verifyActivityChain(c.env.DB);
   return c.json(result);
 });
+
+// --- T-107 (CC-RA-2 / DEF-SESSION-02): editable expense categories ---
+settingsRoutes.get('/expense-categories', requirePermission('settings.read'), async (c) => {
+  const rows = await c.env.DB.prepare(
+    `SELECT key, label, archived FROM expense_categories ORDER BY archived, label`,
+  ).all();
+  return c.json({ categories: rows.results ?? [] });
+});
+
+function slugifyCategory(label: string): string {
+  return label
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')
+    .slice(0, 32) || 'categorie';
+}
+
+settingsRoutes.post('/expense-categories', requirePermission('settings.write'), async (c) => {
+  const user = c.get('user')!;
+  const body = parseInput(
+    z.object({ label: z.string().trim().min(2).max(60) }),
+    await c.req.json().catch(() => ({})),
+  );
+  const key = slugifyCategory(body.label);
+  const existing = await c.env.DB.prepare(`SELECT key FROM expense_categories WHERE key = ?`).bind(key).first();
+  if (existing) return fail(409, 'VALIDATION_ERROR', { label: 'exists' });
+  await c.env.DB.prepare(
+    `INSERT INTO expense_categories (key, label, archived, created_at) VALUES (?, ?, 0, ?)`,
+  ).bind(key, body.label, nowISO()).run();
+  await logActivity(c.env.DB, {
+    userId: user.id, action: 'created', entityType: 'expense_category', entityId: key,
+    summary: 'activity.expense_category_added', meta: { label: body.label },
+  });
+  return c.json({ key, label: body.label }, 201);
+});
+
+settingsRoutes.patch('/expense-categories/:key', requirePermission('settings.write'), async (c) => {
+  const user = c.get('user')!;
+  const key = c.req.param('key');
+  const body = parseInput(
+    z.object({
+      label: z.string().trim().min(2).max(60).optional(),
+      archived: z.coerce.boolean().optional(),
+    }),
+    await c.req.json().catch(() => ({})),
+  );
+  const existing = await c.env.DB.prepare(`SELECT key FROM expense_categories WHERE key = ?`).bind(key).first();
+  if (!existing) return fail(404, 'NOT_FOUND');
+  await c.env.DB.prepare(
+    `UPDATE expense_categories SET label = COALESCE(?, label), archived = COALESCE(?, archived) WHERE key = ?`,
+  ).bind(body.label ?? null, body.archived === undefined ? null : (body.archived ? 1 : 0), key).run();
+  await logActivity(c.env.DB, {
+    userId: user.id, action: 'updated', entityType: 'expense_category', entityId: key,
+    summary: 'activity.expense_category_updated', meta: body as Record<string, unknown>,
+  });
+  return c.json({ ok: true });
+});

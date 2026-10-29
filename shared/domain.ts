@@ -116,11 +116,6 @@ export const PAYMENT_METHODS = [
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-export const EXPENSE_CATEGORIES = [
-  'supplies', 'rent', 'utilities', 'transport', 'travel', 'meals', 'services',
-  'insurance', 'taxes', 'salary', 'equipment', 'other',
-] as const;
-
 export const PROJECT_STATUSES = ['active', 'completed', 'archived'] as const;
 export const TASK_STATUSES = ['todo', 'in_progress', 'done'] as const;
 

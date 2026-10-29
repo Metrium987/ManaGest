@@ -19,6 +19,7 @@ const TABS = [
   { value: 'company', label: 'settings.company' },
   { value: 'invoicing', label: 'settings.invoicing' },
   { value: 'taxes', label: 'settings.taxes' },
+  { value: 'expenses', label: 'settings.expenseCategories' },
   { value: 'periods', label: 'periods.title' },
   { value: 'security', label: 'settings.security' },
   { value: 'legal', label: 'settings.legal' },
@@ -49,6 +50,31 @@ export function SettingsPage() {
       setFiscal({ retention_years: read('retention_years'), franchise_threshold: read('franchise_threshold') });
     }
   }, [extras.data, fiscal]);
+  const categories = useQuery({
+    queryKey: ['expense-categories'],
+    queryFn: () => api.get<{ categories: { key: string; label: string; archived: number }[] }>('/settings/expense-categories'),
+    enabled: can('settings.read'),
+  });
+  const [newCategory, setNewCategory] = useState('');
+  const addCategory = useMutation({
+    mutationFn: () => api.post('/settings/expense-categories', { label: newCategory.trim() }),
+    onSuccess: () => {
+      setNewCategory('');
+      toast.success(t('settings.saved'));
+      queryClient.invalidateQueries({ queryKey: ['expense-categories'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+  const toggleCategory = useMutation({
+    mutationFn: (input: { key: string; archived: boolean }) =>
+      api.patch(`/settings/expense-categories/${input.key}`, { archived: input.archived }),
+    onSuccess: () => {
+      toast.success(t('settings.saved'));
+      queryClient.invalidateQueries({ queryKey: ['expense-categories'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const saveFiscal = useMutation({
     mutationFn: (input: { retention_years: string; franchise_threshold: string }) => api.patch('/settings/extras', input),
     onSuccess: () => {
@@ -288,6 +314,46 @@ export function SettingsPage() {
                 )}
               </SectionCard>
             </>
+          ) : null}
+
+          {tab === 'expenses' ? (
+            <SectionCard title={t('settings.expenseCategories')} subtitle={t('settings.expenseCategoriesHint')} bodyClassName="space-y-4 p-5">
+              <ul className="divide-y divide-line">
+                {(categories.data?.categories ?? []).map((item) => (
+                  <li key={item.key} className="flex flex-wrap items-center justify-between gap-3 py-2">
+                    <div>
+                      <p className={`text-sm font-medium ${item.archived ? 'text-muted line-through' : ''}`}>{item.label}</p>
+                      {item.archived ? <p className="text-xs text-muted">{t('settings.categoryArchived')}</p> : null}
+                    </div>
+                    {can('settings.write') ? (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => toggleCategory.mutate({ key: item.key, archived: !item.archived })}
+                      >
+                        {item.archived ? t('settings.restoreCategory') : t('settings.archiveCategory')}
+                      </Button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+              {can('settings.write') ? (
+                <div className="flex flex-wrap items-end gap-3">
+                  <Field label={t('settings.categoryName')} htmlFor="new_category">
+                    <Input id="new_category" value={newCategory} onChange={(event) => setNewCategory(event.target.value)} />
+                  </Field>
+                  <Button
+                    variant="secondary"
+                    loading={addCategory.isPending}
+                    disabled={newCategory.trim().length < 2}
+                    onClick={() => addCategory.mutate()}
+                    icon={<Plus className="h-4 w-4" aria-hidden="true" />}
+                  >
+                    {t('settings.addCategory')}
+                  </Button>
+                </div>
+              ) : null}
+            </SectionCard>
           ) : null}
 
           {tab === 'periods' ? (
