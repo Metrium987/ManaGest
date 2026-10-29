@@ -7,7 +7,7 @@ import { hashPassword } from '../lib/crypto';
 import { fail } from '../lib/errors';
 import { validatePassword } from '../lib/passwords';
 import { todayIn } from '../lib/dates';
-import { EXTRA_DEFAULTS, EXTRA_KEYS } from '../lib/settings-extra';
+import { EXTRA_DEFAULTS, EXTRA_KEYS, isExtraKey, isValidExtraValue, type ExtraKey } from '../lib/settings-extra';
 import { optionalText, paginationSchema, parseInput } from '../lib/validation';
 import { clientIp, requireAuth, requirePermission } from '../middleware';
 import { rebuildAllInvoiceTaxLines } from '../services/documents';
@@ -227,15 +227,24 @@ settingsRoutes.get('/extras', requirePermission('settings.read'), async (c) => {
 settingsRoutes.patch('/extras', requirePermission('settings.write'), async (c) => {
   const user = c.get('user')!;
   const body = parseInput(
-    z.object({
-      retention_years: z.coerce.string().regex(/^[1-9]\d{0,2}$/).optional(),
-      franchise_threshold: z.coerce.string().regex(/^\d{1,12}$/).optional(),
-      pdf_layout: z.enum(['classic', 'compact']).optional(),
-    }).refine((value) => Object.keys(value).length > 0, { message: 'empty' }),
+    z.object({}).catchall(z.union([z.string(), z.number(), z.boolean()])).refine(
+      (value) => Object.keys(value).length > 0,
+      { message: 'empty' },
+    ),
     await c.req.json().catch(() => ({})),
   );
-  const now = nowISO();
+  // Every key of the settings table is writable here (fiscal defaults, receipts
+  // ceiling, reminders, token limits, approval thresholds), validated by the
+  // shared rules rather than by a list kept in this file.
+  const entries: [ExtraKey, string][] = [];
   for (const [key, value] of Object.entries(body)) {
+    if (!isExtraKey(key)) return fail(422, 'VALIDATION_ERROR', { [key]: 'unsupported' });
+    const text = String(value);
+    if (!isValidExtraValue(key, text)) return fail(422, 'VALIDATION_ERROR', { [key]: 'invalid' });
+    entries.push([key, text]);
+  }
+  const now = nowISO();
+  for (const [key, value] of entries) {
     await c.env.DB.prepare(
       `INSERT INTO settings_extra (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
@@ -247,7 +256,7 @@ settingsRoutes.patch('/extras', requirePermission('settings.write'), async (c) =
     entityType: 'settings',
     entityId: 'extras:fiscal',
     summary: 'activity.settings_extra_changed',
-    meta: body as Record<string, string>,
+    meta: Object.fromEntries(entries),
   });
   return c.json({ ok: true });
 });
@@ -255,16 +264,8 @@ settingsRoutes.patch('/extras', requirePermission('settings.write'), async (c) =
 settingsRoutes.put('/extras/:key', requirePermission('settings.write'), async (c) => {
   const key = c.req.param('key');
   const body = parseInput(z.object({ value: z.string().trim().min(1).max(80) }), await c.req.json().catch(() => ({})));
-  if (!(EXTRA_KEYS as readonly string[]).includes(key)) return fail(422, 'VALIDATION_ERROR', { key: 'unsupported' });
-  if (key === 'retention_years' && !/^[1-9]\d{0,2}$/.test(body.value)) {
-    return fail(422, 'VALIDATION_ERROR', { value: 'invalid' });
-  }
-  if (key === 'ui_language' && !['fr', 'en'].includes(body.value)) {
-    return fail(422, 'VALIDATION_ERROR', { value: 'invalid' });
-  }
-  if (key === 'pdf_layout' && !['classic', 'compact'].includes(body.value)) {
-    return fail(422, 'VALIDATION_ERROR', { value: 'invalid' });
-  }
+  if (!isExtraKey(key)) return fail(422, 'VALIDATION_ERROR', { key: 'unsupported' });
+  if (!isValidExtraValue(key, body.value)) return fail(422, 'VALIDATION_ERROR', { value: 'invalid' });
   const user = c.get('user')!;
   await c.env.DB.prepare(
     `INSERT INTO settings_extra (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)

@@ -40,6 +40,36 @@ export function isExtraKey(value: string): value is ExtraKey {
   return (EXTRA_KEYS as readonly string[]).includes(value);
 }
 
+const intBetween = (value: string, min: number, max: number): boolean =>
+  /^\d{1,7}$/.test(value) && Number(value) >= min && Number(value) <= max;
+
+/**
+ * Format of every setting, in one table. `0` is a valid value for the
+ * thresholds: it means « this rule is off », so it must not be rejected.
+ */
+const EXTRA_RULES: Record<ExtraKey, (value: string) => boolean> = {
+  retention_years: (value) => intBetween(value, 1, 50),
+  ui_language: (value) => value === 'fr' || value === 'en',
+  franchise_threshold: (value) => /^\d{1,12}$/.test(value),
+  pdf_layout: (value) => value === 'classic' || value === 'compact',
+  attachment_max_mb: (value) => intBetween(value, 1, 25),
+  reminder_interval_days: (value) => intBetween(value, 1, 365),
+  api_token_lifetime_days: (value) => intBetween(value, 1, 3650),
+  api_token_max_per_user: (value) => intBetween(value, 1, 100),
+  approval_credit_amount: (value) => /^\d{1,12}$/.test(value),
+  approval_expense_amount: (value) => /^\d{1,12}$/.test(value),
+  approval_discount_percent: (value) => intBetween(value, 0, 100),
+  separation_of_duties: (value) => ['0', '1', 'true', 'false'].includes(value),
+};
+
+/**
+ * One place decides whether a setting is writable, so the batch PATCH and the
+ * single-key PUT cannot drift apart and a new key only adds one line.
+ */
+export function isValidExtraValue(key: ExtraKey, value: string): boolean {
+  return EXTRA_RULES[key](value);
+}
+
 /** Reads a setting, falling back to its documented default. */
 export async function getExtra(database: D1Database, key: ExtraKey): Promise<string> {
   const row = await database
