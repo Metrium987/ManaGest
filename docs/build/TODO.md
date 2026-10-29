@@ -75,10 +75,10 @@ T-204 bank matching ──> T-205 projects/kanban
 
 | ID | Title | Module | Evidence | Note |
 |---|---|---|---|---|
-| T-401 | Portal wrapper spec (reuses public links) | M12 | matrix §14 | spec rows only |
-| T-402 | Payment pending/failed states + method registry spec | M12 | matrix §14 | spec only |
+| T-401 | Portal wrapper spec (reuses public links) | M12 | matrix §14 | **SPEC WRITTEN** — `docs/build/R4-EXTENSION-POINTS.md`: a client-scoped link kept in its own table so it can never be confused with a document link, every query scoped by client, acceptance still conditional, no gateway until T-402 and a provider exist. No code, by owner decision. |
+| T-402 | Payment pending/failed states + method registry spec | M12 | matrix §14 | **SPEC WRITTEN** — same document: `pending → completed | failed`, `completed → voided`, and a method registry seeded from today's constant. Names the ripple effect that matters: every reader of payments (reminders, aged balance, KPIs, reconciliation, exports) must filter on `completed` explicitly. No code. |
 | T-403 | « Locations » address slot spec | M12 | 15 §locations | BLOCKED-BY owner meaning (OQ-011) |
-| T-404 | Command palette spec | M12 | matrix §14 | spec only |
+| T-404 | Command palette spec | M12 | matrix §14 | **SPEC WRITTEN** — same document: a shortcut layer over the existing routes, commands filtered by the session's permissions, money withheld without `invoices.read`, combobox semantics. No code. |
 
 ## Done — R1 (18 rows closed)
 

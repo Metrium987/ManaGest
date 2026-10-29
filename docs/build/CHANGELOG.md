@@ -1,3 +1,10 @@
+## 2026-10-29 — R4 extension points written down (T-401, T-402, T-404)
+- **Documents, not code**, as the owner decided: `docs/build/R4-EXTENSION-POINTS.md` specifies the client portal wrapper, the payment pending/failed states with a method registry, and the command palette.
+- **Each row states what already exists**, so the later build reuses it instead of inventing a parallel mechanism: per-document links, allocations-based balances, the permission-aware search endpoint.
+- **The security decisions are spelled out** where they are not obvious: a portal link lives in its own table so it can never be confused with a document link, every portal query is scoped by client in the `WHERE`, and every reader of payments must filter on `completed` — a pending payment that settles an invoice is a money bug.
+- **T-403 stays blocked**: writing a « locations » specification would invent a business model before the owner has said which one.
+- Gate: documentation only, no code touched, suite still 186/186.
+
 ## 2026-10-29 — The daily pass becomes visible and triggerable (T-104c)
 - **The dashboard now says when the pass last ran**: `last_run` (day, status, start/finish, stored summary) on the dashboard payload, and a « Passage quotidien » card showing the last result, its date and the counts — in both dictionaries.
 - **A button for the workspace that has no scheduler**: `POST /api/runs/daily/manual`, requiring `recurring.write`. It is not a second implementation — it shares the day claim with the machine endpoint, so a double click, or a click while the scheduler is running, still yields at most one pass. The card itself only needs `reports.read`.
