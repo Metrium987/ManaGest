@@ -10,6 +10,7 @@ import { formatDate, formatMoney } from '@/lib/format';
 import type { ListResponse, QuoteSummary } from '@/lib/types';
 import { EmptyState, PageHeader, Pagination, SectionCard, Skeleton, StatusBadge } from '@/components/ui/Layout';
 import { SearchInput, Select } from '@/components/ui/Form';
+import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 
 export function QuotesPage() {
   const { company, can } = useSession();
@@ -29,11 +30,14 @@ export function QuotesPage() {
       <PageHeader
         title={t('quotes.title')}
         subtitle={t('quotes.subtitle')}
-        actions={can('quotes.write') ? (
+        actions={<>
+          <ExportCsvButton entity="quotes" />
+          {can('quotes.write') ? (
           <Link to="/devis/nouveau" className="btn btn-primary">
             <Plus className="h-4 w-4" aria-hidden="true" /> {t('quotes.new')}
           </Link>
         ) : null}
+        </>}
       />
 
       <SectionCard
@@ -71,7 +75,7 @@ export function QuotesPage() {
                   <td className="text-muted">{formatDate(quote.date)}</td>
                   <td className="text-muted">{formatDate(quote.valid_until)}</td>
                   <td className="text-right font-medium tabular-nums">{formatMoney(quote.total, currency)}</td>
-                  <td><StatusBadge status={quote.status} /></td>
+                  <td><StatusBadge status={quote.status} />{quote.expired ? <StatusBadge status="expired" /> : null}</td>
                 </tr>
               ))}
             </tbody>

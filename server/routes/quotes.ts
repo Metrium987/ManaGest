@@ -2,9 +2,10 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { nowISO } from '../db';
 import { logActivity } from '../lib/audit';
-import { addDays } from '../lib/dates';
+import { addDays, todayIn } from '../lib/dates';
 import { fail } from '../lib/errors';
 import { nextNumber } from '../lib/numbering';
+import { isExpiredQuote } from '../services/status';
 import { computeTotals } from '../lib/tax';
 import { assertPeriodOpen } from '../lib/locks';
 import { lineItemsSchema, offsetOf, optionalIsoDate, paginationSchema, parseInput } from '../lib/validation';
@@ -54,7 +55,7 @@ quoteRoutes.get('/', requirePermission('quotes.read'), async (c) => {
 
   const total = count?.count ?? 0;
   return c.json({
-    data: (rows.results ?? []).map((row) => ({ ...row, line_items: safeLines(row.line_items) })),
+    data: (rows.results ?? []).map((row) => ({ ...row, line_items: safeLines(row.line_items), expired: isExpiredQuote(String(row.status), (row.valid_until as string | null) ?? null, todayIn(c.get('company')!.timezone)) })),
     meta: { page, per_page, total, total_pages: Math.max(1, Math.ceil(total / per_page)) },
   });
 });
@@ -68,7 +69,11 @@ quoteRoutes.get('/:id', requirePermission('quotes.read'), async (c) => {
     .bind(c.req.param('id'))
     .first<Record<string, unknown>>();
   if (!quote) return fail(404, 'NOT_FOUND');
-  return c.json({ ...quote, line_items: safeLines(quote.line_items) });
+  return c.json({
+    ...quote,
+    line_items: safeLines(quote.line_items),
+    expired: isExpiredQuote(String(quote.status), (quote.valid_until as string | null) ?? null, todayIn(c.get('company')!.timezone)),
+  });
 });
 
 quoteRoutes.post('/', requirePermission('quotes.write'), async (c) => {

@@ -14,6 +14,7 @@ import { EmptyState, PageHeader, SectionCard, Skeleton } from '@/components/ui/L
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, FormGrid, Input, Select, Textarea } from '@/components/ui/Form';
 import { Modal, useConfirm } from '@/components/ui/Modal';
+import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 
 export function ExpensesPage() {
@@ -71,7 +72,10 @@ export function ExpensesPage() {
       <PageHeader
         title={t('expenses.title')}
         subtitle={t('expenses.subtitle')}
-        actions={can('expenses.write') ? <Button onClick={() => setOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('expenses.new')}</Button> : null}
+        actions={<>
+          <ExportCsvButton entity="expenses" />
+          {can('expenses.write') ? <Button onClick={() => setOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('expenses.new')}</Button> : null}
+        </>}
       />
 
       <SectionCard

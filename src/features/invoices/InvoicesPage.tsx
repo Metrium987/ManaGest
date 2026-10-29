@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/Layout';
 import { SearchInput, Select } from '@/components/ui/Form';
 import { useConfirm } from '@/components/ui/Modal';
+import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 
 export function InvoicesPage() {
@@ -83,11 +84,14 @@ export function InvoicesPage() {
       <PageHeader
         title={t('invoices.title')}
         subtitle={t('invoices.subtitle')}
-        actions={can('invoices.write') ? (
+        actions={<>
+          <ExportCsvButton entity="invoices" />
+          {can('invoices.write') ? (
           <Link to="/factures/nouvelle" className="btn btn-primary">
             <Plus className="h-4 w-4" aria-hidden="true" /> {t('invoices.new')}
           </Link>
         ) : null}
+        </>}
       />
 
       <SectionCard

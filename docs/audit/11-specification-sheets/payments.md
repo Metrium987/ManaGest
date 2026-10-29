@@ -16,6 +16,7 @@ Ventes → **Paiements** (list) → payment detail. Quick-add "+" → Paiement.
 - GIVEN paid invoice WHEN allocation attempted THEN refused (can't over-pay a paid invoice `[EXECUTED]`).
 - GIVEN delete of payment WHEN confirmed (owner/admin) THEN allocations removed, invoices recomputed, activity logged.
 - Refunds: NOT via payment refund endpoints (OQ-012 → credit notes).
+- GIVEN an issued invoice WHEN a credit note is issued against it THEN the amount is capped: amount received if the invoice is paid, open balance if sent/partially paid, zero if draft/cancelled (implementation: `refundableAmount`, T-004).
 
 ## 4. Verdicts
 Manual payments + allocations + bank-match: `CONFORMING` [EXECUTED]. Refunds standalone: `NOT-APPLICABLE` (OQ-012). Gateway rows: `DEFERRED (owner decision)` R4 (supersedes NOT-APPLICABLE — OQ-008 update 2026-10-28). Receipts/proof attachments R2 (OQ-009).

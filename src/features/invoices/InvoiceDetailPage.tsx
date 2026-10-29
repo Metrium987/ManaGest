@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft, Ban, CheckCircle2, Copy, Download, Pencil, Send, Trash2, Wallet,
+  ArrowLeft, Ban, CheckCircle2, Copy, Download, FileMinus, Pencil, Send, Trash2, Wallet,
 } from 'lucide-react';
 import { PAYMENT_METHODS } from '@shared/domain';
 import { api, downloadPdf } from '@/lib/api';
@@ -14,7 +14,7 @@ import type { Invoice } from '@/lib/types';
 import { EmptyState, PageHeader, SectionCard, Skeleton, StatusBadge } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Modal, useConfirm } from '@/components/ui/Modal';
-import { Field, Select, Input } from '@/components/ui/Form';
+import { Field, Select, Input, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 
 export function InvoiceDetailPage() {
@@ -28,6 +28,9 @@ export function InvoiceDetailPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [method, setMethod] = useState('transfer');
   const [reference, setReference] = useState('');
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [refundAmount, setRefundAmount] = useState('');
+  const [refundNote, setRefundNote] = useState('');
 
   const invoice = useQuery({
     queryKey: ['invoice', id],
@@ -41,6 +44,24 @@ export function InvoiceDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['payments'] });
   };
+
+  // T-004 (OQ-012): a refund is a credit note, never a payment reversal.
+  const refund = useMutation({
+    mutationFn: () =>
+      api.post<{ id: string; number: string; amount: number }>(`/invoices/${id}/credit-note`, {
+        amount: Number(refundAmount),
+        notes: refundNote.trim() || null,
+      }),
+    onSuccess: (result) => {
+      toast.success(t('invoices.creditNoteCreated', { number: result.number }));
+      setRefundOpen(false);
+      setRefundAmount('');
+      setRefundNote('');
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['credits'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
 
   const action = useMutation({
     mutationFn: async (name: 'send' | 'cancel' | 'duplicate') => {
@@ -118,6 +139,18 @@ export function InvoiceDetailPage() {
             {data.balance > 0 && data.status !== 'cancelled' && can('payments.write') ? (
               <Button onClick={() => setPaymentOpen(true)} icon={<Wallet className="h-4 w-4" aria-hidden="true" />}>
                 {t('invoices.markPaid')}
+              </Button>
+            ) : null}
+            {['paid', 'partial'].includes(data.status) && can('credits.write') ? (
+              <Button
+                variant="secondary"
+                icon={<FileMinus className="h-4 w-4" aria-hidden="true" />}
+                onClick={() => {
+                  setRefundAmount(String(data.status === 'paid' ? data.paid_total : data.balance));
+                  setRefundOpen(true);
+                }}
+              >
+                {t('invoices.creditNote')}
               </Button>
             ) : null}
           </>
@@ -278,6 +311,52 @@ export function InvoiceDetailPage() {
           </div>
         </div>
       </div>
+
+      <Modal
+        open={refundOpen}
+        onClose={() => setRefundOpen(false)}
+        title={t('invoices.creditNote')}
+        description={t('invoices.creditNoteHint')}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRefundOpen(false)}>{t('common.cancel')}</Button>
+            <Button
+              loading={refund.isPending}
+              disabled={!(Number(refundAmount) > 0)}
+              onClick={() => refund.mutate()}
+              icon={<FileMinus className="h-4 w-4" aria-hidden="true" />}
+            >
+              {t('common.confirm')}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Field label={t('invoices.creditNoteAmount')} htmlFor="refund-amount" required>
+            <Input
+              id="refund-amount"
+              type="number"
+              min={1}
+              max={data.status === 'paid' ? data.paid_total : data.balance}
+              step={1}
+              value={refundAmount}
+              onChange={(event) => setRefundAmount(event.target.value)}
+            />
+          </Field>
+          <Field label={t('invoices.creditNoteReason')} htmlFor="refund-note">
+            <Textarea
+              id="refund-note"
+              rows={3}
+              value={refundNote}
+              onChange={(event) => setRefundNote(event.target.value)}
+            />
+          </Field>
+          <p className="rounded-lg bg-surface px-3 py-2 text-xs text-muted">
+            {t('invoices.creditNoteHint')}
+          </p>
+        </div>
+      </Modal>
 
       <Modal
         open={paymentOpen}

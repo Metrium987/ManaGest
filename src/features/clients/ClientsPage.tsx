@@ -13,6 +13,7 @@ import { PageHeader, EmptyState, Pagination, SectionCard, Skeleton } from '@/com
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, FormGrid, Input, SearchInput, Textarea } from '@/components/ui/Form';
 import { Modal } from '@/components/ui/Modal';
+import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 
 interface ClientFormState {
@@ -193,11 +194,14 @@ export function ClientsPage() {
         title={t('clients.title')}
         subtitle={t('clients.subtitle')}
         actions={
-          can('clients.write') ? (
-            <Button onClick={() => setModal({ open: true })} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>
-              {t('clients.new')}
-            </Button>
-          ) : null
+          <>
+            <ExportCsvButton entity="clients" />
+            {can('clients.write') ? (
+              <Button onClick={() => setModal({ open: true })} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>
+                {t('clients.new')}
+              </Button>
+            ) : null}
+          </>
         }
       />
 

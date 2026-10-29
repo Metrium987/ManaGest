@@ -46,7 +46,7 @@ const setupSchema = z.object({
 });
 
 const DEFAULT_TERMS =
-  'Paiement à réception de facture. Passé ce délai, une pénalité de retard de 10 % et une indemnité forfaitaire de recouvrement de 5 000 F CFP sont applicables.';
+  'Paiement à réception de facture. Les factures en retard font l\'objet d\'un rappel manuel; tout intérêt de retard éventuel est calculé et mentionné par l\'application avant émission.';
 const DEFAULT_FOOTER = 'Merci de votre confiance.';
 const FRANCHISE_NOTE = 'TVA non applicable, franchise en base.';
 

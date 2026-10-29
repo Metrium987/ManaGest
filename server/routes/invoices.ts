@@ -15,7 +15,7 @@ import {
   serialiseLines, recalcInvoice, safeLines, syncInvoiceTaxLines,
 } from '../services/documents';
 import { buildInvoicePdf } from '../services/pdf';
-import { deriveInvoiceStatus, isOverdue } from '../services/status';
+import { deriveInvoiceStatus, isOverdue, refundableAmount } from '../services/status';
 import type { AppEnv } from '../types';
 
 const invoiceSchema = z.object({
@@ -512,6 +512,71 @@ invoiceRoutes.delete('/:id', requirePermission('invoices.delete'), async (c) => 
   });
 
   return c.json({ ok: true });
+});
+
+// T-004 (BK-006 adaptation per OQ-012): refunds go through credit notes — no separate refund flow.
+// This convenience action creates a DRAFT credit note pre-filled from an issued invoice;
+// the user then sends/applies it through the normal credit workflow.
+invoiceRoutes.post('/:id/remind', requirePermission('invoices.write'), async (c) => {
+  const company = c.get('company')!;
+  const user = c.get('user')!;
+  const today = todayIn(company.timezone);
+  const invoice = await c.env.DB.prepare(
+    `SELECT id, number, status, due_date FROM invoices WHERE id = ? AND deleted_at IS NULL AND status IN ('sent','partial')`,
+  ).bind(c.req.param('id')).first<{ id: string; number: string; status: string; due_date: string | null }>();
+  if (!invoice) return fail(409, 'INVOICE_NOT_OPEN');
+  if (!isOverdue(invoice.status, invoice.due_date, today)) return fail(409, 'NOT_OVERDUE');
+
+  await logActivity(c.env.DB, {
+    userId: user.id, action: 'reminded', entityType: 'invoice', entityId: invoice.id,
+    summary: 'activity.invoice_reminded',
+    meta: { number: invoice.number, due_date: invoice.due_date },
+  });
+  return c.json({ ok: true });
+});
+
+invoiceRoutes.post('/:id/credit-note', requirePermission('credits.write'), async (c) => {
+  const company = c.get('company')!;
+  const user = c.get('user')!;
+  const body = parseInput(
+    z.object({ amount: z.coerce.number().int().positive(), notes: z.string().max(2000).nullish() }),
+    await c.req.json().catch(() => ({})),
+  );
+  const today = todayIn(company.timezone);
+
+  const invoice = await c.env.DB.prepare(
+    `SELECT id, client_id, number, status, balance, total, paid_total FROM invoices WHERE id = ? AND deleted_at IS NULL AND status IN ('sent','partial','paid')`,
+  ).bind(c.req.param('id')).first<{ id: string; client_id: string; number: string; status: string; balance: number; total: number; paid_total: number }>();
+  if (!invoice) return fail(409, 'INVOICE_NOT_OPEN');
+
+  // Refund ceiling: what was received on a paid invoice, else the open balance.
+  const refundable = refundableAmount(invoice.status, invoice.balance, invoice.paid_total);
+  if (refundable <= 0) return fail(409, 'INVOICE_NOT_OPEN');
+  if (body.amount > refundable) return fail(409, 'AMOUNT_EXCEEDS_BALANCE');
+  const amount = body.amount;
+
+  const number = await nextNumber(c.env.DB, 'credit', 'AV', company.number_pattern, today);
+  const totals = computeTotals(
+    [{ id: 'credit-ref', description: `Avoir sur facture ${invoice.number ?? ''}`.trim(), quantity: 1, unit_price: amount, tax_rate: 0 }],
+    { discount_type: 'percent', discount_value: 0 },
+    false,
+  );
+  const id = crypto.randomUUID();
+  const date = today;
+  await c.env.DB.prepare(
+    `INSERT INTO credits (id, client_id, number, status, date, currency, subtotal, discount_type, discount_value,
+      discount_total, tax_total, total, applied_total, balance, tax_exempt, line_items, notes, terms, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, 'draft', ?, ?, ?, 'percent', 0, 0, 0, ?, 0, ?, 1, ?, ?, ?, ?, ?, ?)`,
+  ).bind(id, invoice.client_id, number, date, company.currency, totals.subtotal, totals.total, totals.total,
+    serialiseLines([{ id: 'credit-ref', description: `Avoir sur facture ${invoice.number ?? ''}`.trim(), quantity: 1, unit_price: amount, tax_rate: 0 }]),
+    body.notes ?? null, company.invoice_terms, user.id, nowISO(), nowISO()).run();
+
+  await logActivity(c.env.DB, {
+    userId: user.id, action: 'created', entityType: 'credit', entityId: id,
+    summary: 'activity.credit_created_from_invoice',
+    meta: { number, invoice_number: invoice.number, amount },
+  });
+  return c.json({ id, number, amount }, 201);
 });
 
 invoiceRoutes.get('/:id/pdf', requirePermission('invoices.read'), async (c) => {

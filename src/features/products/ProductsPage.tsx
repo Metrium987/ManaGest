@@ -14,6 +14,7 @@ import { EmptyState, PageHeader, SectionCard, Skeleton } from '@/components/ui/L
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, FormGrid, Input, SearchInput, Select, Textarea } from '@/components/ui/Form';
 import { Modal, useConfirm } from '@/components/ui/Modal';
+import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 
 interface ProductForm {
@@ -87,7 +88,10 @@ export function ProductsPage() {
       <PageHeader
         title={t('products.title')}
         subtitle={t('products.subtitle')}
-        actions={can('products.write') ? <Button onClick={() => openForm()} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('products.new')}</Button> : null}
+        actions={<>
+          <ExportCsvButton entity="products" />
+          {can('products.write') ? <Button onClick={() => openForm()} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('products.new')}</Button> : null}
+        </>}
       />
 
       <SectionCard

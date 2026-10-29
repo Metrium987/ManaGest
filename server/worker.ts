@@ -6,6 +6,7 @@ import { bankRoutes } from './routes/bank';
 import { clientRoutes } from './routes/clients';
 import { creditRoutes } from './routes/credits';
 import { dashboardRoutes, reportRoutes, searchRoutes } from './routes/dashboard';
+import { exportRoutes } from './routes/export';
 import { invoiceRoutes } from './routes/invoices';
 import {
   expenseRoutes, projectRoutes, purchaseOrderRoutes, taskRoutes, vendorRoutes,
@@ -43,6 +44,7 @@ app.route('/api/tasks', taskRoutes);
 app.route('/api/bank', bankRoutes);
 app.route('/api/dashboard', dashboardRoutes);
 app.route('/api/reports', reportRoutes);
+app.route('/api/export', exportRoutes);
 app.route('/api/search', searchRoutes);
 app.route('/api/settings', settingsRoutes);
 app.route('/api/tax-rates', taxRateRoutes);

@@ -179,7 +179,8 @@ export async function buildInvoicePdf(
     ctx.page.drawText(qty, { x: colQty, y: baseY, size: 9, font: regular, color: INK });
     const unit = money(line.unit_price, currency).replace(` ${currency}`, '');
     ctx.page.drawText(unit, { x: colUnit, y: baseY, size: 9, font: regular, color: INK });
-    ctx.page.drawText(`${line.tax_rate} %`, { x: colTax, y: baseY, size: 9, font: regular, color: INK });
+    const taxLabel = line.tax_status === 'exempt' ? 'Exonéré' : `${line.tax_rate} %`;
+    ctx.page.drawText(taxLabel, { x: colTax, y: baseY, size: 9, font: regular, color: INK });
     const lineValue = money(Math.round(line.unit_price * line.quantity), currency).replace(` ${currency}`, '');
     ctx.page.drawText(lineValue, {
       x: colTotal - regular.widthOfTextAtSize(lineValue, 9), y: baseY, size: 9, font: regular, color: INK,
@@ -253,6 +254,19 @@ export async function buildInvoicePdf(
       ctx.page.drawText(text, { x: MARGIN, y: ctx.y, size: 8.5, font: regular, color: INK });
       ctx.y -= 11;
     }
+  }
+
+  // BK-001/PF-TVA-002: the tax-status sentence (franchise / exemption) is
+  // printed as its own paragraph so the legal wording is on the page body.
+  const taxMention = String(company.legal_notes ?? '').trim();
+  if (taxMention && (totals.tax_buckets.length === 0 || Number(invoice.tax_exempt) === 1)) {
+    if (ctx.y < 150) newPage();
+    for (const text of wrap(taxMention, regular, 8.5, PAGE_W - MARGIN * 2)) {
+      if (ctx.y < 110) newPage();
+      ctx.page.drawText(text, { x: MARGIN, y: ctx.y, size: 8.5, font: regular, color: INK });
+      ctx.y -= 11;
+    }
+    ctx.y -= 6;
   }
 
   const bank = [company.bank_name, company.bank_holder, company.bank_iban ? `IBAN ${company.bank_iban}` : '', company.bank_bic ? `BIC ${company.bank_bic}` : '']

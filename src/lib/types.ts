@@ -117,6 +117,7 @@ export interface LineItem {
   quantity: number;
   unit_price: number;
   tax_rate: number;
+  tax_status?: 'taxable' | 'exempt';
 }
 
 export interface TaxBucket {
@@ -184,6 +185,8 @@ export interface QuoteSummary {
   date: string;
   valid_until: string | null;
   total: number;
+  /** Computed by the API: past valid_until and not approved/converted. */
+  expired?: boolean;
 }
 
 export interface Quote extends QuoteSummary {

@@ -12,6 +12,7 @@ import { EmptyState, PageHeader, SectionCard, Skeleton, StatusBadge } from '@/co
 import { Button } from '@/components/ui/Button';
 import { Field, FormGrid, Input, Select } from '@/components/ui/Form';
 import { Modal } from '@/components/ui/Modal';
+import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 
 export function CreditsPage() {
@@ -95,7 +96,10 @@ export function CreditsPage() {
       <PageHeader
         title={t('credits.title')}
         subtitle={t('credits.subtitle')}
-        actions={can('credits.write') ? <Button onClick={() => setCreateOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('credits.new')}</Button> : null}
+        actions={<>
+          <ExportCsvButton entity="credits" />
+          {can('credits.write') ? <Button onClick={() => setCreateOpen(true)} icon={<Plus className="h-4 w-4" aria-hidden="true" />}>{t('credits.new')}</Button> : null}
+        </>}
       />
 
       <SectionCard title={t('credits.title')} bodyClassName="table-wrap">

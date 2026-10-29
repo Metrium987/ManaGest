@@ -18,7 +18,10 @@ const ROUTES_DIR = 'server/routes';
  * Routes whose protection is deliberate and verified separately:
  * - login/MFA verify: public by definition (the login flow itself);
  * - setup/status, setup/install: pre-installation endpoints refusing once configured;
- * - search: router uses '*': requireAuth — every role may read per OQ-021 (viewer included).
+ * - dashboard/search: router uses '*': requireAuth — every role may read per OQ-021 (viewer included);
+ * - export: per-entity permission differs per entity, so the 403 test lives in the
+ *   handler (`hasPermission(user.role, spec.permission)`) — asserted below by the
+ *   FILE_LEVEL_GUARDS entry; unknown entities 404 before any DB access.
  */
 const ALLOWLIST = new Set([
   'auth.ts /login',
@@ -26,11 +29,13 @@ const ALLOWLIST = new Set([
   'setup.ts /status',
   'setup.ts /install',
   'dashboard.ts /',
+  'export.ts /:entity',
 ]);
 
 /** The search router is guarded at router level, not per line: verify it stays. */
 const FILE_LEVEL_GUARDS: Record<string, string> = {
   'dashboard.ts': "searchRoutes.use('*', requireAuth)",
+  'export.ts': 'if (!hasPermission(user.role, spec.permission as Permission)) return fail(403',
 };
 
 function routeLines(): { file: string; path: string; line: number; text: string }[] {

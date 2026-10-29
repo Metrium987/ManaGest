@@ -1,4 +1,4 @@
-# ManaGest — Master TODO (orders, gates in VERIFICATION-GATES.md; status updated 2026-10-28: T-000, T-001, T-002a, T-003, T-009 DONE (M0 pilot); L/XL tasks split)
+# ManaGest — Master TODO (orders, gates in VERIFICATION-GATES.md; status updated 2026-10-28: T-000, T-001, T-002a, T-003, T-006, T-009 DONE (M0 pilot); L/XL tasks split)
 
 Legend: Eff S/M/L/XL; status TODO|IN PROGRESS|DONE|BLOCKED; every row cites evidence.
 
@@ -12,9 +12,9 @@ Legend: Eff S/M/L/XL; status TODO|IN PROGRESS|DONE|BLOCKED; every row cites evid
 | T-002c | Line editor UI field for tax_status | M4 | sheet invoices; R-A | T-002a | — | S | TODO |
 | T-002d | Reports: exempt lines without 0% bucket | M10 | BK-001 | T-002a | — | S | TODO |
 | T-003 | Settings: extras KV (retention, ui_language variant); timezone/footer/session fields verified already in UI | M0 | 12-settings-coverage; CC-RA-4 | — | — | S | DONE (login-attempts setting stays R2) |
-| T-004 | Refunds via credit notes: reverse allocation flow (no separate refund flow) | M4 | BK-006; OQ-012 | T-002 | — | M | G-R1.4 |
+| T-004 | Refunds via credit notes: reverse allocation flow (no separate refund flow) | M4 | BK-006; OQ-012 | T-002 | — | M | DONE (refund ceiling helper + 409 guard; "Établir un avoir" modal on invoice detail; live 201 avoir AV-2026-0026 / 409 over-ceiling / 422 zero; 65 tests) |
 | T-005 | Manual reminders + terms/behaviour consistency (no phantom late fee, OQ-020) | M4 | BK-002 (manual part); OQ-020 | T-002 | scheduled part → R2 | S | G-R1.5 |
-| T-006 | In-app CSV export of every list with round-trip headers | M7 | BK-011 (R1 scope per OQ-016 owner answer); import-export sheet | T-001 | — | S | G-R1.6 |
+| T-006 | In-app CSV export of every list with round-trip headers | M7 | BK-011 (R1 scope per OQ-016 owner answer); import-export sheet | T-001 | — | S | DONE (7 list pages wired; live 200 CSV + journal + viewer-read matrix; route-guard test extended with documented handler-level check; 61 tests green) |
 | T-007 | Overdue/computed status chips (depôt? expired quote) list/detail | M4 | BK-004 | T-002 | — | S | G-R1.7 |
 | T-009 | Retention: issued-doc delete guard + gap register + configurable years | M0 | OQ-005/006; BK-028 | T-001 | accountant confirm | M | DONE (live 409 evidence) |
 | T-008 | Permissions: server checks sweep + audit test helper (fixed roles) | M1 | CC-RC (enforcement part); 17 §R-C | — | — | M | DONE (invariant + matrix tests; live negatives incl. 403s; no unguarded route) |

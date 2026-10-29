@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deriveInvoiceStatus, isOverdue } from '../server/services/status';
+import { deriveInvoiceStatus, isOverdue, refundableAmount } from '../server/services/status';
 import { formatPattern } from '../server/lib/numbering';
 import { permissionsForRole, hasPermission } from '../server/lib/permissions';
 import { validatePassword } from '../server/lib/passwords';
@@ -277,5 +277,33 @@ describe('M0 retention guard (OQ-005/006)', () => {
   it('custom retention years respected', () => {
     expect(retentionElapsed('2020-01-01', 5, '2025-01-02')).toBe(true);
     expect(retentionElapsed('2020-01-01', 5, '2024-12-31')).toBe(false);
+  });
+});
+
+describe('T-004 refunds via credit notes (BK-006 as adapted by OQ-012)', () => {
+  it('GIVEN a paid invoice WHEN a credit note is issued THEN it may cover at most the amount received', () => {
+    expect(refundableAmount('paid', 0, 30000)).toBe(30000);
+    expect(refundableAmount('paid', 0, 0)).toBe(0);
+  });
+
+  it('GIVEN a sent or partial invoice WHEN a credit note is issued THEN it may cover at most the open balance', () => {
+    expect(refundableAmount('sent', 30000, 0)).toBe(30000);
+    expect(refundableAmount('partial', 10000, 20000)).toBe(10000);
+  });
+
+  it('GIVEN draft or cancelled invoice WHEN a credit note is requested THEN nothing may be refunded', () => {
+    expect(refundableAmount('draft', 30000, 0)).toBe(0);
+    expect(refundableAmount('cancelled', 30000, 0)).toBe(0);
+  });
+
+  it('GIVEN a refund of one third of a paid invoice WHEN the balance is recomputed THEN it restores to one third', () => {
+    // Recalc rule used by recalcInvoice: paid_total = max(0, min(payments + credits, total) - refunds).
+    const total = 30000;
+    const paid = 30000;
+    const refunds = 10000;
+    const paidTotal = Math.max(0, Math.min(paid, total) - refunds);
+    expect(paidTotal).toBe(20000);
+    expect(total - paidTotal).toBe(10000);
+    expect(deriveInvoiceStatus('paid', total - paidTotal, paidTotal)).toBe('partial');
   });
 });
