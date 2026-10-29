@@ -1,3 +1,14 @@
+## 2026-10-29 — architecture, resource and hosting-limits review (no code changed)
+- `docs/build/ARCHITECTURE-REVIEW.md`: measured figures (1.9 MB Worker, 956 KB browser bundle, 9 runtime
+  libraries, 100 source files, 34 tables / 29 indexes, 138 routes, 108 tests), the eight design decisions
+  worth keeping, eight scale risks with cheap mitigations, the platform limits I can state (10 MiB / 1 000
+  assets per publish, 25 variables, 5 120-byte secrets, D1 + R2 bindings) and the five I cannot
+  (database quotas, CPU ceilings, scheduled triggers, outbound HTTPS, object-storage size), each with a
+  concrete test that would settle it.
+- Proposes - to be tested, not assumed - outbound e-mail over an HTTP provider, a protected daily-run
+  endpoint with an external scheduler, object storage for attachments, browser-side XLSX conversion, and a
+  scheduled export backup.
+
 ## 2026-10-29 — T-207 local report outputs DONE (M10)
 - **Two new reports, in the shape a Polynesian business actually hands in.** « Récapitulatif TVA » groups the taxable base and the VAT collected by month *and* by rate, with the exempt base kept in its own column; « Chiffre d'affaires mensuel » gives the turnover invoiced per month split taxable / exempt, plus the cash actually collected that month.
 - Both read the same figures as the invoices (the `invoice_tax_lines` mirror, repaired on demand, and the invoice totals), so nothing is re-keyed and the reports cannot disagree with the documents.
