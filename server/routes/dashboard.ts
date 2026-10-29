@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { lastDailyRun } from '../services/daily-run';
 import { addMonths, monthStart, todayIn } from '../lib/dates';
 import { logActivity } from '../lib/audit';
 import { csvResponse } from '../lib/csv';
@@ -98,6 +99,8 @@ dashboardRoutes.get('/', requirePermission('reports.read'), async (c) => {
 
   return c.json({
     today,
+    // T-104c: the dashboard says when the pass last ran, not only what it produced.
+    last_run: await lastDailyRun(db),
     kpis: {
       invoiced_month: invoicedMonth,
       collected_month: collectedMonth,

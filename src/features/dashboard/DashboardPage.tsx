@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import {
   ArrowUpRight, CalendarClock, FileText, Plus, Receipt, Users, Wallet,
@@ -31,9 +32,20 @@ function activityLabel(summary: string, meta: string | null): string {
 
 export function DashboardPage() {
   const { user, company, can } = useSession();
+  const queryClient = useQueryClient();
+  const [runMessage, setRunMessage] = useState('');
   const dashboard = useQuery({
     queryKey: ['dashboard'],
     queryFn: () => api.get<DashboardData>('/dashboard'),
+  });
+
+  const runNow = useMutation({
+    mutationFn: () => api.post<{ already_ran: boolean }>('/runs/daily/manual'),
+    onSuccess: (result) => {
+      setRunMessage(result.already_ran ? t('dailyRun.already') : t('dailyRun.done'));
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: () => setRunMessage(t('dailyRun.failedMessage')),
   });
 
   const data = dashboard.data;
@@ -96,6 +108,43 @@ export function DashboardPage() {
               hint={`${t('dashboard.expensesMonth')} : ${formatMoney(data.kpis.expenses_month, currency)}`}
               accent={data.kpis.overdue > 0 ? 'danger' : 'brand'}
             />
+          </div>
+
+          <div className="mt-4">
+            <SectionCard
+              title={t('dailyRun.title')}
+              subtitle={t('dailyRun.hint')}
+              actions={
+                can('recurring.write') ? (
+                  <Button variant="secondary" loading={runNow.isPending} onClick={() => runNow.mutate()} icon={<CalendarClock className="h-4 w-4" aria-hidden="true" />}>
+                    {t('dailyRun.runNow')}
+                  </Button>
+                ) : null
+              }
+            >
+              <div className="space-y-1 p-5">
+                {data.last_run ? (
+                  <>
+                    <p className="text-sm font-medium">
+                      {t('dailyRun.statusLabel')} : {t(`dailyRun.status.${data.last_run.status}`)}
+                      <span className="ml-2 text-xs font-normal text-muted">{formatDate(data.last_run.day)}</span>
+                    </p>
+                    {data.last_run.summary ? (
+                      <p className="text-xs text-muted">
+                        {t('dailyRun.counts', {
+                          generated: data.last_run.summary.generated.length,
+                          reminders: data.last_run.summary.reminders ?? 0,
+                          failed: data.last_run.summary.failed.length,
+                        })}
+                      </p>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted">{t('dailyRun.never')}</p>
+                )}
+                {runMessage ? <p className="text-xs text-muted" role="status">{runMessage}</p> : null}
+              </div>
+            </SectionCard>
           </div>
 
           <div className="mt-4 grid gap-4 xl:grid-cols-3">

@@ -85,6 +85,39 @@ export function pendingCycles(
   return cycles;
 }
 
+export interface LastRun {
+  day: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  error_code: string | null;
+  summary: RunSummary | null;
+}
+
+/** The most recent pass, for the dashboard card (T-104c). */
+export async function lastDailyRun(database: D1Database): Promise<LastRun | null> {
+  const row = await database
+    .prepare(`SELECT * FROM daily_runs ORDER BY day DESC LIMIT 1`)
+    .first<Record<string, unknown>>();
+  if (!row) return null;
+  let summary: RunSummary | null = null;
+  if (row.summary_json) {
+    try {
+      summary = JSON.parse(String(row.summary_json)) as RunSummary;
+    } catch {
+      summary = null;
+    }
+  }
+  return {
+    day: String(row.day),
+    status: String(row.status),
+    started_at: String(row.started_at),
+    finished_at: row.finished_at ? String(row.finished_at) : null,
+    error_code: row.error_code ? String(row.error_code) : null,
+    summary,
+  };
+}
+
 export async function claimDailyRun(
   database: D1Database,
   day: string,

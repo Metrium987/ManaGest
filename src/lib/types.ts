@@ -347,8 +347,28 @@ export interface RecurringInvoice {
   generated_total?: number;
 }
 
+export interface DailyRunSummary {
+  day: string;
+  generated: string[];
+  failed: { id: string; code: string }[];
+  templates: number;
+  reminders?: number;
+  skipped_reason?: string;
+  truncated?: boolean;
+}
+
+export interface DailyRun {
+  day: string;
+  status: string;
+  started_at: string;
+  finished_at: string | null;
+  error_code: string | null;
+  summary: DailyRunSummary | null;
+}
+
 export interface DashboardData {
   today: string;
+  last_run?: DailyRun | null;
   kpis: {
     invoiced_month: number;
     collected_month: number;
