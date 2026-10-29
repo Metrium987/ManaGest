@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { ApiError } from './lib/errors';
 import { csrfProtection, securityHeaders, withDatabase } from './middleware';
+import { accountingRoutes } from './routes/accounting';
 import { authRoutes } from './routes/auth';
 import { bankRoutes } from './routes/bank';
 import { attachmentRoutes } from './routes/attachments';
@@ -79,6 +80,7 @@ app.route('/api/public-links', publicLinkRoutes);
 app.route('/api/runs', runRoutes);
 app.route('/api/roles', roleRoutes);
 app.route('/api/filters', filterRoutes);
+app.route('/api/accounting', accountingRoutes);
 app.route('/api/public/documents', publicDocumentRoutes);
 
 app.all('/api/*', (c) => c.json({ error: { code: 'NOT_FOUND' } }, 404));

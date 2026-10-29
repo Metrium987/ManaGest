@@ -26,6 +26,7 @@ import { ProjectsPage } from '@/features/projects/ProjectsPage';
 import { TasksPage } from '@/features/tasks/TasksPage';
 import { BankPage } from '@/features/bank/BankPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
+import { AccountingPage } from '@/features/accounting/AccountingPage';
 import { ImportPage } from '@/features/import/ImportPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
 import { UsersPage } from '@/features/settings/UsersPage';
@@ -93,6 +94,7 @@ export default function App() {
         <Route path="taches" element={<TasksPage />} />
         <Route path="banque" element={<BankPage />} />
         <Route path="rapports" element={<ReportsPage />} />
+        <Route path="comptabilite" element={<AccountingPage />} />
         <Route path="parametres" element={<SettingsPage />} />
         <Route path="parametres/utilisateurs" element={<UsersPage />} />
         <Route path="importer" element={<ImportPage />} />

@@ -31,6 +31,7 @@ export const PERMISSIONS = [
   'tasks.read', 'tasks.write', 'tasks.delete',
   'bank.read', 'bank.write',
   'reports.read',
+  'accounting.read', 'accounting.write',
   'settings.read', 'settings.write',
   'periods.read', 'periods.write',
   'users.read', 'users.write',
@@ -46,7 +47,13 @@ export type Permission = (typeof PERMISSIONS)[number];
  * an accounting period is a control action, not a daily one.
  */
 const OPERATIONAL_READ: Permission[] = PERMISSIONS.filter(
-  (p) => p.endsWith('.read') && p !== 'users.read' && p !== 'activity.read' && p !== 'periods.read',
+  (p) => p.endsWith('.read')
+    && p !== 'users.read'
+    && p !== 'activity.read'
+    && p !== 'periods.read'
+    // The general ledger is accounting evidence, not operational data: a
+    // read-only or sales account must not see the books.
+    && p !== 'accounting.read',
 );
 
 const FINANCE_WRITE: Permission[] = [
@@ -93,7 +100,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   owner: [...PERMISSIONS],
   admin: [...PERMISSIONS],
   // The accountant closes and reopens periods: that is their core control.
-  accountant: [...OPERATIONAL_READ, 'activity.read', 'periods.read', 'periods.write', ...FINANCE_WRITE],
+  accountant: [...OPERATIONAL_READ, 'activity.read', 'periods.read', 'periods.write', ...FINANCE_WRITE, 'accounting.read', 'accounting.write'],
   sales: [...SALES_READ, ...SALES_WRITE],
   viewer: [...OPERATIONAL_READ],
 };

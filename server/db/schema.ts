@@ -2,7 +2,7 @@
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
  */
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (
@@ -670,4 +670,40 @@ export const SCHEMA_STATEMENTS: string[] = [
     UNIQUE (list_key, name)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_saved_filters_list ON saved_filters(list_key)`,
+
+  // Accounting core (AUDIT §7 P0.1–P0.2): a chart of accounts, journals and
+  // double-entry lines derived from the documents. The journal is derived, never
+  // entered twice, so it cannot disagree with what was issued.
+  `CREATE TABLE IF NOT EXISTS accounts (
+    code TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    type TEXT NOT NULL CHECK (type IN ('asset','liability','equity','income','expense')),
+    is_active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS journal_entries (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,
+    journal TEXT NOT NULL,
+    reference TEXT NOT NULL,
+    label TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    event TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (source_type, source_id, event)
+  )`,
+  `CREATE TABLE IF NOT EXISTS journal_lines (
+    id TEXT PRIMARY KEY,
+    entry_id TEXT NOT NULL,
+    account_code TEXT NOT NULL,
+    label TEXT NOT NULL,
+    debit INTEGER NOT NULL DEFAULT 0,
+    credit INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_journal_entries_date ON journal_entries(date)`,
+  `CREATE INDEX IF NOT EXISTS idx_journal_lines_entry ON journal_lines(entry_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_journal_lines_account ON journal_lines(account_code)`,
 ];

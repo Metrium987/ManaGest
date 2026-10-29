@@ -100,3 +100,12 @@ T-000 backup · T-001 numbering · T-002a/b/c/d TVA status (b: invoice PDF + rep
 - **PQ-3** upload ceiling → display only for T-101.
 - **Owner OQ-011** meaning of « locations » → T-403.
 - **No accountant available** → resolved by owner decision 2026-10-29: standard defaults adopted as parameters (T-100); nothing in the plan waits on an external accountant any more.
+
+## Phase 8 — Accounting core (AUDIT §7 P0.1–P0.2), added 2026-10-29
+
+| ID | Title | Module | Evidence | Deps | Blockers | Eff | Status / gate |
+|---|---|---|---|---|---|---|---|
+| T-301 | Chart of accounts, journals, automatic double-entry, trial balance, income statement | M13 | AUDIT §7 P0.1–P0.2; BK-001 (no 0 % VAT bucket) | T-002, T-100 | — | M | **DONE (code + rules tested)** — schema v14 `accounts`/`journal_entries`/`journal_lines`; 7 PCG accounts; posting derived from documents and idempotent by `(source_type, source_id, event)`; a cancelled invoice posts a reversal instead of a deletion; API `accounting.read`/`accounting.write` (owner/admin by construction, accountant explicitly, **excluded from operational reads**), routes `/api/accounting/{accounts,journal,trial-balance,income-statement,sync}`; screen Comptabilité. 9 unit tests (each rule balanced, exempt invoice without VAT line, discount, reversal, payment, expense split, trial-balance equality, income statement, empty journal). **Not claimed:** no opening balances so **no balance sheet**; no manual entry screen; no browser walk; the HTTP endpoints have not been exercised live yet. |
+| T-302 | Approvals by threshold + separation of duties | M13 | AUDIT §7 P0.5 | T-301 | owner thresholds (amounts) | M | TODO — needs the owner to say which amounts and which actions require a second person. |
+| T-303 | Named, revocable API tokens | M13 | AUDIT §7 P0.6 | — | — | S | TODO |
+| T-304 | Opening balances import (reprise de balance) so a balance sheet can be derived | M13 | AUDIT §7 P0.1–P0.2 | T-301 | owner's opening figures | M | TODO |

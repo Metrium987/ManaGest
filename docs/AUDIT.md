@@ -198,3 +198,27 @@ Le socle actuel est un **suite de facturation et de gestion commerciale solide**
 ## 9. Conclusion
 
 Les 17 documents de spécification sont couverts sur le périmètre **commercial, achats, projets, banque, rapports et administration**. Les défauts trouvés lors de cet audit ont été corrigés et sont couverts par des tests. Le chemin restant vers un ERP au sens du marché est connu, borné et priorisé ci-dessus ; il commence par la comptabilité générale et le verrouillage des périodes, pas par de nouvelles fonctionnalités visibles.
+
+---
+
+## 10. Mise à jour du 29 octobre 2026 — ce qui a été comblé depuis l'audit
+
+Cet audit reste la référence datée du 28 octobre. Les manques listés au §6 et les briques du §7 ont évolué ; voici l'état réel, sans réécrire l'audit.
+
+| Manque (§6 / §7) | État au 29/10 | Preuve |
+|---|---|---|
+| Pièces jointes (justificatifs, preuves de paiement) | **Comblé** — octets stockés en base, découpés en morceaux, plafond paramétrable | T-101, marche HTTP avec SHA-256 identique |
+| Journal d'audit sans avant/après ni chaînage | **Comblé** — valeurs modifiées seulement, chaîne de hachage vérifiable | `verifyActivityChain`, tests |
+| Verrouillage de période | **Comblé** — clôture et réouverture motivée, refus d'écriture en période close | T-104b, `period_locks` |
+| Relances automatiques | **Comblé (enregistrées)** — niveaux mémorisés, pas deux fois la même relance | T-105, 10 tests |
+| Envoi d'e-mail | **Code livré, envoi réel bloqué** par l'absence de fournisseur (PQ-2) | T-106, 502 sans clé |
+| Rôles personnalisés | **Comblé** — CRUD, attribution, matrice, vérification serveur | T-202a/b/c, marche live |
+| Plan comptable, journaux, grand livre, écritures automatiques | **Comblé (P0.1–P0.2)** — comptes PCG, écritures dérivées des documents, balance, compte de résultat | module comptabilité, 9 tests |
+| Bilan | **Non dérivé volontairement** — sans soldes d'ouverture, un bilan serait faux ; il exige une reprise de balance | documenté |
+| Approbations par seuil / séparation des tâches | **Absent** — la même personne peut toujours créer, envoyer et encaisser | à planifier |
+| Réinitialisation de mot de passe en libre-service | **Absent** — dépend de l'envoi d'e-mail (PQ-2) | dépendance |
+| Jetons d'API nommés et révocables | **Absent** — seul le jeton machine du passage quotidien existe | à planifier |
+| Multi-devises, PWA, portail client | **Absent / spécifié** — portail et paiements en attente spécifiés en R4, pas construits | R4 |
+| Sauvegarde et restauration testées | **Absent** — dépend de l'hébergeur | à planifier |
+
+**Ce que cela change à la conclusion du §9.** Le socle n'est plus seulement « facturation et gestion commerciale » : il tient désormais la partie double et produit une balance et un résultat auditables. Ce qui manque pour un ERP complet n'est plus la comptabilité de base, mais le **contrôle interne** (approbations, séparation des tâches, jetons d'API nominatifs) et la **reprise de balance** qui donnerait un bilan.
