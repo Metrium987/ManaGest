@@ -1,3 +1,4 @@
+import { SavedFilterBar } from '@/components/domain/SavedFilterBar';
 import { useDeferredValue, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
@@ -27,6 +28,9 @@ export function QuotesPage() {
 
   return (
     <>
+      <div className="mb-3">
+        <SavedFilterBar list="quotes" query={search} onApply={(value) => { setSearch(value); setPage(1); }} />
+      </div>
       <PageHeader
         title={t('quotes.title')}
         subtitle={t('quotes.subtitle')}

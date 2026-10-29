@@ -15,6 +15,7 @@ import { Checkbox, Field, FormGrid, Input, SearchInput, Textarea } from '@/compo
 import { Modal } from '@/components/ui/Modal';
 import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
+import { SavedFilterBar } from '@/components/domain/SavedFilterBar';
 
 interface ClientFormState {
   display_name: string;
@@ -190,6 +191,9 @@ export function ClientsPage() {
 
   return (
     <>
+      <div className="mb-3">
+        <SavedFilterBar list="clients" query={search} onApply={(value) => { setSearch(value); setPage(1); }} />
+      </div>
       <PageHeader
         title={t('clients.title')}
         subtitle={t('clients.subtitle')}

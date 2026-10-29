@@ -95,3 +95,56 @@ screen reader.
 « Locations » may mean commercial premises, equipment rented out, or an extra address slot on a
 document. Each implies a different table. Until the owner answers OQ-011, writing a specification
 would be inventing a business model, so this row stays **BLOCKED**.
+
+## T-403 — « Locations »: a place, not a rental (owner answer, 2026-10-29)
+
+**The question, answered.** « Locations » means **un lieu** — a physical place: a site,
+a shop, a building, a plot where the work or the service happens. It is *not* a rental
+(leasing out premises or equipment) and *not* a contact-address variant. This closes
+OQ-011 and removes the only reason this specification was blocked.
+
+**What exists.** A client carries address fields (`address1`, `address2`, `city`,
+`postal_code`, `country`) and a document prints the client's address because it is read
+from the client at render time. There is no notion of *a place other than the client's own
+address*: a business with three sites cannot say which one an invoice concerns, and
+editing the client's address silently rewrites the address on documents already sent.
+
+**The model.** One new table, `locations`:
+
+| column | note |
+|---|---|
+| `id`, `label` | the place as people name it (« Dépôt de Papeete ») |
+| `address1`, `address2`, `city`, `postal_code`, `country` | the site's own address |
+| `client_id` | nullable: a site usually belongs to a client, but a company site does not |
+| `is_active` | archive instead of delete, so past documents keep a valid reference |
+| `notes`, timestamps, `deleted_at` | as everywhere else |
+
+**The slot on documents.** `invoices`, `quotes` and `purchase_orders` gain a nullable
+`location_id`, and — this is the part that matters — the document **snapshots** the label
+and the formatted address at issue time (`location_label`, `location_address`). The same
+rule already governs terms, totals and numbering: a past document must keep the place it
+was issued for, even if the site is renamed or archived later. Rendering reads the
+snapshot and never re-joins `locations`.
+
+**Permissions.** Reading the list is `clients.read`; creating, editing and archiving a
+place is `clients.write` — a site is part of the client relationship, not of the workspace
+settings. Attaching a location to a document follows **the document's** write permission,
+and the server checks that the location belongs to the same client when one is set, so a
+document cannot cite another client's site.
+
+**Screens.** A « Lieux » list under the client section (label, city, client, archived flag)
+with create/edit/archive; a « Lieu » select on the client record and on the invoice, quote
+and purchase-order forms, pre-selected from the client's default site when there is exactly
+one. The PDF prints the snapshot under the client block, only when set, so existing
+documents are unchanged.
+
+**Deliberately out of scope.** Rentals and leases (dates, rent, deposits), equipment
+locations, per-site pricing or tax rules, and scheduling. Each is a different product
+question; folding them into this table is how a simple address slot becomes an
+unmaintainable module.
+
+**Acceptance.** GIVEN a client with two sites WHEN an invoice is issued for the second
+THEN the PDF shows that site's address; GIVEN the site is renamed afterwards THEN the
+issued PDF is unchanged; GIVEN a location of another client WHEN attaching it THEN the
+server refuses (422); GIVEN a user without `clients.write` THEN the list is readable and
+the create action is disabled with its reason (T-203 policy).

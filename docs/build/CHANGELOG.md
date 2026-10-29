@@ -6,7 +6,9 @@
 - **T-205 — kanban and billing.** Board view with drag-and-drop (`PATCH /tasks/:id/status`, journalled), selection of billable cards, `POST /tasks/invoice` creating one draft invoice per client (mixed clients refused, tasks stamped `invoice_id` so hours are billed once). 5 unit tests; schema v13 adds `tasks.invoice_id`.
 - **T-206 — saved filters.** `saved_filters` (v13) and `/api/filters`, each list guarded by its own read permission, with a chip bar that applies, saves and deletes. Wired on payments.
 - Gate: typecheck clean, **212/212 tests over 18 files** (14 new), production build clean.
-- **Not claimed:** no browser walk of any of these screens, and the three new server flows (task invoice, suggestions, ledger, filters) have not been exercised over HTTP yet — the rules under them are unit-tested instead.
+- **Owner verification.** The owner opened these screens in a browser on 2026-10-29 and confirms they work, while noting they are not perfect yet. That replaces my « no browser walk » caveat for the screens themselves; the imperfection is a polish item, not a functional failure, and nothing in it was measured by me.
+- **HTTP walk [EXECUTED]:** task of 90 min at 12 000 → invoice **FAC-2026-0012** totalling 20 880 (18 000 + TVA); re-billing the same task refused **409 `NO_BILLABLE_TASKS`**; kanban status change **200**; `/bank/suggestions` **200**; `/bank/ledger` **200** with entries; saved filter created **201**, listed **200**, unknown list **422**, without CSRF **403**.
+- **Not claimed:** the polish items the owner noticed are not addressed yet, and no automated browser test exists.
 
 ## 2026-10-29 — Custom roles become real, and the guard reads them (T-202b)
 - **Accounts can now carry a custom role.** `users.role_key` (schema v12, additive — the `CHECK` constraint on the five fixed roles cannot be widened in place) points at a `roles` row; `PATCH /api/roles/assign/:userId` sets it and clearing it restores the fixed role. The fixed column stays authoritative for the matrix and for the last-owner rule.

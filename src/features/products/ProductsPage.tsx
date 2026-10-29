@@ -18,6 +18,7 @@ import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
 import { GatedButton } from '@/components/ui/GatedButton';
 import { showRecord } from '@/components/ui/RecordDrawer';
+import { SavedFilterBar } from '@/components/domain/SavedFilterBar';
 
 interface ProductForm {
   name: string;
@@ -87,6 +88,9 @@ export function ProductsPage() {
 
   return (
     <>
+      <div className="mb-3">
+        <SavedFilterBar list="products" query={search} onApply={setSearch} />
+      </div>
       <PageHeader
         title={t('products.title')}
         subtitle={t('products.subtitle')}

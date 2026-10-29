@@ -14,6 +14,7 @@ import { Modal, useConfirm } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { GatedButton } from '@/components/ui/GatedButton';
 import { showRecord } from '@/components/ui/RecordDrawer';
+import { SavedFilterBar } from '@/components/domain/SavedFilterBar';
 
 interface VendorForm {
   name: string;
@@ -72,6 +73,9 @@ export function VendorsPage() {
 
   return (
     <>
+      <div className="mb-3">
+        <SavedFilterBar list="vendors" query={search} onApply={setSearch} />
+      </div>
       <PageHeader
         title={t('vendors.title')}
         subtitle={t('vendors.subtitle')}

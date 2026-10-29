@@ -16,6 +16,7 @@ import { SearchInput, Select } from '@/components/ui/Form';
 import { useConfirm } from '@/components/ui/Modal';
 import { ExportCsvButton } from '@/components/ui/ExportCsvButton';
 import { useToast } from '@/components/ui/Toast';
+import { SavedFilterBar } from '@/components/domain/SavedFilterBar';
 
 export function InvoicesPage() {
   const { company, can } = useSession();
@@ -81,6 +82,9 @@ export function InvoicesPage() {
 
   return (
     <>
+      <div className="mb-3">
+        <SavedFilterBar list="invoices" query={search} onApply={(value) => { setSearch(value); setPage(1); }} />
+      </div>
       <PageHeader
         title={t('invoices.title')}
         subtitle={t('invoices.subtitle')}
