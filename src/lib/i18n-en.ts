@@ -525,6 +525,13 @@ export const en: Record<string, unknown> = {
     result: 'Result',
     empty: 'No data for the period.',
     exportNote: 'CSV export compatible with spreadsheets.',
+    tvaRecap: 'VAT recap',
+    revenueSummary: 'Monthly turnover',
+    taxableSales: 'Taxable turnover (incl. tax)',
+    exemptSales: 'Exempt turnover (incl. tax)',
+    totalSales: 'Total turnover (incl. tax)',
+    tvaRecapHint: 'Base and VAT per month and per rate, with the exempt base kept apart: the shape a return expects.',
+    revenueHint: 'Turnover invoiced per month, split taxable / exempt, and the cash received that month.',
   },
   settings: {
     title: 'Settings',

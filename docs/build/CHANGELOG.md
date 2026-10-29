@@ -1,3 +1,10 @@
+## 2026-10-29 — T-207 local report outputs DONE (M10)
+- **Two new reports, in the shape a Polynesian business actually hands in.** « Récapitulatif TVA » groups the taxable base and the VAT collected by month *and* by rate, with the exempt base kept in its own column; « Chiffre d'affaires mensuel » gives the turnover invoiced per month split taxable / exempt, plus the cash actually collected that month.
+- Both read the same figures as the invoices (the `invoice_tax_lines` mirror, repaired on demand, and the invoice totals), so nothing is re-keyed and the reports cannot disagree with the documents.
+- **Server-side CSV**: `GET /api/reports/export/:type` produces the file with French headers and a UTF-8 BOM, and writes `activity.data_exported` when it is used. The exempt base appears once per month in the CSV so a column total is never double-counted; the merge logic is a pure, unit-tested function.
+- Both report types are selectable in Rapports, with summary cards; their export button uses the server file.
+- Gate: 108/108 tests (5 new), typecheck + build clean; live walk [EXECUTED]: VAT recap 5 months, base 2 493 500 / tax 374 980 / exempt 110 000 / 54 documents, per-rate detail present; turnover taxable 3 311 880 + exempt 110 000 = 3 421 880, collected 1 902 700; both CSV exports 200 `text/csv` with the expected French header, unknown export type 404, two journal entries.
+
 ## 2026-10-29 — T-103 public per-document links DONE (M4, OQ-001 interim)
 - **Model.** A link grants access to exactly one invoice, quote or credit note. The token is 32 random bytes, returned **once** at creation; only its SHA-256 digest is stored, so a database dump yields no working link. Lifetime is 1 to 365 days (default 30), and a link is `active`, `expired` or `revoked` — never two at once, with revocation winning over expiry.
 - **Who may share.** Creating or revoking a link needs the *write* permission of that document's module (a read-only user can consult a document but cannot publish it); listing and the access log need *read*. The permission depends on the document type, so it is asserted inside the handler and pinned by the route-guard test.

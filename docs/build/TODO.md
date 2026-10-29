@@ -69,7 +69,7 @@ T-204 bank matching ──> T-205 projects/kanban
 | T-204 | Bank matching rules + ledger view | M9 | BK-014; bank sheet | T-004 | — | M | TODO |
 | T-205 | Kanban board + billable-tasks-to-invoice flow | M9 | BK-013; projects sheet | T-204 | — | M | TODO |
 | T-206 | Saved filters per list | M11 | OQ-013 (filters half) | T-201c | — | S | TODO |
-| T-207 | Local report outputs: TVA recap, chiffre d'affaires | M10 | 18 REP rows; PF-ACCT-001 | T-100, T-002d | — | M | TODO |
+| T-207 | Local report outputs: TVA recap, chiffre d'affaires | M10 | 18 REP rows; PF-ACCT-001 | T-100, T-002d | — | M | **DONE** (monthly VAT recap + monthly turnover, both split taxable/exempt; `GET /reports/tva-recap`, `/reports/revenue-summary`, `GET /reports/export/:type` server-side CSV journalled; new report types in the screen; 5 unit tests; live 200 with real figures and CSV headers verified) |
 
 ## Phase 7 — R4 extension points (specification only, no build)
 

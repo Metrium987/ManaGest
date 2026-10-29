@@ -1,5 +1,17 @@
 import { Hono } from 'hono';
 import { addMonths, monthStart, todayIn } from '../lib/dates';
+import { logActivity } from '../lib/audit';
+import { csvResponse } from '../lib/csv';
+import { fail } from '../lib/errors';
+import {
+  mergeRevenue,
+  mergeTvaRecap,
+  revenueCsv,
+  tvaRecapCsv,
+  tvaRecapTotals,
+  type ExemptRow,
+  type TaxRow,
+} from '../lib/reports';
 import { requireAuth, requirePermission } from '../middleware';
 import { ensureInvoiceTaxLines } from '../services/documents';
 import type { AppEnv } from '../types';
@@ -113,6 +125,129 @@ dashboardRoutes.get('/', requirePermission('reports.read'), async (c) => {
 
 export const reportRoutes = new Hono<AppEnv>();
 reportRoutes.use('*', requireAuth);
+
+/**
+ * T-207: the two local outputs a Polynesian business has to produce — a monthly
+ * VAT recap and a monthly turnover statement. Both read the same figures as the
+ * invoices (tax mirror + totals), so no figure is re-keyed.
+ */
+async function tvaRecapData(db: D1Database, from: string, to: string) {
+  await ensureInvoiceTaxLines(db, from, to);
+  const [tax, exempt] = await Promise.all([
+    db
+      .prepare(
+        `SELECT substr(i.date,1,7) AS period, l.rate AS rate, SUM(l.base) AS base,
+                SUM(l.amount) AS tax, COUNT(DISTINCT l.invoice_id) AS documents
+         FROM invoice_tax_lines l JOIN invoices i ON i.id = l.invoice_id
+         WHERE i.deleted_at IS NULL AND i.status <> 'cancelled' AND i.date >= ? AND i.date <= ?
+         GROUP BY period, rate`,
+      )
+      .bind(from, to)
+      .all<TaxRow>(),
+    db
+      .prepare(
+        `SELECT substr(date,1,7) AS period, SUM(subtotal - discount_total) AS exempt_base,
+                COUNT(*) AS documents
+         FROM invoices
+         WHERE deleted_at IS NULL AND status <> 'cancelled' AND tax_exempt = 1
+           AND date >= ? AND date <= ?
+         GROUP BY period`,
+      )
+      .bind(from, to)
+      .all<ExemptRow>(),
+  ]);
+  const periods = mergeTvaRecap(tax.results ?? [], exempt.results ?? []);
+  return { periods, totals: tvaRecapTotals(periods) };
+}
+
+async function revenueData(db: D1Database, from: string, to: string) {
+  const [invoices, payments] = await Promise.all([
+    db
+      .prepare(
+        `SELECT substr(date,1,7) AS period,
+                SUM(CASE WHEN tax_exempt = 0 THEN total ELSE 0 END) AS taxable,
+                SUM(CASE WHEN tax_exempt = 1 THEN total ELSE 0 END) AS exempt,
+                SUM(total) AS total, COUNT(*) AS documents
+         FROM invoices
+         WHERE deleted_at IS NULL AND status <> 'cancelled' AND date >= ? AND date <= ?
+         GROUP BY period`,
+      )
+      .bind(from, to)
+      .all<{ period: string; taxable: number; exempt: number; total: number; documents: number }>(),
+    db
+      .prepare(
+        `SELECT substr(date,1,7) AS period, SUM(amount) AS collected
+         FROM payments WHERE deleted_at IS NULL AND status = 'completed' AND date >= ? AND date <= ?
+         GROUP BY period`,
+      )
+      .bind(from, to)
+      .all<{ period: string; collected: number }>(),
+  ]);
+  return mergeRevenue(invoices.results ?? [], payments.results ?? []);
+}
+
+function reportWindow(c: { req: { query: (name: string) => string | undefined }; get: (key: 'company') => { timezone: string } | null }) {
+  const company = c.get('company')!;
+  const today = todayIn(company.timezone);
+  return {
+    from: c.req.query('from') ?? addMonths(monthStart(today), -11),
+    to: c.req.query('to') ?? today,
+  };
+}
+
+/** In-app CSV export (owner-usable, no command line), journalled like any export. */
+reportRoutes.get('/export/:type', requirePermission('reports.read'), async (c) => {
+  const type = c.req.param('type');
+  const { from, to } = reportWindow(c);
+  const user = c.get('user')!;
+
+  let body: string;
+  let rows: number;
+  let filename: string;
+  if (type === 'tva-recap') {
+    const { periods } = await tvaRecapData(c.env.DB, from, to);
+    body = tvaRecapCsv(periods);
+    rows = periods.length;
+    filename = `managest-recap-tva-${from}-${to}.csv`;
+  } else if (type === 'revenue-summary') {
+    const periods = await revenueData(c.env.DB, from, to);
+    body = revenueCsv(periods);
+    rows = periods.length;
+    filename = `managest-chiffre-affaires-${from}-${to}.csv`;
+  } else {
+    return fail(404, 'NOT_FOUND');
+  }
+
+  await logActivity(c.env.DB, {
+    userId: user.id,
+    action: 'exported',
+    entityType: 'report',
+    entityId: type,
+    summary: 'activity.data_exported',
+    meta: { entity: type, rows },
+  });
+  return csvResponse(body, filename);
+});
+
+reportRoutes.get('/tva-recap', requirePermission('reports.read'), async (c) => {
+  const { from, to } = reportWindow(c);
+  const { periods, totals } = await tvaRecapData(c.env.DB, from, to);
+  return c.json({ rows: periods, summary: totals });
+});
+
+reportRoutes.get('/revenue-summary', requirePermission('reports.read'), async (c) => {
+  const { from, to } = reportWindow(c);
+  const periods = await revenueData(c.env.DB, from, to);
+  return c.json({
+    rows: periods,
+    summary: {
+      taxable: periods.reduce((sum, row) => sum + row.taxable, 0),
+      exempt: periods.reduce((sum, row) => sum + row.exempt, 0),
+      total: periods.reduce((sum, row) => sum + row.total, 0),
+      collected: periods.reduce((sum, row) => sum + row.collected, 0),
+    },
+  });
+});
 
 reportRoutes.get('/:type', requirePermission('reports.read'), async (c) => {
   const company = c.get('company')!;

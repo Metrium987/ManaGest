@@ -10,7 +10,15 @@ import { PageHeader, SectionCard, Skeleton, StatCard, EmptyState } from '@/compo
 import { Button } from '@/components/ui/Button';
 import { Field, Input, Select } from '@/components/ui/Form';
 
-type ReportType = 'revenue' | 'profit-loss' | 'tax' | 'aging' | 'client-sales' | 'expenses';
+type ReportType =
+  | 'revenue'
+  | 'profit-loss'
+  | 'tax'
+  | 'aging'
+  | 'client-sales'
+  | 'expenses'
+  | 'tva-recap'
+  | 'revenue-summary';
 
 const REPORT_TYPES: { value: ReportType; label: string }[] = [
   { value: 'revenue', label: 'reports.revenue' },
@@ -19,7 +27,12 @@ const REPORT_TYPES: { value: ReportType; label: string }[] = [
   { value: 'aging', label: 'reports.aging' },
   { value: 'client-sales', label: 'reports.clientSales' },
   { value: 'expenses', label: 'reports.expenseReport' },
+  { value: 'tva-recap', label: 'reports.tvaRecap' },
+  { value: 'revenue-summary', label: 'reports.revenueSummary' },
 ];
+
+/** Reports whose CSV is produced server-side (T-207) and therefore journalled. */
+const SERVER_EXPORTS = new Set<ReportType>(['tva-recap', 'revenue-summary']);
 
 interface Column {
   key: string;
@@ -69,6 +82,21 @@ const COLUMNS: Record<ReportType, Column[]> = {
     { key: 'amount', label: 'common.amount', format: 'money' },
     { key: 'tax_amount', label: 'common.tax', format: 'money' },
   ],
+  'tva-recap': [
+    { key: 'period', label: 'common.period' },
+    { key: 'base', label: 'reports.base', format: 'money' },
+    { key: 'tax', label: 'reports.collected', format: 'money' },
+    { key: 'exempt_base', label: 'reports.exemptBase', format: 'money' },
+    { key: 'documents', label: 'reports.documents', format: 'number' },
+  ],
+  'revenue-summary': [
+    { key: 'period', label: 'common.period' },
+    { key: 'taxable', label: 'reports.taxableSales', format: 'money' },
+    { key: 'exempt', label: 'reports.exemptSales', format: 'money' },
+    { key: 'total', label: 'reports.totalSales', format: 'money' },
+    { key: 'collected', label: 'dashboard.collected', format: 'money' },
+    { key: 'documents', label: 'reports.documents', format: 'number' },
+  ],
 };
 
 export function ReportsPage() {
@@ -87,6 +115,11 @@ export function ReportsPage() {
   const rows = report.data?.rows ?? [];
 
   const exportCsv = () => {
+    if (SERVER_EXPORTS.has(type)) {
+      // Server-side CSV: same figures as the screen, and the export is journalled.
+      window.open(`/api/reports/export/${type}${toQuery({ from, to })}`, '_blank');
+      return;
+    }
     const columns = COLUMNS[type];
     const header = columns.map((column) => t(column.label)).join(';');
     const body = rows.map((row) =>
@@ -137,7 +170,21 @@ export function ReportsPage() {
                 { label: t('dashboard.invoiced'), value: formatMoney(summary.invoiced ?? 0, currency) },
                 { label: t('dashboard.collected'), value: formatMoney(summary.paid ?? 0, currency) },
               ]
-            : [{ label: t('dashboard.expenses'), value: formatMoney(summary.amount ?? 0, currency) }];
+            : type === 'tva-recap'
+              ? [
+                  { label: t('reports.base'), value: formatMoney(summary.base ?? 0, currency) },
+                  { label: t('reports.collected'), value: formatMoney(summary.tax ?? 0, currency) },
+                  { label: t('reports.exemptBase'), value: formatMoney(summary.exempt_base ?? 0, currency) },
+                  { label: t('reports.documents'), value: String(summary.documents ?? 0) },
+                ]
+              : type === 'revenue-summary'
+                ? [
+                    { label: t('reports.taxableSales'), value: formatMoney(summary.taxable ?? 0, currency) },
+                    { label: t('reports.exemptSales'), value: formatMoney(summary.exempt ?? 0, currency) },
+                    { label: t('reports.totalSales'), value: formatMoney(summary.total ?? 0, currency) },
+                    { label: t('dashboard.collected'), value: formatMoney(summary.collected ?? 0, currency) },
+                  ]
+                : [{ label: t('dashboard.expenses'), value: formatMoney(summary.amount ?? 0, currency) }];
 
   const renderValue = (row: Record<string, string | number>, column: Column) => {
     const value = row[column.key];

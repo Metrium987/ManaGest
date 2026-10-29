@@ -527,6 +527,13 @@ export const fr = {
     result: 'Résultat',
     empty: 'Aucune donnée sur la période.',
     exportNote: 'Export CSV compatible tableur.',
+    tvaRecap: 'Récapitulatif TVA',
+    revenueSummary: 'Chiffre d’affaires mensuel',
+    taxableSales: 'CA taxable (TTC)',
+    exemptSales: 'CA exonéré (TTC)',
+    totalSales: 'CA total (TTC)',
+    tvaRecapHint: 'Base et TVA par mois et par taux, base exonérée séparée : la forme attendue pour une déclaration.',
+    revenueHint: 'Chiffre d’affaires facturé par mois, split taxable / exonéré, et encaissements du mois.',
   },
   settings: {
     title: 'Paramètres',
