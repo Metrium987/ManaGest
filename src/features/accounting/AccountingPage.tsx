@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BookOpen, RefreshCw } from 'lucide-react';
 import { api, toQuery } from '@/lib/api';
@@ -59,11 +59,31 @@ interface AccountRow {
   is_active: number;
 }
 
+interface BalanceSheet {
+  assets: BalanceRow[];
+  liabilities: BalanceRow[];
+  equity: BalanceRow[];
+  result: number;
+  total_assets: number;
+  total_liabilities: number;
+  total_equity: number;
+  balanced: boolean;
+}
+
+interface OpeningRow {
+  code: string;
+  label: string;
+  debit: string;
+  credit: string;
+}
+
 const TABS = [
   { value: 'balance', label: 'accounting.trialBalance' },
+  { value: 'bilan', label: 'accounting.balanceSheet' },
   { value: 'journal', label: 'accounting.journal' },
   { value: 'income', label: 'accounting.income' },
   { value: 'chart', label: 'accounting.chart' },
+  { value: 'opening', label: 'accounting.opening' },
 ];
 
 /**
@@ -100,6 +120,66 @@ export function AccountingPage() {
     queryFn: () => api.get<{ data: AccountRow[] }>('/accounting/accounts'),
     enabled: tab === 'chart',
   });
+  const sheet = useQuery({
+    queryKey: ['accounting', 'balance-sheet', from, to],
+    queryFn: () => api.get<BalanceSheet>(`/accounting/balance-sheet${range}`),
+    enabled: tab === 'bilan',
+  });
+  const opening = useQuery({
+    queryKey: ['accounting', 'opening'],
+    queryFn: () => api.get<{ date: string | null; rows: { code: string; label: string; debit: number; credit: number }[] }>(
+      '/accounting/opening-balances',
+    ),
+    enabled: tab === 'opening',
+  });
+
+  const [openingDate, setOpeningDate] = useState('');
+  const [openingRows, setOpeningRows] = useState<OpeningRow[]>([]);
+
+  useEffect(() => {
+    if (!opening.data) return;
+    setOpeningDate(opening.data.date ?? '');
+    setOpeningRows(opening.data.rows.map((row) => ({
+      code: row.code,
+      label: row.label,
+      debit: row.debit ? String(row.debit) : '',
+      credit: row.credit ? String(row.credit) : '',
+    })));
+  }, [opening.data]);
+
+  const updateRow = (index: number, patch: Partial<OpeningRow>) => {
+    setOpeningRows((rows) => rows.map((row, position) => (position === index ? { ...row, ...patch } : row)));
+  };
+
+  const saveOpening = useMutation({
+    mutationFn: () => api.put<{ lines: number; difference: number }>('/accounting/opening-balances', {
+      date: openingDate,
+      rows: openingRows
+        .filter((row) => row.code.trim())
+        .map((row) => ({
+          code: row.code.trim(),
+          label: row.label.trim() || undefined,
+          debit: Number(row.debit || 0),
+          credit: Number(row.credit || 0),
+        })),
+    }),
+    onSuccess: (result) => {
+      toast.success(t('accounting.openingSaved', {
+        count: result.lines,
+        difference: formatMoney(result.difference, currency),
+      }));
+      queryClient.invalidateQueries({ queryKey: ['accounting'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const sheetRows = sheet.data
+    ? [
+        ...sheet.data.assets.map((row) => ({ ...row, section: t('accounting.assets') })),
+        ...sheet.data.liabilities.map((row) => ({ ...row, section: t('accounting.liabilities') })),
+        ...sheet.data.equity.map((row) => ({ ...row, section: t('accounting.equityTotal') })),
+      ]
+    : [];
 
   const sync = useMutation({
     mutationFn: () => api.post<{ created: number }>('/accounting/sync'),
@@ -262,6 +342,152 @@ export function AccountingPage() {
           ) : (
             <EmptyState icon={<BookOpen className="h-6 w-6" aria-hidden="true" />} title={t('accounting.empty')} />
           )}
+        </SectionCard>
+      ) : null}
+
+      {tab === 'bilan' ? (
+        <SectionCard
+          title={t('accounting.balanceSheet')}
+          subtitle={sheet.data ? (sheet.data.balanced ? t('accounting.balanced') : t('accounting.unbalanced')) : undefined}
+          bodyClassName="table-wrap"
+        >
+          {sheet.isLoading ? (
+            <Skeleton className="m-4 h-40" />
+          ) : sheet.data && sheetRows.length ? (
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">{t('accounting.account')}</th>
+                  <th scope="col">{t('accounting.label')}</th>
+                  <th scope="col" className="text-right">{t('common.amount')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sheetRows.map((row) => (
+                  <tr key={row.account_code}>
+                    <td className="font-mono text-xs">{row.account_code}</td>
+                    <td>
+                      <span className="text-muted">{row.section}</span>
+                      <span className="ml-2 font-medium">{row.label}</span>
+                    </td>
+                    <td className="text-right tabular-nums">{formatMoney(row.balance, currency)}</td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-line-strong">
+                  <td colSpan={2} className="font-semibold">{t('accounting.result')}</td>
+                  <td className="text-right font-semibold tabular-nums">{formatMoney(sheet.data.result, currency)}</td>
+                </tr>
+                <tr>
+                  <td colSpan={2} className="font-semibold">{t('accounting.assets')}</td>
+                  <td className="text-right font-semibold tabular-nums">{formatMoney(sheet.data.total_assets, currency)}</td>
+                </tr>
+                <tr>
+                  <td colSpan={2} className="font-semibold">{t('accounting.liabilities')} + {t('accounting.equityTotal')}</td>
+                  <td className="text-right font-semibold tabular-nums">
+                    {formatMoney(sheet.data.total_liabilities + sheet.data.total_equity, currency)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          ) : (
+            <EmptyState icon={<BookOpen className="h-6 w-6" aria-hidden="true" />} title={t('accounting.openingEmpty')} />
+          )}
+        </SectionCard>
+      ) : null}
+
+      {tab === 'opening' ? (
+        <SectionCard title={t('accounting.opening')} subtitle={t('accounting.openingHint')}>
+          <div className="space-y-3 p-4">
+            <Field label={t('accounting.openingDate')} htmlFor="opening_date">
+              <Input
+                id="opening_date"
+                type="date"
+                value={openingDate}
+                onChange={(event) => setOpeningDate(event.target.value)}
+                className="w-44"
+              />
+            </Field>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col">{t('accounting.code')}</th>
+                    <th scope="col">{t('accounting.label')}</th>
+                    <th scope="col" className="text-right">{t('accounting.debit')}</th>
+                    <th scope="col" className="text-right">{t('accounting.credit')}</th>
+                    <th scope="col"><span className="sr-only">{t('accounting.remove')}</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openingRows.map((row, index) => (
+                    <tr key={index}>
+                      <td>
+                        <Input
+                          value={row.code}
+                          onChange={(event) => updateRow(index, { code: event.target.value })}
+                          className="w-24 font-mono"
+                          aria-label={`${t('accounting.code')} ${index + 1}`}
+                        />
+                      </td>
+                      <td>
+                        <Input
+                          value={row.label}
+                          onChange={(event) => updateRow(index, { label: event.target.value })}
+                          aria-label={`${t('accounting.label')} ${index + 1}`}
+                        />
+                      </td>
+                      <td>
+                        <Input
+                          inputMode="numeric"
+                          value={row.debit}
+                          onChange={(event) => updateRow(index, { debit: event.target.value })}
+                          className="w-32 text-right"
+                          aria-label={`${t('accounting.debit')} ${index + 1}`}
+                        />
+                      </td>
+                      <td>
+                        <Input
+                          inputMode="numeric"
+                          value={row.credit}
+                          onChange={(event) => updateRow(index, { credit: event.target.value })}
+                          className="w-32 text-right"
+                          aria-label={`${t('accounting.credit')} ${index + 1}`}
+                        />
+                      </td>
+                      <td>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setOpeningRows((rows) => rows.filter((_, position) => position !== index))}
+                        >
+                          {t('accounting.remove')}
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setOpeningRows((rows) => [...rows, { code: '', label: '', debit: '', credit: '' }])}
+              >
+                {t('accounting.openingAdd')}
+              </Button>
+              <GatedButton
+                permission="accounting.write"
+                loading={saveOpening.isPending}
+                onClick={() => saveOpening.mutate()}
+              >
+                {t('accounting.openingSave')}
+              </GatedButton>
+              {openingRows.length === 0 ? (
+                <span className="text-sm text-muted">{t('accounting.openingEmpty')}</span>
+              ) : null}
+            </div>
+          </div>
         </SectionCard>
       ) : null}
 

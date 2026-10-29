@@ -22,7 +22,7 @@ export interface DraftLine {
   credit: number;
 }
 
-export type JournalCode = 'VE' | 'AC' | 'BQ' | 'OD';
+export type JournalCode = 'VE' | 'AC' | 'BQ' | 'OD' | 'AN';
 
 export interface DocumentAmounts {
   number: string | null;
@@ -168,11 +168,99 @@ export interface IncomeStatement {
   rows: { account_code: string; label: string; type: AccountType; amount: number }[];
 }
 
+/** Journal of the opening balances (à-nouveaux). */
+export const OPENING_JOURNAL: JournalCode = 'AN';
+
+export const OPENING_SOURCE_ID = 'balances';
+
+/** Where an imbalance of the opening trial balance is carried. */
+export const RETAINED_EARNINGS = '110000';
+
+/**
+ * Accounting class from the PCG code. Class 4 and 5 accounts sit on either side
+ * of the balance, so their type follows the side of the imported balance rather
+ * than the code alone.
+ */
+export function typeFromCode(code: string, balance = 0): AccountType {
+  switch (code.charAt(0)) {
+    case '1': return 'equity';
+    case '2':
+    case '3': return 'asset';
+    case '4':
+    case '5': return balance < 0 ? 'liability' : 'asset';
+    case '6': return 'expense';
+    case '7': return 'income';
+    default: return 'asset';
+  }
+}
+
+export interface OpeningRow {
+  code: string;
+  label?: string;
+  debit: number;
+  credit: number;
+}
+
+/**
+ * Opening balances as a **balanced** entry. A trial balance rarely adds up on
+ * its own — the prior year's result has not been allocated yet — so the
+ * difference is carried to report à nouveau instead of being refused or, worse,
+ * silently rounded into an account.
+ */
+export function openingLines(rows: readonly OpeningRow[]): DraftLine[] {
+  const lines = rows
+    .filter((row) => Math.round(row.debit) > 0 || Math.round(row.credit) > 0)
+    .map((row) => line(row.code, row.label || `Reprise ${row.code}`, row.debit, row.credit));
+  const totals = totalsOf(lines);
+  const difference = totals.debit - totals.credit;
+  if (difference > 0) lines.push(line(RETAINED_EARNINGS, 'Report à nouveau', 0, difference));
+  if (difference < 0) lines.push(line(RETAINED_EARNINGS, 'Report à nouveau', -difference, 0));
+  return lines;
+}
+
+export interface BalanceSheet {
+  assets: BalanceRow[];
+  liabilities: BalanceRow[];
+  equity: BalanceRow[];
+  result: number;
+  total_assets: number;
+  total_liabilities: number;
+  total_equity: number;
+  balanced: boolean;
+}
+
+/**
+ * Simplified balance sheet: classes 2–5 by side, plus the year's result from the
+ * income statement. It is only meaningful once opening balances exist, which is
+ * why it is derived here and not invented from what the documents happen to say.
+ */
+export function balanceSheet(
+  lines: readonly { account_code: string; debit: number; credit: number }[],
+  accounts: readonly Account[],
+): BalanceSheet {
+  const balance = trialBalance(lines, accounts);
+  const assets: BalanceRow[] = [];
+  const liabilities: BalanceRow[] = [];
+  const equity: BalanceRow[] = [];
+  for (const row of balance.rows) {
+    if (row.balance === 0) continue;
+    if (row.type === 'asset') assets.push(row);
+    else if (row.type === 'liability') liabilities.push({ ...row, balance: -row.balance });
+    else if (row.type === 'equity') equity.push({ ...row, balance: -row.balance });
+  }
+  const result = incomeStatement(lines, accounts).result;
+  const total_assets = assets.reduce((sum, row) => sum + row.balance, 0);
+  const total_liabilities = liabilities.reduce((sum, row) => sum + row.balance, 0);
+  const total_equity = equity.reduce((sum, row) => sum + row.balance, 0) + result;
+  return {
+    assets, liabilities, equity, result, total_assets, total_liabilities, total_equity,
+    balanced: total_assets === total_liabilities + total_equity,
+  };
+}
+
 /**
  * Simplified income statement: income accounts (7) are credited, expense accounts
- * (6) are debited, and the difference is the result. The balance sheet is not
- * derived here — assets and liabilities need opening balances that this module
- * does not invent.
+ * (6) are debited, and the difference is the result.
  */
 export function incomeStatement(
   lines: readonly { account_code: string; debit: number; credit: number }[],

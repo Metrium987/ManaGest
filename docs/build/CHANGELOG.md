@@ -1,3 +1,15 @@
+## 2026-10-29 — Opening balances and the balance sheet (AUDIT §7 P0.1–P0.2, T-304)
+
+- **The last missing accounting block.** `PUT /api/accounting/opening-balances` records the opening trial balance as an ordinary `AN` journal entry, so it is keyed, journalled and idempotent like every other entry; `GET /api/accounting/balance-sheet` derives the statement and says whether it balances.
+- **Nothing invented.** A trial balance rarely adds up before the prior year's result is allocated, so the difference goes to **report à nouveau (110000)** on the correct side instead of being refused or spread somewhere. A row carrying both a debit and a credit is `422`.
+- **Re-import replaces, never stacks.** The entry keeps the same key (`opening/balances`), so correcting a figure gives **one** `AN` entry, not two — the journal is replaced, and `activity.opening_balances_imported` records the fact.
+- **Accounts come with the import.** Every code becomes an account, typed from its class; classes 4 and 5 take their side from the imported balance. An existing account keeps its label and type.
+- **Screen:** Comptabilité gains « Bilan » and « Reprise de balance » (row editor, save gated by `accounting.write`), with the difference shown and the balance check stated.
+- 7 unit tests (carried profit and loss, already balanced, zero/clamped rows, class inference, balance sheet with and without activity).
+- **Live walk [EXECUTED]:** 4 accounts imported → `200 {lines:4, difference:130000}`; balance sheet `200`, assets **2 707 350** = liabilities 741 860 + equity 1 965 490 with a result of 1 435 490, `balanced:true`; read-back shows `110000:0/130000`; second import → still **one** `AN` entry; no CSRF `403`; both sides on one row `422`.
+- Gate: typecheck clean, **245/245 tests over 23 files**, production build clean.
+- **Not claimed:** no browser walk of the two new tabs; the figures are the owner's to enter.
+
 ## 2026-10-29 — Approvals by threshold and separation of duties (AUDIT §7 P0.5)
 
 - **A second pair of eyes where it matters.** Schema v16 `approvals`; `server/lib/approvals.ts` decides, `server/services/approvals.ts` stores and `server/routes/approvals.ts` exposes the queue. A credit note at or above its ceiling, an expense at or above its ceiling and an invoice whose discount reaches its percentage are held `pending`; `POST /send` answers `409 APPROVAL_REQUIRED` until someone **other than the author** approves (`403 SAME_APPROVER` otherwise), and a rejection is final.
