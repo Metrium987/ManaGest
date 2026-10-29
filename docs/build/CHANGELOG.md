@@ -52,3 +52,8 @@ BUILD-PLAN, TODO (23 tasks + 4 R4 spec rows), module files M0-M12, VERIFICATION-
 - `GET /api/export/invoices` now emits one row per line item with the import's exact headers, closing the round-trip for invoices.
 - Fixes found while testing: the template's annotation row had to be skipped by the invoice validator too (it was counted as a data row); the template example client is a placeholder, documented in the test.
 - Gate: 84/84 tests (7 new invoice-import tests), typecheck and build clean; live walk [EXECUTED]: preview grouped 2 rows into 1 document, commit 201 (FAC-2026-9001, draft, total 80 040 = 69 000 HT + 16 %), re-import refused 409, export header identical to the template with one row per line.
+
+## 2026-10-29 — R1 release gate executed
+- Full end-to-end walk on the running application (14 checks): client → quote → approve → convert → send → payment → paid → refund credit note → send → apply to another invoice → export → import → journal → viewer permission refusal. Report: `docs/build/reports/R1-release-gate.md`.
+- Defect found and fixed: the invoice-side credit application updated the credit's counters manually and left a fully used credit in status « envoyé ». It now recomputes the credit from its allocations (`recalcCredit`), so the status reads « utilisé ». Re-verified live in the same walk.
+- Regression: 84/84 unit tests, typecheck and build clean after the fix.

@@ -16,6 +16,7 @@ import {
 } from '../services/documents';
 import { buildInvoicePdf } from '../services/pdf';
 import { deriveInvoiceStatus, isOverdue, refundableAmount } from '../services/status';
+import { recalcCredit } from '../services/documents';
 import type { AppEnv } from '../types';
 
 const invoiceSchema = z.object({
@@ -454,11 +455,10 @@ invoiceRoutes.post('/:id/apply-credit', requirePermission('invoices.write'), asy
     .run();
 
   await recalcInvoice(c.env.DB, id);
-  await c.env.DB.prepare(
-    `UPDATE credits SET applied_total = applied_total + ?, balance = balance - ?, updated_at = ? WHERE id = ?`,
-  )
-    .bind(body.amount, body.amount, nowISO(), credit.id)
-    .run();
+  // Derive the credit from its allocations (status applied/partial included),
+  // instead of decrementing counters by hand: a fully used credit must not stay
+  // labelled "sent" with a zero balance.
+  await recalcCredit(c.env.DB, credit.id);
 
   await logActivity(c.env.DB, {
     userId: user.id,
