@@ -2,7 +2,7 @@
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (
@@ -612,4 +612,25 @@ export const SCHEMA_STATEMENTS: string[] = [
     content TEXT NOT NULL,
     PRIMARY KEY (attachment_id, seq)
   )`,
+
+  // One row per Tahiti business day (T-104a): the primary key is what makes a
+  // second scheduler call the same day a no-op instead of a duplicate run.
+  `CREATE TABLE IF NOT EXISTS daily_runs (
+    day TEXT PRIMARY KEY,
+    status TEXT NOT NULL CHECK (status IN ('running','success','partial','failed','skipped')),
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    trigger_ip TEXT,
+    summary_json TEXT,
+    error_code TEXT
+  )`,
+
+  // Attempt counter for the daily endpoint: a leaked token must not become an
+  // unlimited lever on the workspace.
+  `CREATE TABLE IF NOT EXISTS daily_run_attempts (
+    id TEXT PRIMARY KEY,
+    ip TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_daily_run_attempts_at ON daily_run_attempts(created_at)`,
 ];

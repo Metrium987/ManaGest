@@ -750,6 +750,9 @@ export const fr = {
     INVALID_FILENAME: 'Le nom du fichier est invalide.',
     INVALID_BASE64: 'Le fichier n’a pas pu être transmis. Réessayez.',
     ATTACHMENT_INCOMPLETE: 'Ce justificatif est incomplet et ne peut pas être téléchargé.',
+    DAILY_RUN_TOKEN_MISSING: 'Le jeton du passage quotidien doit être configuré dans les secrets de la plateforme.',
+    INVALID_RUN_TOKEN: 'Jeton d’exécution invalide.',
+    RUN_RATE_LIMITED: 'Trop d’appels au passage quotidien. Réessayez plus tard.',
   },
   activityMessages: {
     'activity.login': '{name} s’est connecté',
@@ -808,6 +811,7 @@ export const fr = {
     'activity.public_link_created': 'Lien public créé ({expires_at})',
     'activity.public_link_revoked': 'Lien public révoqué',
     'activity.quote_accepted_public': 'Devis {number} accepté depuis un lien public',
+    'activity.daily_run_completed': 'Passage quotidien exécuté : {generated} facture(s) créée(s), {failed} échec(s)',
     'activity.email_settings_changed': 'Configuration e-mail modifiée',
     'activity.email_test_sent': 'E-mail de test envoyé via {provider} à {recipient}',
     'activity.invoice_emailed': 'Facture {number} envoyée par e-mail à {recipient}',

@@ -145,3 +145,22 @@ En HTTPS :
 > n'est appliqué. Les octets résident dans la base : les sauvegardes D1 les couvrent, mais un volume
 > important de justificatifs pèse sur la base — un bucket objet serait préférable si le volume devient
 > significatif.
+
+## 11. Passage quotidien automatisé
+
+- **Aucune session acceptée** : `POST /api/runs/daily` est réservé à un appelant machine, authentifié par
+  un jeton d'espace de travail (`DAILY_RUN_TOKEN`, secret de plateforme) transmis par `x-run-token` ou
+  `Authorization: Bearer`. Le jeton est comparé en **temps constant** ; sans secret configuré, l'endpoint
+  répond `503` au lieu d'accepter n'importe quel appel.
+- **Limitation** : 10 tentatives par heure et par adresse IP, puis `429` avec un délai d'attente. Les
+  tentatives anciennes sont purgées : un jeton divulgué n'est pas un levier illimité.
+- **Idempotence par la donnée** : la journée (fuseau `Pacific/Tahiti`) est une clé primaire. La
+  revendication est un `INSERT … ON CONFLICT DO NOTHING`, donc deux appels simultanés ne produisent qu'un
+  passage ; le second reçoit le résumé du premier et n'écrit rien. Une journée en échec reste
+  réessayable, la reprise étant elle aussi conditionnelle.
+- **Traçabilité** : chaque passage réel écrit `activity.daily_run_completed` avec le nombre de factures
+  créées, le nombre d'échecs, le nombre de modèles traités et l'adresse de l'appelant.
+
+> **Limite assumée.** Le déclencheur externe reste à la charge du propriétaire (PQ-1) : cet hébergement
+> n'attache aucun planificateur, et aucun appelant réel n'a été configuré. La limitation de débit a été
+> mesurée depuis une seule adresse.

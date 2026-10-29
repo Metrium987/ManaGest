@@ -1,15 +1,12 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { nowISO } from '../db';
-import { logActivity } from '../lib/audit';
-import { addDays, addMonths, todayIn } from '../lib/dates';
+import { todayIn } from '../lib/dates';
 import { fail } from '../lib/errors';
-import { nextNumber } from '../lib/numbering';
-import { computeTotals } from '../lib/tax';
-import { assertPeriodOpen } from '../lib/locks';
 import { lineItemsSchema, offsetOf, optionalIsoDate, paginationSchema, parseInput } from '../lib/validation';
 import { requireAuth, requirePermission } from '../middleware';
-import { safeLines, serialiseLines, syncInvoiceFromRow } from '../services/documents';
+import { safeLines, serialiseLines } from '../services/documents';
+import { generateRecurringInvoice } from '../services/recurring';
 import type { AppEnv } from '../types';
 
 const recurringSchema = z.object({
@@ -26,19 +23,6 @@ const recurringSchema = z.object({
   notes: z.string().max(4000).nullish(),
   terms: z.string().max(2000).nullish(),
 });
-
-const FREQUENCY_MONTHS: Record<string, number> = {
-  weekly: 0,
-  monthly: 1,
-  quarterly: 3,
-  semiannual: 6,
-  yearly: 12,
-};
-
-function advance(date: string, frequency: string, interval: number): string {
-  if (frequency === 'weekly') return addDays(date, 7 * interval);
-  return addMonths(date, FREQUENCY_MONTHS[frequency] * interval);
-}
 
 export const recurringRoutes = new Hono<AppEnv>();
 recurringRoutes.use('*', requireAuth);
@@ -153,63 +137,8 @@ recurringRoutes.post('/:id/run', requirePermission('recurring.write'), async (c)
   if (!recurring) return fail(404, 'NOT_FOUND');
 
   const today = todayIn(company.timezone);
-  await assertPeriodOpen(c.env.DB, today);
-  const lines = safeLines(recurring.line_items);
-  const totals = computeTotals(
-    lines,
-    { discount_type: recurring.discount_type as 'percent' | 'amount', discount_value: recurring.discount_value as number },
-    Boolean(recurring.tax_exempt),
-  );
-  const invoiceId = crypto.randomUUID();
-  const number = await nextNumber(c.env.DB, 'invoice', 'FAC', company.number_pattern, today);
-  const dueDate = addDays(today, Number(recurring.payment_terms ?? company.payment_terms));
-  const status = recurring.auto_send ? 'sent' : 'draft';
-
-  const remaining =
-    recurring.remaining_cycles === null || recurring.remaining_cycles === undefined
-      ? null
-      : Math.max(0, Number(recurring.remaining_cycles) - 1);
-  const completed = remaining === 0;
-  const nextRun = advance(String(recurring.next_run_date), String(recurring.frequency), Number(recurring.interval_count));
-  const endDate = recurring.end_date ? String(recurring.end_date) : null;
-  const finished = completed || (endDate !== null && nextRun > endDate);
-
-  await c.env.DB.batch([
-    c.env.DB.prepare(
-      `INSERT INTO invoices (id, client_id, number, status, date, due_date, currency, subtotal, discount_type, discount_value,
-        discount_total, tax_total, total, paid_total, balance, tax_exempt, line_items, notes, terms, recurring_id, created_by,
-        created_at, updated_at, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).bind(
-      invoiceId, recurring.client_id, number, status, today, dueDate, recurring.currency, totals.subtotal,
-      recurring.discount_type, recurring.discount_value, totals.discount_total, totals.tax_total, totals.total,
-      totals.total, recurring.tax_exempt, recurring.line_items, recurring.notes, recurring.terms, id, user.id,
-      nowISO(), nowISO(), status === 'sent' ? nowISO() : null,
-    ),
-    c.env.DB.prepare(
-      `UPDATE recurring_invoices SET status = ?, remaining_cycles = ?, next_run_date = ?, last_generated_at = ?, updated_at = ?
-       WHERE id = ?`,
-    ).bind(finished ? 'completed' : 'active', remaining, nextRun, nowISO(), nowISO(), id),
-  ]);
-
-  await syncInvoiceFromRow(c.env.DB, {
-    id: invoiceId,
-    line_items: recurring.line_items,
-    discount_type: String(recurring.discount_type),
-    discount_value: Number(recurring.discount_value),
-    tax_exempt: Number(recurring.tax_exempt),
-  });
-
-  await logActivity(c.env.DB, {
-    userId: user.id,
-    action: 'generated',
-    entityType: 'recurring_invoice',
-    entityId: id,
-    summary: 'activity.recurring_generated',
-    meta: { invoice: number, total: totals.total },
-  });
-
-  return c.json({ id: invoiceId, number, next_run_date: nextRun, completed: finished });
+  const result = await generateRecurringInvoice(c.env.DB, company, recurring, { today, userId: user.id });
+  return c.json({ id: result.invoiceId, number: result.number, next_run_date: result.nextRunDate, completed: result.finished });
 });
 
 recurringRoutes.delete('/:id', requirePermission('recurring.delete'), async (c) => {

@@ -125,6 +125,9 @@ manuelle n'est nécessaire.
 - Manifeste de déploiement : [`deploy.json`](deploy.json)
 - Environnements : `preview` et `production`, chacun avec sa propre base D1
 - Commande : `npm run build`, puis déploiement du manifeste depuis Freebuff
+- Passage quotidien : `POST /api/runs/daily` attend l'en-tête `x-run-token` (ou `Authorization: Bearer`)
+  avec le secret `DAILY_RUN_TOKEN`. Cet hébergement n'attache aucun planificateur : l'appelant externe
+  (cron du propriétaire) reste à créer. Voir [`docs/SECURITE.md`](docs/SECURITE.md) §11.
 
 L'environnement de prévisualisation est volontairement livré **non configuré** :
 il affiche l'assistant d'installation au premier accès.

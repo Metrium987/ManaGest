@@ -8,6 +8,8 @@ export interface Env {
   RESEND_API_KEY?: string;
   BREVO_API_KEY?: string;
   SMTP_PASSWORD?: string;
+  /** Secret the external scheduler presents to POST /api/runs/daily (T-104a). */
+  DAILY_RUN_TOKEN?: string;
 }
 
 export interface CompanyRow {

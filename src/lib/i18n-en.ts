@@ -748,6 +748,9 @@ export const en: Record<string, unknown> = {
     INVALID_FILENAME: 'The file name is invalid.',
     INVALID_BASE64: 'The file could not be transferred. Try again.',
     ATTACHMENT_INCOMPLETE: 'This receipt is incomplete and cannot be downloaded.',
+    DAILY_RUN_TOKEN_MISSING: 'The daily run token must be configured in the platform secrets.',
+    INVALID_RUN_TOKEN: 'Invalid run token.',
+    RUN_RATE_LIMITED: 'Too many daily run calls. Try again later.',
   },
   activityMessages: {
     'activity.login': '{name} signed in',
@@ -806,6 +809,7 @@ export const en: Record<string, unknown> = {
     'activity.public_link_created': 'Public link created ({expires_at})',
     'activity.public_link_revoked': 'Public link revoked',
     'activity.quote_accepted_public': 'Quote {number} accepted from a public link',
+    'activity.daily_run_completed': 'Daily run completed: {generated} invoice(s) created, {failed} failure(s)',
     'activity.email_settings_changed': 'Email delivery settings changed',
     'activity.email_test_sent': 'Test email sent via {provider} to {recipient}',
     'activity.invoice_emailed': 'Invoice {number} emailed to {recipient}',

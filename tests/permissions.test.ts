@@ -46,6 +46,9 @@ const ALLOWLIST = new Set([
   'attachments.ts /',
   'attachments.ts /:id/download',
   'attachments.ts /:id',
+  // The daily run is called by a machine, not a session: its guard is a
+  // constant-time comparison against a platform secret, asserted below.
+  'runs.ts /daily',
 ]);
 
 /** The search router is guarded at router level, not per line: verify it stays. */
@@ -59,6 +62,7 @@ const FILE_LEVEL_GUARDS: Record<string, string> = {
   // Attachments (T-101): the permission is the one of the record the file hangs
   // from, so it is asserted through one helper that every route must call.
   'attachments.ts': 'assertPermission(role, ENTITY_PERMISSIONS[entity][action] as Permission)',
+  'runs.ts': "if (!provided || !constantTimeEqual(provided, secret)) return fail(401, 'INVALID_RUN_TOKEN');",
 };
 
 function routeLines(): { file: string; path: string; line: number; text: string }[] {
