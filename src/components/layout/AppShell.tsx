@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Activity, BarChart3, Briefcase, Building2, ChevronDown, CreditCard, FileText, FolderKanban,
   Landmark, LayoutDashboard, ListChecks, LogOut, Menu, Package, Plus, Receipt, RefreshCw,
-  Search, Settings, ShieldCheck, ShoppingCart, Users, Wallet, X,
+  Search, Settings, ShieldCheck, ShoppingCart, Upload, Users, Wallet, X,
 } from 'lucide-react';
 import type { Permission } from '@shared/domain';
 import { api, toQuery } from '@/lib/api';
@@ -68,6 +68,7 @@ const NAV: NavSection[] = [
       { to: '/parametres', label: 'nav.settings', icon: Settings, permission: 'settings.read' },
       { to: '/parametres/utilisateurs', label: 'nav.users', icon: ShieldCheck, permission: 'users.read' },
       { to: '/journal', label: 'nav.activity', icon: Activity, permission: 'activity.read' },
+      { to: '/importer', label: 'nav.import', icon: Upload, permission: 'clients.write' },
     ],
   },
 ];

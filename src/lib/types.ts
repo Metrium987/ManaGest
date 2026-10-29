@@ -441,3 +441,42 @@ export interface PeriodLock {
   first_name: string | null;
   last_name: string | null;
 }
+
+// Import wizard (T-102b / OQ-015)
+export interface ImportColumn {
+  key: string;
+  label: string;
+  required?: boolean;
+  example: string;
+  hint?: string;
+}
+
+export interface ImportIssue {
+  row: number;
+  field: string;
+  code: string;
+}
+
+export interface ImportPreviewRow {
+  row: number;
+  values: Record<string, string>;
+  valid: boolean;
+  action: 'create' | 'update';
+  issues: ImportIssue[];
+}
+
+export interface ImportPreview {
+  delimiter: string;
+  missing_columns: string[];
+  valid_count: number;
+  invalid_count: number;
+  rows: ImportPreviewRow[];
+}
+
+export interface ImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  invalid_count: number;
+  identifiers: string[];
+}

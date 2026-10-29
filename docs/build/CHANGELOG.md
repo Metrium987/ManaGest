@@ -40,3 +40,8 @@ BUILD-PLAN, TODO (23 tasks + 4 R4 spec rows), module files M0-M12, VERIFICATION-
 - Bug found and fixed by the live walk: `clients.country` is NOT NULL, so an empty country column crashed the commit; it now defaults to « Polynésie française ».
 - Gate: 77/77 tests (11 new import tests), typecheck + build clean; live walk [EXECUTED]: anonymous 401, missing required column 422, duplicate rows flagged (2/2), commit refused 409, explicit skip 201 (2 created, 2 skipped), re-import same email 201 updated 1, product insert 201, journal entries present.
 - Still open in M7: T-102b wizard screen, T-102c invoices import, XLSX (platform-unverified).
+
+## 2026-10-29 — T-102b import wizard UI DONE (M7)
+- New screen `/importer` ("Importer des données" under Administration, gated by the data type's write permission): step 1 pick clients/products and download the template, step 2 load a `.csv` file or paste its content, step 3 preview every row with its create/update action and French error wording, step 4 explicit confirm or explicit "exclude the rows in error" consent, step 5 result report with the imported identifiers and a link to the list.
+- All wording goes through the French dictionary (new `import` block + `nav.import`); no string is hard-coded in the component.
+- Gate: 77/77 tests, typecheck and build clean. The wizard consumes endpoints already verified live in T-102a; its own browser rendering could not be exercised in this environment (no browser), which is recorded rather than claimed.
