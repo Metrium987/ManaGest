@@ -46,6 +46,9 @@ const FILE_LEVEL_GUARDS: Record<string, string> = {
   'dashboard.ts': "searchRoutes.use('*', requireAuth)",
   'export.ts': 'if (!hasPermission(user.role, spec.permission as Permission)) return fail(403',
   'public-links.ts': 'assertPermission(user.role, ENTITY_PERMISSIONS[link.entity_type].write)',
+  // E-mail sending: the permission depends on the document kind, so the allowlisted
+  // route must keep checking it by hand — and keep its 404 for an unknown kind.
+  'email.ts': "if (!hasPermission(actor.role, definition.permission as Permission)) return fail(403, 'FORBIDDEN');",
 };
 
 function routeLines(): { file: string; path: string; line: number; text: string }[] {

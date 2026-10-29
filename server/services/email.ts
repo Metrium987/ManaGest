@@ -35,7 +35,12 @@ export interface OutgoingMail {
 }
 
 export interface MailSecrets {
+  /** Required to encrypt or decrypt a stored credential (≥ 32 characters). */
   MAIL_CONFIG_ENCRYPTION_KEY?: string;
+  /** Optional platform secrets: they take precedence over the stored ciphertext. */
+  RESEND_API_KEY?: string;
+  BREVO_API_KEY?: string;
+  SMTP_PASSWORD?: string;
 }
 
 export async function readMailConfig(database: D1Database): Promise<StoredMailConfig> {
@@ -176,7 +181,7 @@ export async function dispatchMail(
     const isResend = config.provider === 'resend';
     if (!config.api_key_ciphertext || config.api_key_provider !== config.provider) throw new Error('EMAIL_NOT_CONFIGURED');
     if (!secrets.MAIL_CONFIG_ENCRYPTION_KEY) throw new Error('MAIL_ENCRYPTION_KEY_MISSING');
-    const providerKey = config.provider === 'resend' ? (secrets as MailSecrets & { RESEND_API_KEY?: string }).RESEND_API_KEY : (secrets as MailSecrets & { BREVO_API_KEY?: string }).BREVO_API_KEY;
+    const providerKey = config.provider === 'resend' ? secrets.RESEND_API_KEY : secrets.BREVO_API_KEY;
     const apiKey = providerKey ?? await decryptMailSecret(config.api_key_ciphertext, secrets.MAIL_CONFIG_ENCRYPTION_KEY);
     const response = await request(isResend ? 'https://api.resend.com/emails' : 'https://api.brevo.com/v3/smtp/email', {
       method: 'POST',
@@ -211,7 +216,7 @@ export async function dispatchMail(
     throw new Error('EMAIL_NOT_CONFIGURED');
   }
   if (!secrets.MAIL_CONFIG_ENCRYPTION_KEY) throw new Error('MAIL_ENCRYPTION_KEY_MISSING');
-  const smtpPassword = (secrets as MailSecrets & { SMTP_PASSWORD?: string }).SMTP_PASSWORD;
+  const smtpPassword = secrets.SMTP_PASSWORD;
   const password = smtpPassword ?? await decryptMailSecret(config.smtp_password_ciphertext, secrets.MAIL_CONFIG_ENCRYPTION_KEY);
   const port = config.smtp_port;
   if (port !== 465 && port !== 587) throw new Error('EMAIL_SMTP_PORT_BLOCKED');

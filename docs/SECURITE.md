@@ -95,3 +95,33 @@ En HTTPS :
 - Recalcul des soldes après paiement.
 - Génération PDF valide (`application/pdf`, en-tête `%PDF`).
 - Tests unitaires du moteur TVA, des statuts, permissions, dates et mots de passe.
+- `401` anonyme, `403 CSRF_TOKEN`, `403` pour un rôle lecture seule sur la configuration e-mail et l'envoi d'un document.
+
+## 9. Envoi des documents par e-mail
+
+- **Quatre modes** : `manual` (défaut — aucun message ne part, le PDF se télécharge), Resend, Brevo ou
+  un relais SMTP explicite. Le mode est un paramètre d'espace de travail, pas une constante de code.
+- **Identifiants chiffrés au repos** : AES-GCM 256 bits, IV aléatoire par écriture, format `v1.<iv>.<chiffré>`.
+  La clé de chiffrement (`MAIL_CONFIG_ENCRYPTION_KEY`, au moins 32 caractères) n'est **jamais** en base :
+  elle vient des secrets de la plateforme. Sans elle, enregistrer un mot de passe ou une clé est refusé
+  (`503 MAIL_ENCRYPTION_KEY_MISSING`) plutôt que stocké en clair.
+- **Jamais renvoyés au client** : l'API ne renvoie que `has_api_key` / `has_smtp_password`. Les secrets de
+  plateforme `RESEND_API_KEY`, `BREVO_API_KEY` et `SMTP_PASSWORD` sont prioritaires sur la valeur chiffrée,
+  ce qui permet de changer une clé sans écrire en base.
+- **Surface réduite** : la configuration et le message de test exigent `settings.write` (un rôle en lecture
+  ne peut donc ni lire ni modifier la configuration) ; l'envoi d'une pièce exige la permission d'écriture
+  du module concerné. Un type de document inconnu répond `404` avant toute requête.
+- **Relais SMTP encadré** : nom d'hôte validé (pas d'adresse IP, pas de `localhost`, `.local` ou
+  `.internal`, pas de port dans le nom) et ports 465 ou 587 uniquement, afin qu'un espace de travail ne
+  puisse pas pointer le relais vers la plateforme elle-même.
+- **Traçabilité** : changement de configuration, envoi de test et envoi d'un document produisent des
+  entrées du journal (`activity.email_settings_changed`, `activity.email_test_sent`,
+  `activity.<kind>_emailed` avec destinataire, fournisseur et identifiant du message).
+- **Contenu** : le corps est échappé avant conversion en HTML ; les modèles n'acceptent que trois variables
+  (client, numéro de pièce, société).
+
+> **Limite assumée.** Aucun message n'a été réellement délivré depuis cet hébergement : il n'existe pas de
+> identifiant de fournisseur ici, et un échec `502` ne distingue pas un refus du fournisseur d'un appel
+> sortant bloqué (vérifié séparément : Resend répond `401` sans clé). Le chemin SMTP n'a jamais ouvert de
+> connexion. En production, l'envoi transmet les factures à un sous-traitant : prévoir le contrat et la
+> mention correspondante avant de l'activer.

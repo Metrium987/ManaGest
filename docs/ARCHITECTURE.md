@@ -28,7 +28,7 @@ sont calculés côté serveur.
 | `shared/` | Domaine commun : rôles, permissions, statuts, taux de TVA, devises, moteur de calcul |
 | `server/db/` | Schéma D1, provisionnement, helpers typés |
 | `server/lib/` | Cryptographie, monnaie, TVA, dates, numérotation, validation, erreurs, audit |
-| `server/services/` | Documents, statuts, PDF, sessions, données de démonstration |
+| `server/services/` | Documents, statuts, PDF, e-mail (modèles, chiffrement des identifiants, fournisseurs), sessions, données de démonstration |
 | `server/routes/` | Un routeur par domaine fonctionnel |
 | `src/features/` | Pages React regroupées par module |
 | `src/components/` | Bibliothèque UI (boutons, formulaires, dialogues, tableaux, graphiques) |

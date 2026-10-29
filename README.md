@@ -22,7 +22,7 @@ fuseau `Pacific/Tahiti` (UTC−10) et mentions légales adaptées.
 | **Produits** | Catalogue, prix de vente et coût, suivi de stock |
 | **Projets** | Projets, budget, tâches, temps facturable |
 | **Analyse** | Tableau de bord, chiffre d'affaires, résultat, TVA collectée, balance âgée, ventes par client, dépenses, export CSV |
-| **Administration** | Paramètres société, numérotation, taux de TVA, rôles et permissions, journal d'audit, sessions |
+| **Administration** | Paramètres société, numérotation, taux de TVA, rôles et permissions, journal d'audit, sessions, envoi des documents par e-mail |
 | **Sécurité** | Mots de passe PBKDF2, sessions opaques, CSRF, contrôle d'origine, limitation des tentatives, CSP, en-têtes de sécurité |
 
 ### Cycle de vie d'une facture
@@ -169,5 +169,7 @@ que masquer les actions non autorisées. Voir [`docs/SECURITE.md`](docs/SECURITE
 ## 8. Licence et état
 
 Version 1.0 — périmètre fonctionnel complet pour une PME polynésienne.
-Les intégrations externes (SMTP, passerelles de paiement, Peppol) sont volontairement
-hors périmètre de cette version et peuvent être ajoutées comme modules indépendants.
+Les passerelles de paiement et l'interconnexion Peppol restent hors périmètre et peuvent être
+ajoutées comme modules indépendants. L'**envoi des documents par e-mail** est livré : mode manuel
+par défaut (aucun message ne part), Resend, Brevo ou un relais SMTP explicite, réglé dans
+Paramètres → E-mail. Les identifiants sont chiffrés au repos ; voir [`docs/SECURITE.md`](docs/SECURITE.md) §9.
