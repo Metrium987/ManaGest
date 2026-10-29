@@ -11,3 +11,16 @@
 ## 2026-10-28 update
 - #1, #2, #3 marked answered per the instructions above; dependent tasks T-202a–c, T-203, T-403, T-001/T-002 design prep unblocked.
 - Still open: #4 (PQ-1…PQ-5), #5 (locally-approved DICP wording), #6 (email provider choice).
+
+
+## Owner decision 2026-10-29 — no accountant available
+
+The three items that waited on an accountant/DICP are **closed** by adopting standard defaults, exposed as ordinary parameters (Paramètres → Taxes → « Valeurs fiscales par défaut ») and marked in the interface as awaiting later review:
+
+| Item | Default adopted | Where it lives |
+|---|---|---|
+| Retention of issued documents | 10 years | `settings_extra.retention_years` (delete guard reads it) |
+| Franchise in base ceiling | 10 000 000 XPF | `settings_extra.franchise_threshold` |
+| Tax-status wording and legal mentions | company `legal_notes` + `vat_regime` (standard / franchise) | Paramètres → Entreprise / Facturation |
+
+Nothing in the interface or the documents claims these values are legally certified. Remaining open points are platform questions only (PQ-1, PQ-2, PQ-3) and the owner's meaning of « locations » (OQ-011).

@@ -57,3 +57,10 @@ BUILD-PLAN, TODO (23 tasks + 4 R4 spec rows), module files M0-M12, VERIFICATION-
 - Full end-to-end walk on the running application (14 checks): client → quote → approve → convert → send → payment → paid → refund credit note → send → apply to another invoice → export → import → journal → viewer permission refusal. Report: `docs/build/reports/R1-release-gate.md`.
 - Defect found and fixed: the invoice-side credit application updated the credit's counters manually and left a fully used credit in status « envoyé ». It now recomputes the credit from its allocations (`recalcCredit`), so the status reads « utilisé ». Re-verified live in the same walk.
 - Regression: 84/84 unit tests, typecheck and build clean after the fix.
+
+## 2026-10-29 — Accountant blocker closed + plan re-sequenced
+- **T-100 DONE (owner decision, no accountant available).** The fiscal defaults are now ordinary settings grouped in Paramètres → Taxes → « Valeurs fiscales par défaut »: retention 10 years, franchise ceiling 10 000 000 XPF; tax-status wording stays driven by the company record (`vat_regime` + `legal_notes`). Server: `settings_extra` gains `franchise_threshold` and serves documented defaults; a new `PATCH /api/settings/extras` validates both values and journals one `activity.settings_extra_changed`. Interface states plainly that these are standard defaults, not a legal validation.
+- Verified live: GET returns the defaults, PATCH saves and journals, an invalid retention (0) is refused with 422. 84/84 tests, typecheck and build clean.
+- `TODO.md` rewritten as seven dependency-ordered phases with a graph and a blocker register; `BUILD-PLAN.md` records the revised order; `PLAN-OPEN-QUESTIONS.md` and audit `09-open-questions.md` close the accountant items.
+- Two plan additions: **T-108a** (quote and credit-note PDFs — they do not exist) and **T-103** now depends on it; the parity matrix row PAR-OUT-001 was corrected accordingly.
+- Remaining blockers are platform-only: PQ-1 (scheduled trigger), PQ-2 (outbound e-mail + provider), PQ-3 (upload ceiling), plus owner meaning of « locations ».

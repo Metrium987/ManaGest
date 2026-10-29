@@ -94,3 +94,16 @@ Wording rule applied: `UNSUPPORTED` is reserved for sources that explicitly deny
 - **OQ-011 locations meaning**: CONFIRMED — per-client (or per-vendor) named delivery/site addresses selectable on documents, as defined in `15-platform-feasibility-register.md §locations`. Unblocks T-403 (R4 spec only).
 - **OQ-007 multi-company preparation**: APPROVED — company identifier column on the settings row and on the numbering register. Unblocks T-001/T-002 design-level prep.
 - Recorded by the agent from the owner review instruction with the bracketed options resolved to CONFIRMED; **the owner may override any line by reply**.
+
+
+## 2026-10-29 — Owner decision: no accountant (closes `[VALIDATE LOCALLY]`)
+
+The owner instructed that, in the absence of an accountant and to avoid stalling, standard default values are to be used and grouped in the existing settings module. Consequence for the audit:
+
+| Question | Decision | Status |
+|---|---|---|
+| OQ-004 (explicit tax status + matching legal mention) | Implemented as a setting: per-line `taxable` / `exempt`, company `vat_regime` and `legal_notes` wording. No legal certification claimed. | **ANSWERED** (owner, 2026-10-29) |
+| OQ-005 / OQ-006 (retention, cancellation instead of deletion) | 10-year retention adopted as a parameter, editable; deletion of issued documents stays blocked by the guard. | **ANSWERED** (default value) |
+| OQ-019 (franchise threshold « ≤ 10 M XPF ») | 10 000 000 XPF adopted as a parameter (`franchise_threshold`). | **ANSWERED** (default value) |
+
+The “To confirm with a local accountant / DICP” section stays in this file for traceability, but no build task depends on it: the values are edited in Paramètres, not in code.

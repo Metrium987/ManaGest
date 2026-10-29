@@ -124,7 +124,7 @@ Reading legend: **B** = baseline evidence id (02-invoiceninja-inventory), **M** 
 
 | PAR id | Baseline (B) | Intended (I) | ManaGest (M) | Verdict |
 |---|---|---|---|---|
-| PAR-OUT-001 | PDF builders for all document types + downloadable (IN controllers `downloadPdf`) | FRD-01/FRD-17 | PDF build via pdf-lib for invoice/quote/credit [EXECUTED %PDF] | `CONFORMING` per invoice; `PARTIAL` overall (no per-doc-type design variations, no language of template choice) |
+| PAR-OUT-001 | PDF builders for all document types + downloadable (IN controllers `downloadPdf`) | FRD-01/FRD-17 | PDF via pdf-lib for **invoices only** — corrected 2026-10-29: no quote PDF route, no credit-note PDF route, no download button on either screen | `PARTIAL` (invoice `CONFORMING`; quote and credit-note PDFs `MISSING`, task T-108a in the build plan) |
 | PAR-OUT-002 | Email sending + per-event templates + history (IN-MAIL-*) | none located | Absent (no email capability used yet) | `PLATFORM-DEPENDENT` (outbound email capability + provider choice; OQ-002) |
 | PAR-OUT-003 | Attachment uploads (documents entity) | none located | Absent | `MISSING` (platform storage capability needed) |
 ## Verdict re-run after owner decisions (2026-10-28) — authoritative over earlier rows

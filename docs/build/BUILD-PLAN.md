@@ -61,3 +61,18 @@ M0 Foundations ──► M1 Permissions ──► M2 Clients ──► M4 Docume
 | PQ-1..PQ-5 (platform) | night scheduler caller (PQ-1), email provider (PQ-2), upload ceiling numerical (PQ-3), XLSX path (unverified) | platform support answers |
 | OQ-019/004/005/006 local validations (accountant/DICP) | finalisation of tax wording, retention lock | owner + accountant |
 | OQ-001 "locations" meaning (owner) | locations extension-point slot wording (R4) | owner |
+
+
+## Revised execution order (2026-10-29)
+
+The original ordering mixed release labels with dependency order. It is replaced by seven phases in `TODO.md`:
+
+1. Parameters and foundations (T-100 fiscal defaults — done, T-107, T-010)
+2. Document output (T-108a quote/credit PDFs, T-108 second layout)
+3. Sharing and files (T-103 public links, T-101 attachments)
+4. Automation (T-104a → T-104b → T-104c → T-105 → T-106)
+5. Permissions and admin screens (T-202a/b/c, T-201a/b/c, T-203)
+6. Operations and reporting (T-204, T-205, T-206, T-207)
+7. R4 extension-point specifications only (T-401…T-404)
+
+Two additions explain the change: **T-108a** exists because the audit had wrongly recorded quote and credit-note PDFs as present; **T-103** therefore cannot start before it. **T-100** exists because the owner decided that, with no accountant available, standard default values are adopted as ordinary settings instead of blocking progress: retention 10 years, franchise ceiling 10 000 000 XPF, tax-regime wording driven by the company record. Nothing in the plan now waits on an external accountant.

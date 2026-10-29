@@ -37,6 +37,26 @@ export function SettingsPage() {
   const [reopenReason, setReopenReason] = useState('');
 
   const settings = useQuery({ queryKey: ['settings'], queryFn: () => api.get<SettingsPayload>('/settings') });
+  const extras = useQuery({
+    queryKey: ['settings-extras'],
+    queryFn: () => api.get<{ extras: { key: string; value: string; is_default: boolean }[] }>('/settings/extras'),
+    enabled: can('settings.read'),
+  });
+  const [fiscal, setFiscal] = useState<{ retention_years: string; franchise_threshold: string } | null>(null);
+  useEffect(() => {
+    if (extras.data && !fiscal) {
+      const read = (key: string) => extras.data!.extras.find((item) => item.key === key)?.value ?? '';
+      setFiscal({ retention_years: read('retention_years'), franchise_threshold: read('franchise_threshold') });
+    }
+  }, [extras.data, fiscal]);
+  const saveFiscal = useMutation({
+    mutationFn: (input: { retention_years: string; franchise_threshold: string }) => api.patch('/settings/extras', input),
+    onSuccess: () => {
+      toast.success(t('settings.saved'));
+      queryClient.invalidateQueries({ queryKey: ['settings-extras'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
   const periods = useQuery({
     queryKey: ['periods'],
     queryFn: () => api.get<{ data: PeriodLock[] }>(`/settings/periods${toQuery({ page: 1, per_page: 100 })}`),
@@ -228,6 +248,44 @@ export function SettingsPage() {
                     )) : <tr><td colSpan={3} className="text-center text-muted">{t('common.none')}</td></tr>}
                   </tbody>
                 </table>
+              </SectionCard>
+              <SectionCard title={t('settings.fiscalDefaults')} subtitle={t('settings.fiscalDefaultsHint')} bodyClassName="space-y-4 p-5">
+                {fiscal ? (
+                  <>
+                    <FormGrid>
+                      <Field label={t('settings.retentionYears')} htmlFor="retention_years" hint={t('settings.retentionHint')}>
+                        <Input
+                          id="retention_years"
+                          type="number"
+                          min="1"
+                          max="999"
+                          value={fiscal.retention_years}
+                          onChange={(event) => setFiscal({ ...fiscal, retention_years: event.target.value })}
+                          disabled={readOnly}
+                        />
+                      </Field>
+                      <Field label={t('settings.franchiseThreshold')} htmlFor="franchise_threshold" hint={t('settings.franchiseHint')}>
+                        <Input
+                          id="franchise_threshold"
+                          type="number"
+                          min="0"
+                          step="1000"
+                          value={fiscal.franchise_threshold}
+                          onChange={(event) => setFiscal({ ...fiscal, franchise_threshold: event.target.value })}
+                          disabled={readOnly}
+                        />
+                      </Field>
+                    </FormGrid>
+                    <p className="rounded-lg bg-surface px-3 py-2 text-xs text-muted">{t('settings.defaultsNote')}</p>
+                    {can('settings.write') ? (
+                      <Button variant="secondary" loading={saveFiscal.isPending} onClick={() => saveFiscal.mutate(fiscal)} icon={<Save className="h-4 w-4" aria-hidden="true" />}>
+                        {t('common.save')}
+                      </Button>
+                    ) : null}
+                  </>
+                ) : (
+                  <Skeleton className="h-24" />
+                )}
               </SectionCard>
             </>
           ) : null}

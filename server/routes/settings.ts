@@ -101,11 +101,57 @@ settingsRoutes.put('/numbering/:entity', requirePermission('settings.write'), as
 });
 
 // --- M0 (T-003/T-009): key/value extension settings (retention years, UI language variant) ---
-const EXTRA_KEYS = ['retention_years', 'ui_language'] as const;
+const EXTRA_KEYS = ['retention_years', 'ui_language', 'franchise_threshold'] as const;
+
+/**
+ * Standard defaults adopted while no accountant has reviewed them (owner
+ * decision 2026-10-29): 10 years of retention, the DICP franchise ceiling of
+ * 10 000 000 XPF, French UI. They are ordinary settings, editable without code.
+ */
+const EXTRA_DEFAULTS: Record<string, string> = {
+  retention_years: '10',
+  franchise_threshold: '10000000',
+  ui_language: 'fr',
+};
 
 settingsRoutes.get('/extras', requirePermission('settings.read'), async (c) => {
-  const rows = await c.env.DB.prepare(`SELECT key, value FROM settings_extra`).all();
-  return c.json({ extras: rows.results ?? [] });
+  const rows = await c.env.DB.prepare(`SELECT key, value FROM settings_extra`).all<{ key: string; value: string }>();
+  const stored = new Map((rows.results ?? []).map((row) => [row.key, row.value]));
+  return c.json({
+    extras: EXTRA_KEYS.map((key) => ({
+      key,
+      value: stored.get(key) ?? EXTRA_DEFAULTS[key] ?? '',
+      is_default: !stored.has(key),
+    })),
+  });
+});
+
+/** Batch update of the fiscal defaults, validated and journalled once. */
+settingsRoutes.patch('/extras', requirePermission('settings.write'), async (c) => {
+  const user = c.get('user')!;
+  const body = parseInput(
+    z.object({
+      retention_years: z.coerce.string().regex(/^[1-9]\d{0,2}$/).optional(),
+      franchise_threshold: z.coerce.string().regex(/^\d{1,12}$/).optional(),
+    }).refine((value) => Object.keys(value).length > 0, { message: 'empty' }),
+    await c.req.json().catch(() => ({})),
+  );
+  const now = nowISO();
+  for (const [key, value] of Object.entries(body)) {
+    await c.env.DB.prepare(
+      `INSERT INTO settings_extra (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+    ).bind(key, value, user.id, now).run();
+  }
+  await logActivity(c.env.DB, {
+    userId: user.id,
+    action: 'updated',
+    entityType: 'settings',
+    entityId: 'extras:fiscal',
+    summary: 'activity.settings_extra_changed',
+    meta: body as Record<string, string>,
+  });
+  return c.json({ ok: true });
 });
 
 settingsRoutes.put('/extras/:key', requirePermission('settings.write'), async (c) => {

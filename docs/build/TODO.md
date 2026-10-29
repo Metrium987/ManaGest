@@ -1,62 +1,102 @@
-# ManaGest — Master TODO (orders, gates in VERIFICATION-GATES.md; status updated 2026-10-28: T-000, T-001, T-002a, T-003, T-006, T-009 DONE (M0 pilot); L/XL tasks split)
+# ManaGest — Master TODO (execution order revised 2026-10-29; gates in VERIFICATION-GATES.md)
 
-Legend: Eff S/M/L/XL; status TODO|IN PROGRESS|DONE|BLOCKED; every row cites evidence.
+Ordering rule: a task starts only when everything it depends on is DONE. Phases follow the dependency chain, not the module numbers. Every row cites its evidence and records its gate result.
 
-## R1 — Foundations & compliance (startable now)
-| ID | Title | Module | Evidence | Deps | Blockers | Eff | Gate |
+Legend: Eff S/M/L/XL · statuses TODO | IN PROGRESS | DONE | BLOCKED.
+
+## Dependency graph (start here)
+
+```
+T-100 fiscal defaults ─┐
+T-107 expense categories ├─> T-207 local reports
+T-010 English ─────────┘
+T-108a quote/credit PDFs ──> T-108 second layout ──> T-103 public links ──> T-404 palette spec
+T-101 attachments (needs PQ-3 only to display the platform ceiling)
+T-104a endpoint ──> T-104b pipeline ──> T-104c dashboard card ──> T-105 auto reminders ──> T-106 email (PQ-2)
+T-202a roles schema ──> T-202b role API ──> T-202c role UI ──> T-203 button gating
+T-201a ──> T-201b ──> T-201c view screens ──> T-206 saved filters
+T-204 bank matching ──> T-205 projects/kanban
+```
+
+## Phase 1 — Parameters and foundations
+
+| ID | Title | Module | Evidence | Deps | Blockers | Eff | Status / gate |
 |---|---|---|---|---|---|---|---|
-| T-000 | Baseline backup: code checkpoint + full D1 data export + restore test on scratch | M0 | owner review #4 | — | — | S | DONE (commit fb542f5; scratch restore verified 71 inv / 36 cli / 388 act) |
-| T-001 | Per-entity numbering: editable pattern+prefix per document type (FAC/DEV/AV/REG stored, gap register) | M0 | CC-RA-1; BK-005 | — | — | M | DONE (server API + register + placeholder validation; admin UI screen part of T-201c sweep) |
-| T-002a | TVA status model: LineItem.tax_status + exempt handling in computeTotals + line schema | M0 | BK-001 | T-001 | — | S | DONE (4 unit tests) |
-| T-002b | Tax-status wording on invoice/quote PDF and exports | M4 | BK-001 | T-002a | accountant confirm | S | DONE for invoice PDF + reports; quote PDF NOT FOUND as a feature (quotes have no PDF output at all — logged) |
-| T-002c | Line editor UI field for tax_status | M4 | sheet invoices; R-A | T-002a | — | S | DONE (per-line taxable/exempt selector; live: exempt line produced no VAT bucket) |
-| T-002d | Reports: exempt lines without 0% bucket | M10 | BK-001 | T-002a | — | S | DONE (tax report splits taxable base and exempt base; 0% rows filtered; live summary verified) |
-| T-003 | Settings: extras KV (retention, ui_language variant); timezone/footer/session fields verified already in UI | M0 | 12-settings-coverage; CC-RA-4 | — | — | S | DONE (login-attempts setting stays R2) |
-| T-004 | Refunds via credit notes: reverse allocation flow (no separate refund flow) | M4 | BK-006; OQ-012 | T-002 | — | M | DONE (refund ceiling helper + 409 guard; "Établir un avoir" modal on invoice detail; live 201 avoir AV-2026-0026 / 409 over-ceiling / 422 zero; 65 tests) |
-| T-005 | Manual reminders + terms/behaviour consistency (no phantom late fee, OQ-020) | M4 | BK-002 (manual part); OQ-020 | T-002 | scheduled part → R2 | S | DONE manual half (Relancer action on overdue invoices, journalled; default terms rewritten truthfully); automatic reminders R2 |
-| T-006 | In-app CSV export of every list with round-trip headers | M7 | BK-011 (R1 scope per OQ-016 owner answer); import-export sheet | T-001 | — | S | DONE (7 list pages wired; live 200 CSV + journal + viewer-read matrix; route-guard test extended with documented handler-level check; 61 tests green) |
-| T-007 | Overdue/computed status chips (expired quote) list/detail | M4 | BK-004 | T-002 | — | S | DONE (computed `expired` flag in quote API, chips on list and detail; overdue already computed for invoices; live flags verified) |
-| T-009 | Retention: issued-doc delete guard + gap register + configurable years | M0 | OQ-005/006; BK-028 | T-001 | accountant confirm | M | DONE (live 409 evidence) |
-| T-008 | Permissions: server checks sweep + audit test helper (fixed roles) | M1 | CC-RC (enforcement part); 17 §R-C | — | — | M | DONE (invariant + matrix tests; live negatives incl. 403s; no unguarded route) |
+| T-100 | Fiscal defaults as settings: retention years, franchise ceiling, tax-regime wording | M0 | OQ-004/005/006/019; owner decision 2026-10-29 (no accountant) | — | — | S | **DONE** (Paramètres → Taxes: « Valeurs fiscales par défaut », 10 ans / 10 000 000 XPF, editable, journalled; live GET/PATCH/422 verified) |
+| T-107 | Expense categories management screen (remove the fixed enum) | M6 | BK-016; CC-RA-2 (DEF-SESSION-02) | T-100 | — | S | TODO |
+| T-010 | Full English translation + language switch (variant is a setting, French stays default) | M0-fallback | OQ-014 | T-100 | — | M | TODO |
 
-## R2 — Productivity & platform-dependent
-| ID | Title | Module | Evidence | Deps | Blockers | Eff | Gate |
+## Phase 2 — Document output (must precede sharing)
+
+| ID | Title | Module | Evidence | Deps | Blockers | Eff | Status / gate |
 |---|---|---|---|---|---|---|---|
-| T-101 | Attachments: R2 bucket binding + uploads for receipts/proofs (configurable size, default 10 MB) | M6 | BK-010; OQ-009 (owner-accepted) | T-003 | PQ-3 (ceiling display) | M | G-R2.1 |
-| T-102a | Import backend: upload/parse/validate/commit (CSV, transactional) | M7 | OQ-015 | T-006 | — | M | DONE (template/columns/preview/commit endpoints; 11 parser+validation tests; live 401 anon, 422 missing column, 409 invalid rows, 201 create/update, journal) |
-| T-102b | Import wizard UI: templates, preview, row errors, result report | M7 | OQ-015 | T-102a | — | M | DONE (5-step page at /importer, nav « Importer des données »; template download, file or paste, per-row create/update + French issues, explicit exclude-invalid consent, result report; typecheck/build/tests green, browser render not verified) |
-| T-102c | Import invoices entity (per OQ-015, last) | M7 | OQ-015 | T-102b | — | M | DONE (one row per line item, grouped by number; client resolved by email/number/name; header conflicts, unknown client and existing number refused; live: 2 lines → 1 draft FAC-2026-9001 total 80 040, duplicate 409; export now line-per-row round-trip) |
-| T-103 | Public per-document links (token/expiry/revocation/log) + accept-quote action | M4 | OQ-001 interim; portal sheet security rows | T-008 | — | M | G-R2.3 |
-| T-104a | Daily-run endpoint: bearer secret + rate limit + Tahiti-day idempotency | M5 | OQ-003 | T-005 | — | M | TODO |
-| T-104b | Run pipeline: recurring + reminders + journal + stored result | M5 | BK-003 | T-104a | — | M | TODO |
-| T-104c | Dashboard last-run card + manual run button | M5 | OQ-003 spec 5-6 | T-104b | — | S | TODO |
-| T-105 | Reminders automated part (via T-104 pipeline) | M5 | BK-002 | T-104 | — | S | G-R2.5 |
-| T-106 | Email: manual fallback done in R1 — provider option per PQ-2 answer (provider key in Secrets) | M11 | BK-021; OQ-002 | T-104 | PQ-2 + owner provider choice | M | G-R2.6 |
-| T-107 | Expense categories management screen | M6 | BK-016; CC-RA-2 (DEF-SESSION-02) | T-003 | — | S | G-R2.7 |
-| T-108 | Second PDF layout variant + per-document choice | M4 | BK-015; OQ-010 | T-002 | — | M | G-R2.8 |
+| T-108a | Quote and credit-note PDF output (same builder, same wording rules) | M4 | parity PAR-OUT-001 corrected 2026-10-29: no quote/credit PDF exists | T-002 | — | M | TODO |
+| T-108 | Second PDF layout + per-document choice | M4 | BK-015; OQ-010 | T-108a | — | M | TODO |
 
-## R3 — Owner-answer-dependent
-| ID | Title | Module | Evidence | Deps | Blockers | Eff | Gate |
+## Phase 3 — Sharing and files
+
+| ID | Title | Module | Evidence | Deps | Blockers | Eff | Status / gate |
 |---|---|---|---|---|---|---|---|
-| T-201a | Voir: payments + expenses detail screens | M11 | CC-RB-1 tier1 | T-008 | — | M | TODO |
-| T-201b | Voir: vendors, POs, products, projects/tasks | M11 | CC-RB-1 tier2 | T-201a | — | M | TODO |
-| T-201c | Voir: bank, users, settings entries + row "Voir" everywhere | M11 | CC-RB-1 tier3 | T-201b | — | M | TODO |
-| T-202a | Roles table + schema + server-side permission resolution refactor | M1 | CC-RC-1 | T-008 | — | M | TODO |
-| T-202b | Role CRUD endpoints + journaling + negative tests | M1 | CC-RC-1 | T-202a | — | M | TODO |
-| T-202c | Role management UI + read-only matrix view | M1 | CC-RC-1 | T-202b | — | M | TODO |
-| T-203 | Button gating policy (disabled-with-message) | M1 | CC-RC-2 | T-201 | — | S | G-R3.3 |
-| T-204 | Bank matching rules + ledger view | M9 | BK-014; 14_Bank sheet r/acct rows | T-004 | — | M | G-R3.4 |
-| T-205 | Kanban board + invoice-billable-tasks flow | M9 | BK-013; projects-tasks sheet | T-204? no — T-004 | — | M | G-R3.5 |
-| T-206 | Saved filters per list (palette already R4) | M11 | OQ-013 (filters half, R3) | T-201 | — | S | G-R3.6 |
-| T-207 | BEYOND-REFERENCE local report outputs (TVA declaration recap, chiffre d'affaires) | M10 | 18 file REP rows ADAPT; PF-ACCT-001 | T-004 | accountant confirm | M | G-R3.7 |
+| T-103 | Public per-document links: token, expiry, revocation, access log, accept-quote | M4 | OQ-001 interim; portal sheet security rows | T-108a | — | M | TODO |
+| T-101 | Attachments for expense receipts and payment proofs (configurable size, default 10 MB) | M6 | BK-010; OQ-009 | T-100 | PQ-3 only to display the platform ceiling | M | TODO |
 
-## R4 — Extension points only (CC-DEF-1, matrix §14)
+## Phase 4 — Automation
+
+| ID | Title | Module | Evidence | Deps | Blockers | Eff | Status / gate |
+|---|---|---|---|---|---|---|---|
+| T-104a | Daily-run endpoint: secret token, rate limit, Tahiti-day idempotency | M5 | OQ-003 | T-100 | PQ-1 (scheduling) for the trigger itself | M | TODO |
+| T-104b | Run pipeline: recurring invoices + reminders + stored result | M5 | BK-003 | T-104a | — | M | TODO |
+| T-104c | Dashboard « dernier passage » card + manual run button | M5 | OQ-003 spec §5-6 | T-104b | — | S | TODO |
+| T-105 | Automatic reminders through the pipeline | M5 | BK-002 | T-104b | PQ-2 for actually sending mail | S | TODO |
+| T-106 | Outbound e-mail provider (key in platform Secrets) | M11 | BK-021; OQ-002 | T-105 | **PQ-2 + owner provider choice** | M | BLOCKED |
+
+## Phase 5 — Permissions and admin screens
+
+| ID | Title | Module | Evidence | Deps | Blockers | Eff | Status / gate |
+|---|---|---|---|---|---|---|---|
+| T-202a | Roles table + schema + permission resolution | M1 | CC-RC-1 | T-008 | — | M | TODO |
+| T-202b | Role CRUD endpoints, journal, negative tests | M1 | CC-RC-1 | T-202a | — | M | TODO |
+| T-202c | Role management UI + read-only permission matrix | M1 | CC-RC-1 | T-202b | — | M | TODO |
+| T-201a | « Voir » screens: payments and expenses | M11 | CC-RB-1 tier 1 | T-008 | — | M | TODO |
+| T-201b | « Voir » screens: vendors, POs, products, projects, tasks | M11 | CC-RB-1 tier 2 | T-201a | — | M | TODO |
+| T-201c | « Voir » on bank, users, settings entries; row action everywhere | M11 | CC-RB-1 tier 3 | T-201b | — | M | TODO |
+| T-203 | Button gating policy: disabled with a clear reason instead of hidden | M1 | CC-RC-2 | T-202c | — | S | TODO |
+
+## Phase 6 — Operations and reporting
+
+| ID | Title | Module | Evidence | Deps | Blockers | Eff | Status / gate |
+|---|---|---|---|---|---|---|---|
+| T-204 | Bank matching rules + ledger view | M9 | BK-014; bank sheet | T-004 | — | M | TODO |
+| T-205 | Kanban board + billable-tasks-to-invoice flow | M9 | BK-013; projects sheet | T-204 | — | M | TODO |
+| T-206 | Saved filters per list | M11 | OQ-013 (filters half) | T-201c | — | S | TODO |
+| T-207 | Local report outputs: TVA recap, chiffre d'affaires | M10 | 18 REP rows; PF-ACCT-001 | T-100, T-002d | — | M | TODO |
+
+## Phase 7 — R4 extension points (specification only, no build)
+
 | ID | Title | Module | Evidence | Note |
 |---|---|---|---|---|
 | T-401 | Portal wrapper spec (reuses public links) | M12 | matrix §14 | spec rows only |
-| T-402 | Payment states pending/failed + method registry spec | M12 | matrix §14; 16 item 4 | spec only |
-| T-403 | Locations address slot spec — meaning confirmation pending | M12 | 15 §locations | BLOCKED-BY owner OQ-011 meaning |
-| T-404 | Command palette spec (reuses nav/labels) | M12 | matrix §14 | spec only |
+| T-402 | Payment pending/failed states + method registry spec | M12 | matrix §14 | spec only |
+| T-403 | « Locations » address slot spec | M12 | 15 §locations | BLOCKED-BY owner meaning (OQ-011) |
+| T-404 | Command palette spec | M12 | matrix §14 | spec only |
 
-## Added tasks (review round)
-| T-010 | Full English translation file + language switch (variant = setting; default stays fr) | M0-fallback | owner review #3; OQ-014 | T-003 | — | M | TODO |
+## Done — R1 (18 rows closed)
+
+T-000 backup · T-001 numbering · T-002a/b/c/d TVA status (b: invoice PDF + reports; quote PDF reassigned to T-108a) · T-003 settings extras · T-004 refunds via credit notes · T-005 manual reminders + truthful terms · T-006 CSV export · T-007 computed chips · T-008 permission sweep · T-009 retention guard · T-102a import backend · T-102b import wizard · T-102c invoices import · R1 release gate 14/14.
+
+## Why this order
+
+1. **Parameters before anything that prints them** — T-100 closes the accountant blocker, so tax wording, retention and the franchise ceiling are settings, not assumptions. T-107 and T-010 ride on it.
+2. **Document output before sharing** — a public link that cannot render a quote or a credit note would ship broken; T-108a then T-108 then T-103 is the only safe sequence.
+3. **Storage before automation** — attachments (T-101) are independent, so they run beside the PDFs instead of blocking the scheduler.
+4. **Automation is a chain** — endpoint, pipeline, dashboard, reminders, e-mail: each depends on the previous, and e-mail stays last because it alone needs a platform answer.
+5. **Permissions before the admin screens** — role CRUD (T-202) decides what a « Voir » screen may show, so it precedes T-201 and the gating policy.
+6. **Operations last** — bank matching, kanban, saved filters and local reports depend on documents, permissions and the fiscal defaults being settled.
+
+## Blocker register
+
+- **PQ-1** scheduled triggers → gates the trigger of T-104a.
+- **PQ-2** outbound e-mail + provider choice → gates T-106 and the sending half of T-105.
+- **PQ-3** upload ceiling → display only for T-101.
+- **Owner OQ-011** meaning of « locations » → T-403.
+- **No accountant available** → resolved by owner decision 2026-10-29: standard defaults adopted as parameters (T-100); nothing in the plan waits on an external accountant any more.
