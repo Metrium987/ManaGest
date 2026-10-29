@@ -66,6 +66,7 @@ export function QuoteDetailPage() {
         actions={
           <>
             <StatusBadge status={data.status} />
+            {data.expired ? <StatusBadge status="expired" /> : null}
             {data.status === 'draft' && can('quotes.write') ? (
               <Button variant="secondary" onClick={() => action.mutate('send')} loading={action.isPending} icon={<Send className="h-4 w-4" aria-hidden="true" />}>{t('quotes.send')}</Button>
             ) : null}

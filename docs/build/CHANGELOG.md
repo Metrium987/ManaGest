@@ -24,3 +24,11 @@ BUILD-PLAN, TODO (23 tasks + 4 R4 spec rows), module files M0-M12, VERIFICATION-
 - UI: "Établir un avoir" button + modal (amount prefilled with the refundable amount, motif) on the invoice detail for paid/partial invoices, gated by `credits.write`.
 - Gate: 65/65 tests green (4 new refund tests incl. the one-third-of-a-paid-invoice arithmetic), typecheck + build clean; live walk [EXECUTED]: over-ceiling → 409, refund 10 000 on FAC-2026-0038 → 201 AV-2026-0026 (draft, balance 10 000), zero → 422, journal entry present.
 - Note: BK-006's "payment shows partially refunded" clause is superseded by OQ-012 (credit note is the refund record; no payment state change).
+
+## 2026-10-28 — T-002b/c/d, T-005 (manual), T-007 DONE (M4/M10)
+- T-002c: per-line TVA status selector (Assujetti / Exonéré) in the shared line editor; exempt lines carry no rate.
+- T-002d: the TVA report now separates the taxable base and tax from the exempt base and its document count, and drops any 0 % bucket row; the reports screen shows the two extra cards.
+- T-005 (manual half): "Relancer" action on overdue invoices, journalled (`activity.invoice_reminded`); default payment terms rewritten so they no longer promise a late fee the application does not compute. Automatic reminders stay in R2.
+- T-007: quotes expose a computed `expired` flag and show the chip on list and detail; invoice overdue computation already existed.
+- T-002b: invoice PDF prints "Exonéré" per exempt line plus the tax-status paragraph; the quote PDF cannot be covered because ManaGest has no quote PDF output at all (recorded as a gap, not silently claimed).
+- Gate: 65/65 tests, typecheck + build clean; live walk [EXECUTED]: mixed invoice FAC-2026-0082 → total 16 600 with a single 16 % bucket on base 10 000; tax report summary base 2 717 900 / tax 339 940 / exempt 110 000 (1 doc); DEV-2026-0017 expired=true; reminder on FAC-2026-0080 → 200 + journal.

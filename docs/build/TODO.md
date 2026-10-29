@@ -8,14 +8,14 @@ Legend: Eff S/M/L/XL; status TODO|IN PROGRESS|DONE|BLOCKED; every row cites evid
 | T-000 | Baseline backup: code checkpoint + full D1 data export + restore test on scratch | M0 | owner review #4 | — | — | S | DONE (commit fb542f5; scratch restore verified 71 inv / 36 cli / 388 act) |
 | T-001 | Per-entity numbering: editable pattern+prefix per document type (FAC/DEV/AV/REG stored, gap register) | M0 | CC-RA-1; BK-005 | — | — | M | DONE (server API + register + placeholder validation; admin UI screen part of T-201c sweep) |
 | T-002a | TVA status model: LineItem.tax_status + exempt handling in computeTotals + line schema | M0 | BK-001 | T-001 | — | S | DONE (4 unit tests) |
-| T-002b | Tax-status wording on invoice/quote PDF and exports | M4 | BK-001 | T-002a | accountant confirm | S | TODO |
-| T-002c | Line editor UI field for tax_status | M4 | sheet invoices; R-A | T-002a | — | S | TODO |
-| T-002d | Reports: exempt lines without 0% bucket | M10 | BK-001 | T-002a | — | S | TODO |
+| T-002b | Tax-status wording on invoice/quote PDF and exports | M4 | BK-001 | T-002a | accountant confirm | S | DONE for invoice PDF + reports; quote PDF NOT FOUND as a feature (quotes have no PDF output at all — logged) |
+| T-002c | Line editor UI field for tax_status | M4 | sheet invoices; R-A | T-002a | — | S | DONE (per-line taxable/exempt selector; live: exempt line produced no VAT bucket) |
+| T-002d | Reports: exempt lines without 0% bucket | M10 | BK-001 | T-002a | — | S | DONE (tax report splits taxable base and exempt base; 0% rows filtered; live summary verified) |
 | T-003 | Settings: extras KV (retention, ui_language variant); timezone/footer/session fields verified already in UI | M0 | 12-settings-coverage; CC-RA-4 | — | — | S | DONE (login-attempts setting stays R2) |
 | T-004 | Refunds via credit notes: reverse allocation flow (no separate refund flow) | M4 | BK-006; OQ-012 | T-002 | — | M | DONE (refund ceiling helper + 409 guard; "Établir un avoir" modal on invoice detail; live 201 avoir AV-2026-0026 / 409 over-ceiling / 422 zero; 65 tests) |
-| T-005 | Manual reminders + terms/behaviour consistency (no phantom late fee, OQ-020) | M4 | BK-002 (manual part); OQ-020 | T-002 | scheduled part → R2 | S | G-R1.5 |
+| T-005 | Manual reminders + terms/behaviour consistency (no phantom late fee, OQ-020) | M4 | BK-002 (manual part); OQ-020 | T-002 | scheduled part → R2 | S | DONE manual half (Relancer action on overdue invoices, journalled; default terms rewritten truthfully); automatic reminders R2 |
 | T-006 | In-app CSV export of every list with round-trip headers | M7 | BK-011 (R1 scope per OQ-016 owner answer); import-export sheet | T-001 | — | S | DONE (7 list pages wired; live 200 CSV + journal + viewer-read matrix; route-guard test extended with documented handler-level check; 61 tests green) |
-| T-007 | Overdue/computed status chips (depôt? expired quote) list/detail | M4 | BK-004 | T-002 | — | S | G-R1.7 |
+| T-007 | Overdue/computed status chips (expired quote) list/detail | M4 | BK-004 | T-002 | — | S | DONE (computed `expired` flag in quote API, chips on list and detail; overdue already computed for invoices; live flags verified) |
 | T-009 | Retention: issued-doc delete guard + gap register + configurable years | M0 | OQ-005/006; BK-028 | T-001 | accountant confirm | M | DONE (live 409 evidence) |
 | T-008 | Permissions: server checks sweep + audit test helper (fixed roles) | M1 | CC-RC (enforcement part); 17 §R-C | — | — | M | DONE (invariant + matrix tests; live negatives incl. 403s; no unguarded route) |
 

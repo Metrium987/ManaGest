@@ -150,16 +150,23 @@ export function LineItemsEditor({
                   </td>
                   <td className="border-y border-line bg-white p-2">
                     <label htmlFor={`line-tax-${index}`} className="sr-only">{t('invoices.lineTax')}</label>
+                    {/* BK-001/OQ-004: the status is explicit per line; a 0 % rate is
+                        only for genuine zero-rated cases, never a stand-in for exempt. */}
                     <select
                       id={`line-tax-${index}`}
                       className="select border-0 px-1 text-center focus:ring-0"
-                      value={line.tax_rate}
-                      onChange={(event) => update(index, { tax_rate: Number(event.target.value) })}
+                      value={line.tax_status === 'exempt' ? 'exempt' : String(line.tax_rate)}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        if (value === 'exempt') update(index, { tax_status: 'exempt' });
+                        else update(index, { tax_status: 'taxable', tax_rate: Number(value) });
+                      }}
                       disabled={disabled}
                     >
                       {TVA_RATES.map((rate) => (
                         <option key={rate.rate} value={rate.rate}>{rate.rate} %</option>
                       ))}
+                      <option value="exempt">{t('invoices.taxExempt')}</option>
                     </select>
                   </td>
                   <td className="border-y border-line bg-white p-2 text-right">

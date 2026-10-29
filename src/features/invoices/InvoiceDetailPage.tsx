@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft, Ban, CheckCircle2, Copy, Download, FileMinus, Pencil, Send, Trash2, Wallet,
+  ArrowLeft, Ban, BellRing, CheckCircle2, Copy, Download, FileMinus, Pencil, Send, Trash2, Wallet,
 } from 'lucide-react';
 import { PAYMENT_METHODS } from '@shared/domain';
 import { api, downloadPdf } from '@/lib/api';
@@ -44,6 +44,18 @@ export function InvoiceDetailPage() {
     queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['payments'] });
   };
+
+  // T-005 (BK-002 manual half, OQ-020): a reminder is a recorded, manual act;
+  // no email is sent until a mail provider is configured (PDF + "sent" status).
+  const remind = useMutation({
+    mutationFn: () => api.post(`/invoices/${id}/remind`),
+    onSuccess: () => {
+      toast.success(t('invoices.reminded'));
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['activity'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
 
   // T-004 (OQ-012): a refund is a credit note, never a payment reversal.
   const refund = useMutation({
@@ -139,6 +151,16 @@ export function InvoiceDetailPage() {
             {data.balance > 0 && data.status !== 'cancelled' && can('payments.write') ? (
               <Button onClick={() => setPaymentOpen(true)} icon={<Wallet className="h-4 w-4" aria-hidden="true" />}>
                 {t('invoices.markPaid')}
+              </Button>
+            ) : null}
+            {data.overdue && can('invoices.write') ? (
+              <Button
+                variant="secondary"
+                loading={remind.isPending}
+                onClick={() => remind.mutate()}
+                icon={<BellRing className="h-4 w-4" aria-hidden="true" />}
+              >
+                {t('invoices.remind')}
               </Button>
             ) : null}
             {['paid', 'partial'].includes(data.status) && can('credits.write') ? (

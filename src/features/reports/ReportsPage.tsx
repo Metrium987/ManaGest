@@ -121,6 +121,8 @@ export function ReportsPage() {
         ? [
             { label: t('reports.base'), value: formatMoney(summary.base ?? 0, currency) },
             { label: t('reports.collected'), value: formatMoney(summary.tax ?? 0, currency) },
+            { label: t('reports.exemptBase'), value: formatMoney(summary.exempt_base ?? 0, currency) },
+            { label: t('reports.exemptDocuments'), value: String(summary.exempt_documents ?? 0) },
           ]
         : type === 'aging'
           ? [

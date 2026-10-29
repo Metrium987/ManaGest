@@ -180,18 +180,28 @@ reportRoutes.get('/:type', requirePermission('reports.read'), async (c) => {
       .bind(from, to)
       .all<{ rate: number; base: number; tax: number; documents: number }>();
 
+    // T-002d (BK-001): an exempt invoice must never contribute to the taxable
+    // base or appear as a 0 % VAT bucket. Taxable and exempt totals are kept
+    // apart and reported side by side.
     const summary = await db.prepare(
-      `SELECT COALESCE(SUM(subtotal - discount_total), 0) AS base,
-              COALESCE(SUM(tax_total), 0) AS tax
+      `SELECT COALESCE(SUM(CASE WHEN tax_exempt = 0 THEN subtotal - discount_total END), 0) AS base,
+              COALESCE(SUM(CASE WHEN tax_exempt = 0 THEN tax_total END), 0) AS tax,
+              COALESCE(SUM(CASE WHEN tax_exempt = 1 THEN subtotal - discount_total END), 0) AS exempt_base,
+              SUM(CASE WHEN tax_exempt = 1 THEN 1 ELSE 0 END) AS exempt_documents
        FROM invoices
        WHERE deleted_at IS NULL AND status <> 'cancelled' AND date >= ? AND date <= ?`,
     )
       .bind(from, to)
-      .first<{ base: number; tax: number }>();
+      .first<{ base: number; tax: number; exempt_base: number; exempt_documents: number }>();
 
     return c.json({
-      rows: rows.results ?? [],
-      summary: { base: summary?.base ?? 0, tax: summary?.tax ?? 0 },
+      rows: (rows.results ?? []).filter((row) => Number(row.rate) > 0),
+      summary: {
+        base: summary?.base ?? 0,
+        tax: summary?.tax ?? 0,
+        exempt_base: summary?.exempt_base ?? 0,
+        exempt_documents: summary?.exempt_documents ?? 0,
+      },
     });
   }
 
