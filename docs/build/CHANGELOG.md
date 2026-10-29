@@ -32,3 +32,11 @@ BUILD-PLAN, TODO (23 tasks + 4 R4 spec rows), module files M0-M12, VERIFICATION-
 - T-007: quotes expose a computed `expired` flag and show the chip on list and detail; invoice overdue computation already existed.
 - T-002b: invoice PDF prints "Exonéré" per exempt line plus the tax-status paragraph; the quote PDF cannot be covered because ManaGest has no quote PDF output at all (recorded as a gap, not silently claimed).
 - Gate: 65/65 tests, typecheck + build clean; live walk [EXECUTED]: mixed invoice FAC-2026-0082 → total 16 600 with a single 16 % bucket on base 10 000; tax report summary base 2 717 900 / tax 339 940 / exempt 110 000 (1 doc); DEV-2026-0017 expired=true; reminder on FAC-2026-0080 → 200 + journal.
+
+## 2026-10-29 — T-102a CSV import backend DONE (M7)
+- `server/lib/import.ts`: pure CSV parser (delimiter auto-detect, quoted cells, BOM), column specs that mirror the export headers (round-trip), template generator with an annotation row, validation (required fields, booleans, integers, email shape, duplicate keys inside the file).
+- `server/routes/import.ts`: `GET /api/import/template/:entity`, `GET /api/import/columns/:entity`, `POST /api/import/preview/:entity`, `POST /api/import/commit/:entity`. Per-entity permission guard on every registration; preview and commit run the same validation; commit is one D1 batch (atomic) and is journalled as `activity.data_imported`.
+- Rules relaxed during verification: only *required* columns must be present (optional columns take defaults); missing required column is named in French; invalid rows block the commit unless the caller explicitly sets `skip_invalid`, and the count is reported back.
+- Bug found and fixed by the live walk: `clients.country` is NOT NULL, so an empty country column crashed the commit; it now defaults to « Polynésie française ».
+- Gate: 77/77 tests (11 new import tests), typecheck + build clean; live walk [EXECUTED]: anonymous 401, missing required column 422, duplicate rows flagged (2/2), commit refused 409, explicit skip 201 (2 created, 2 skipped), re-import same email 201 updated 1, product insert 201, journal entries present.
+- Still open in M7: T-102b wizard screen, T-102c invoices import, XLSX (platform-unverified).

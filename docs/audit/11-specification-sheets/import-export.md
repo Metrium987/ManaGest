@@ -26,5 +26,5 @@ Owner decision: do not wait for any specific source system; support the most pop
 - GIVEN a template column missing WHEN previewed THEN mapping error names the missing column.
 
 ## 4. Verdict & evidence
-- ManaGest today: none of the above exists (`MISSING`, planned R1 — parity row PAR-IMPEXP-001).
+- ManaGest today: CSV import for clients and products is implemented (T-102a, 2026-10-29): downloadable templates with an annotation row, delimiter auto-detection, preview with row-level issues, all-or-nothing commit with an explicit "exclude invalid rows" choice, and a journalled result. Invoices import (T-102c) and the wizard screen (T-102b) remain open; XLSX remains unverified.
 - Platform: XLSX-parsing support UNVERIFIED; CSV path platform-independent.

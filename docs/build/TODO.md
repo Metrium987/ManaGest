@@ -23,7 +23,7 @@ Legend: Eff S/M/L/XL; status TODO|IN PROGRESS|DONE|BLOCKED; every row cites evid
 | ID | Title | Module | Evidence | Deps | Blockers | Eff | Gate |
 |---|---|---|---|---|---|---|---|
 | T-101 | Attachments: R2 bucket binding + uploads for receipts/proofs (configurable size, default 10 MB) | M6 | BK-010; OQ-009 (owner-accepted) | T-003 | PQ-3 (ceiling display) | M | G-R2.1 |
-| T-102a | Import backend: upload/parse/validate/commit (CSV, transactional) | M7 | OQ-015 | T-006 | — | M | TODO |
+| T-102a | Import backend: upload/parse/validate/commit (CSV, transactional) | M7 | OQ-015 | T-006 | — | M | DONE (template/columns/preview/commit endpoints; 11 parser+validation tests; live 401 anon, 422 missing column, 409 invalid rows, 201 create/update, journal) |
 | T-102b | Import wizard UI: templates, preview, row errors, result report | M7 | OQ-015 | T-102a | — | M | TODO |
 | T-102c | Import invoices entity (per OQ-015, last) | M7 | OQ-015 | T-102b | — | M | TODO |
 | T-103 | Public per-document links (token/expiry/revocation/log) + accept-quote action | M4 | OQ-001 interim; portal sheet security rows | T-008 | — | M | G-R2.3 |
