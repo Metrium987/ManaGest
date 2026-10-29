@@ -4,7 +4,8 @@
 - **The rules are pure and tested** (`server/lib/accounting.ts`): invoice = debit 411 / credit 706 + 445710; credit note = exact reversal; payment = debit 512 / credit 411; expense = debit 606 + 445660 / credit 401. An exempt document carries **no VAT line at all** instead of a 0 % bucket (BK-001). 9 tests assert the balance of each rule, the discount treatment, the reversal, and that the trial balance totals are equal and the income statement nets correctly.
 - **Reads** (`accounting.read`): `GET /api/accounting/accounts`, `/journal`, `/trial-balance`, `/income-statement`, with an optional date range; `POST /api/accounting/sync` (`accounting.write`) runs the same pass on demand. New permission pair added to the matrix: owner/admin by construction, **accountant** explicitly, and **excluded from the operational-read set** so viewer and sales never see the books.
 - **Screen:** Comptabilité (Finance), with Balance générale, Journal (each entry with its lines), Compte de résultat and Plan comptable, plus a « Reposter les documents » action gated by `accounting.write`.
-- Gate: typecheck clean, tests and production build run below.
+- **Live walk [EXECUTED]:** trial balance 7 accounts, debit = credit = 3 715 500; income statement income 1 703 000, expense 367 260, result 1 335 740; journal 15 entries / 38 lines; `POST /sync` created **0** entries (idempotent); a read-only account got **403** on both the balance and the sync.
+- Gate: typecheck clean, **221/221 tests over 19 files** (9 new), production build clean.
 - **Not claimed:** no opening balances, so **no balance sheet** is derived — inventing them would make the statement wrong; no manual journal entry screen yet; no VAT-return tie-in beyond the existing T-207 recap; the screen has not been opened in a browser.
 
 ## 2026-10-29 — The remaining R3 work: roles UI, « Voir », gating, bank rules, kanban, saved filters
