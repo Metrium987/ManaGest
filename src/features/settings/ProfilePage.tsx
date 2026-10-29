@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Field, FormGrid, Input } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
 import { useConfirm } from '@/components/ui/Modal';
+import { ApiTokensPanel } from './ApiTokensPanel';
 
 interface SessionEntry {
   id: string;
@@ -273,6 +274,10 @@ export function ProfilePage() {
             </div>
           )}
         </SectionCard>
+      </div>
+
+      <div className="mt-4">
+        <ApiTokensPanel />
       </div>
 
       <div className="mt-4">

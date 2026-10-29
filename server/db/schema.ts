@@ -2,7 +2,7 @@
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
  */
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (
@@ -706,4 +706,22 @@ export const SCHEMA_STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS idx_journal_entries_date ON journal_entries(date)`,
   `CREATE INDEX IF NOT EXISTS idx_journal_lines_entry ON journal_lines(entry_id)`,
   `CREATE INDEX IF NOT EXISTS idx_journal_lines_account ON journal_lines(account_code)`,
+
+  // Named API tokens (AUDIT §7 P0.6). Only the SHA-256 digest is stored, the value
+  // is shown once at creation, and revocation is a timestamp so the journal keeps
+  // the fact that the credential existed.
+  `CREATE TABLE IF NOT EXISTS api_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    prefix TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    abilities TEXT NOT NULL DEFAULT '[]',
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT,
+    expires_at TEXT,
+    revoked_at TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id)`,
 ];

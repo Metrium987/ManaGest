@@ -40,6 +40,7 @@ export function SettingsPage() {
   const [period, setPeriod] = useState('');
   const [periodNote, setPeriodNote] = useState('');
   const [reopenReason, setReopenReason] = useState('');
+  const [tokenLimits, setTokenLimits] = useState<{ lifetime: string; max: string } | null>(null);
 
   const settings = useQuery({ queryKey: ['settings'], queryFn: () => api.get<SettingsPayload>('/settings') });
   const extras = useQuery({
@@ -52,6 +53,10 @@ export function SettingsPage() {
     if (extras.data && !fiscal) {
       const read = (key: string) => extras.data!.extras.find((item) => item.key === key)?.value ?? '';
       setFiscal({ retention_years: read('retention_years'), franchise_threshold: read('franchise_threshold') });
+      setTokenLimits({
+        lifetime: read('api_token_lifetime_days'),
+        max: read('api_token_max_per_user'),
+      });
     }
   }, [extras.data, fiscal]);
   const categories = useQuery({
@@ -75,6 +80,18 @@ export function SettingsPage() {
     onSuccess: () => {
       toast.success(t('settings.saved'));
       queryClient.invalidateQueries({ queryKey: ['expense-categories'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const saveTokenLimits = useMutation({
+    mutationFn: (input: { lifetime: string; max: string }) => api.patch('/settings/extras', {
+      api_token_lifetime_days: input.lifetime,
+      api_token_max_per_user: input.max,
+    }),
+    onSuccess: () => {
+      toast.success(t('settings.saved'));
+      queryClient.invalidateQueries({ queryKey: ['settings-extras'] });
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -507,6 +524,43 @@ export function SettingsPage() {
                   <Input id="session_absolute" type="number" min="1" max="72" value={form.session_absolute_hours} onChange={(event) => set('session_absolute_hours', Number(event.target.value))} disabled={readOnly} />
                 </Field>
               </FormGrid>
+              <SectionCard title={t('tokens.title')} subtitle={t('tokens.lifetimeHint')} bodyClassName="space-y-4 p-5">
+                {tokenLimits ? (
+                  <>
+                    <FormGrid>
+                      <Field label={t('tokens.lifetime')} htmlFor="api_token_lifetime">
+                        <Input
+                          id="api_token_lifetime"
+                          type="number"
+                          min="1"
+                          max="3650"
+                          value={tokenLimits.lifetime}
+                          onChange={(event) => setTokenLimits({ ...tokenLimits, lifetime: event.target.value })}
+                          disabled={readOnly}
+                        />
+                      </Field>
+                      <Field label={t('tokens.maxPerUser')} htmlFor="api_token_max">
+                        <Input
+                          id="api_token_max"
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={tokenLimits.max}
+                          onChange={(event) => setTokenLimits({ ...tokenLimits, max: event.target.value })}
+                          disabled={readOnly}
+                        />
+                      </Field>
+                    </FormGrid>
+                    {can('settings.write') ? (
+                      <Button variant="secondary" loading={saveTokenLimits.isPending} onClick={() => saveTokenLimits.mutate(tokenLimits)} icon={<Save className="h-4 w-4" aria-hidden="true" />}>
+                        {t('common.save')}
+                      </Button>
+                    ) : null}
+                  </>
+                ) : (
+                  <Skeleton className="h-20" />
+                )}
+              </SectionCard>
               <p className="rounded-xl bg-surface px-4 py-3 text-xs text-muted">{t('auth.secured')} · PBKDF2-SHA256 · CSRF · {t('settings.sessionIdle').toLowerCase()}</p>
             </>
           ) : null}

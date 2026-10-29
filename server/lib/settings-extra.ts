@@ -3,7 +3,7 @@
  * the routes that read them (PDF layout, language, retention, franchise
  * ceiling) and the settings screen agree on the same keys and defaults.
  */
-export const EXTRA_KEYS = ['retention_years', 'ui_language', 'franchise_threshold', 'pdf_layout', 'attachment_max_mb', 'reminder_interval_days'] as const;
+export const EXTRA_KEYS = ['retention_years', 'ui_language', 'franchise_threshold', 'pdf_layout', 'attachment_max_mb', 'reminder_interval_days', 'api_token_lifetime_days', 'api_token_max_per_user'] as const;
 
 export type ExtraKey = (typeof EXTRA_KEYS)[number];
 
@@ -22,6 +22,10 @@ export const EXTRA_DEFAULTS: Record<ExtraKey, string> = {
   attachment_max_mb: '10',
   // T-105: a client is reminded after 1, 8 and 15 days overdue.
   reminder_interval_days: '7',
+  // T-303: API tokens last a year by default and an account may hold ten. Both
+  // are ordinary settings, editable without redeploying.
+  api_token_lifetime_days: '365',
+  api_token_max_per_user: '10',
 };
 
 export function isExtraKey(value: string): value is ExtraKey {

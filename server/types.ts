@@ -109,6 +109,8 @@ export type AppEnv = {
     company: CompanyRow | null;
     user: AuthenticatedUser | null;
     session: AppSession | null;
+    /** Set when the request authenticated with a named API token. */
+    api_token: { id: string; name: string } | null;
   };
 };
 

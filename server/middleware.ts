@@ -5,6 +5,7 @@ import { ensureSchema } from './db';
 import { constantTimeEqual } from './lib/crypto';
 import { ApiError, fail } from './lib/errors';
 import { loadSession } from './services/session';
+import { verifyApiToken } from './services/api-tokens';
 import type { AppEnv, CompanyRow } from './types';
 
 /** Provisions the schema once per isolate and exposes typed bindings. */
@@ -106,9 +107,31 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
   c.set('company', company);
 
   if (!c.get('session')) {
-    const token = getCookie(c, SESSION_COOKIE);
-    if (!token) return fail(401, 'UNAUTHENTICATED');
-    const loaded = await loadSession(c.env.DB, token);
+    // Named API token first (AUDIT §7 P0.6): `X-API-TOKEN`, as Invoice Ninja
+    // does, or a Bearer token for convenience. The effective permissions are the
+    // intersection of the token's abilities and its owner's current permissions.
+    const presented = c.req.header('x-api-token')
+      ?? (c.req.header('authorization')?.toLowerCase().startsWith('bearer ')
+        ? c.req.header('authorization')!.slice(7).trim()
+        : '');
+    if (presented) {
+      const verified = await verifyApiToken(c.env.DB, presented);
+      if (!verified) return fail(401, 'INVALID_API_TOKEN');
+      c.set('api_token', { id: verified.tokenId, name: verified.name });
+      c.set('user', {
+        id: verified.user.id,
+        email: verified.user.email,
+        first_name: verified.user.first_name,
+        last_name: verified.user.last_name,
+        role: verified.user.role,
+        permissions: verified.permissions,
+      });
+      return next();
+    }
+
+    const cookie = getCookie(c, SESSION_COOKIE);
+    if (!cookie) return fail(401, 'UNAUTHENTICATED');
+    const loaded = await loadSession(c.env.DB, cookie);
     if (!loaded) return fail(401, 'UNAUTHENTICATED');
     c.set('session', loaded.session);
     c.set('user', loaded.session.user);
