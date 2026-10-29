@@ -30,7 +30,7 @@ T-204 bank matching ──> T-205 projects/kanban
 
 | ID | Title | Module | Evidence | Deps | Blockers | Eff | Status / gate |
 |---|---|---|---|---|---|---|---|
-| T-108a | Quote and credit-note PDF output (same builder, same wording rules) | M4 | parity PAR-OUT-001 corrected 2026-10-29: no quote/credit PDF exists | T-002 | — | M | TODO |
+| T-108a | Quote and credit-note PDF output (same builder, same wording rules) | M4 | parity PAR-OUT-001 corrected 2026-10-29: no quote/credit PDF existed | T-002 | — | M | **DONE** (new builder `pdf-documents.ts`; `GET /quotes/:id/pdf` and `GET /credits/:id/pdf`; links on the quote detail and each credit row; 3 unit tests; live 200 application/pdf, %PDF magic, anonymous 401) |
 | T-108 | Second PDF layout + per-document choice | M4 | BK-015; OQ-010 | T-108a | — | M | TODO |
 
 ## Phase 3 — Sharing and files

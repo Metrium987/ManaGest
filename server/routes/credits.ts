@@ -11,6 +11,7 @@ import { lineItemsSchema, offsetOf, paginationSchema, parseInput } from '../lib/
 import { assertPeriodOpen } from '../lib/locks';
 import { requireAuth, requirePermission } from '../middleware';
 import { recalcCredit, recalcInvoice, safeLines, serialiseLines } from '../services/documents';
+import { buildDocumentPdf } from '../services/pdf-documents';
 import type { AppEnv } from '../types';
 
 const creditSchema = z.object({
@@ -63,6 +64,53 @@ creditRoutes.get('/:id', requirePermission('credits.read'), async (c) => {
     .first<Record<string, unknown>>();
   if (!credit) return fail(404, 'NOT_FOUND');
   return c.json({ ...credit, line_items: safeLines(credit.line_items) });
+});
+
+creditRoutes.get('/:id/pdf', requirePermission('credits.read'), async (c) => {
+  const company = c.get('company')!;
+  const credit = await c.env.DB.prepare(
+    `SELECT cr.*, c.display_name AS client_name, c.address1 AS client_address1, c.address2 AS client_address2,
+            c.city AS client_city, c.postal_code AS client_postal_code, c.country AS client_country,
+            c.tax_id AS client_tax_id
+     FROM credits cr JOIN clients c ON c.id = cr.client_id
+     WHERE cr.id = ? AND cr.deleted_at IS NULL`,
+  ).bind(c.req.param('id')).first<Record<string, unknown>>();
+  if (!credit) return fail(404, 'NOT_FOUND');
+
+  // T-108a: the avoir prints with a positive total, labelled "Total avoir".
+  const statusLabels: Record<string, string> = { draft: 'Brouillon', sent: 'Envoyé', partial: 'Partiellement utilisé', applied: 'Utilisé' };
+  const bytes = await buildDocumentPdf('credit', company, {
+    number: credit.number as string | null,
+    date: String(credit.date),
+    secondary: statusLabels[String(credit.status)] ?? String(credit.status),
+    currency: String(credit.currency ?? company.currency),
+    line_items: safeLines(credit.line_items),
+    discount_type: String(credit.discount_type ?? 'percent'),
+    discount_value: Number(credit.discount_value ?? 0),
+    discount_total: Number(credit.discount_total ?? 0),
+    subtotal: Number(credit.subtotal ?? 0),
+    tax_total: Number(credit.tax_total ?? 0),
+    total: Number(credit.total ?? 0),
+    tax_exempt: Number(credit.tax_exempt ?? 0),
+    notes: (credit.notes as string | null) ?? null,
+    terms: (credit.terms as string | null) ?? null,
+    client: {
+      name: String(credit.client_name ?? ''),
+      address1: (credit.client_address1 as string | null) ?? null,
+      address2: (credit.client_address2 as string | null) ?? null,
+      city: (credit.client_city as string | null) ?? null,
+      postal_code: (credit.client_postal_code as string | null) ?? null,
+      country: (credit.client_country as string | null) ?? null,
+      tax_id: (credit.client_tax_id as string | null) ?? null,
+    },
+  });
+  return new Response(bytes, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${String(credit.number ?? 'avoir')}.pdf"`,
+      'Cache-Control': 'no-store',
+    },
+  });
 });
 
 creditRoutes.post('/', requirePermission('credits.write'), async (c) => {

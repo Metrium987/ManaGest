@@ -128,11 +128,16 @@ export function CreditsPage() {
                   <td className="text-right tabular-nums">{formatMoney(credit.balance, currency)}</td>
                   <td><StatusBadge status={credit.status} /></td>
                   <td className="text-right">
-                    {credit.balance > 0 && can('credits.write') ? (
-                      <Button variant="secondary" size="sm" onClick={() => { setApplyCredit(credit); setApplyAmount(credit.balance / (10 ** (currency === 'XPF' ? 0 : 2))); }}>
-                        {t('credits.apply')}
-                      </Button>
-                    ) : null}
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <a href={`/api/credits/${credit.id}/pdf`} target="_blank" rel="noreferrer" className="text-xs font-medium text-brand-700 hover:underline">
+                        {t('common.download')}
+                      </a>
+                      {credit.balance > 0 && can('credits.write') ? (
+                        <Button variant="secondary" size="sm" onClick={() => { setApplyCredit(credit); setApplyAmount(credit.balance / (10 ** (currency === 'XPF' ? 0 : 2))); }}>
+                          {t('credits.apply')}
+                        </Button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}

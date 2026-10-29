@@ -64,3 +64,10 @@ BUILD-PLAN, TODO (23 tasks + 4 R4 spec rows), module files M0-M12, VERIFICATION-
 - `TODO.md` rewritten as seven dependency-ordered phases with a graph and a blocker register; `BUILD-PLAN.md` records the revised order; `PLAN-OPEN-QUESTIONS.md` and audit `09-open-questions.md` close the accountant items.
 - Two plan additions: **T-108a** (quote and credit-note PDFs — they do not exist) and **T-103** now depends on it; the parity matrix row PAR-OUT-001 was corrected accordingly.
 - Remaining blockers are platform-only: PQ-1 (scheduled trigger), PQ-2 (outbound e-mail + provider), PQ-3 (upload ceiling), plus owner meaning of « locations ».
+
+## 2026-10-29 — T-108a quote and credit-note PDFs DONE (M4)
+- New builder `server/services/pdf-documents.ts` (shared typography with the invoice builder, which is left untouched): title DEVIS/AVOIR, client block, line table with per-line TVA status ("Exonéré" or rate), totals with the "Total avoir" label for credits, company legal mention, quote terms, footer, pagination.
+- Routes `GET /api/quotes/:id/pdf` and `GET /api/credits/:id/pdf`, gated by `quotes.read` / `credits.read`, `Cache-Control: no-store`, filename from the document number.
+- UI: « Télécharger le PDF » on the quote detail header and on every credits-list row (link carries the session cookie, like the existing invoice download).
+- Gate: 87/87 tests (3 new PDF tests incl. pagination), typecheck and build clean. Live: DEV-2026-0020 → 200 `application/pdf`, 2 290 bytes, `%PDF` magic; AV-2026-0001 → 200, 2 115 bytes; anonymous request → 401.
+- Audit correction closed: PAR-OUT-001 now `CONFORMING` for invoice, quote and credit note; only layout variety stays `PARTIAL` (T-108).

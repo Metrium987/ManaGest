@@ -17,7 +17,7 @@ interface PdfContext {
   y: number;
 }
 
-function money(minor: number, currency: string): string {
+export function money(minor: number, currency: string): string {
   const decimals = currencyDecimals(currency);
   const value = fromMinor(minor, currency);
   const fixed = value.toFixed(decimals);
@@ -26,7 +26,7 @@ function money(minor: number, currency: string): string {
   return `${grouped}${fraction ? `,${fraction}` : ''} ${currency}`;
 }
 
-function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+export function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];
   let current = '';

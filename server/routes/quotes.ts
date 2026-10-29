@@ -11,6 +11,7 @@ import { assertPeriodOpen } from '../lib/locks';
 import { lineItemsSchema, offsetOf, optionalIsoDate, paginationSchema, parseInput } from '../lib/validation';
 import { requireAuth, requirePermission } from '../middleware';
 import { safeLines, serialiseLines, syncInvoiceFromRow } from '../services/documents';
+import { buildDocumentPdf } from '../services/pdf-documents';
 import type { AppEnv } from '../types';
 
 const quoteSchema = z.object({
@@ -73,6 +74,52 @@ quoteRoutes.get('/:id', requirePermission('quotes.read'), async (c) => {
     ...quote,
     line_items: safeLines(quote.line_items),
     expired: isExpiredQuote(String(quote.status), (quote.valid_until as string | null) ?? null, todayIn(c.get('company')!.timezone)),
+  });
+});
+
+quoteRoutes.get('/:id/pdf', requirePermission('quotes.read'), async (c) => {
+  const company = c.get('company')!;
+  const quote = await c.env.DB.prepare(
+    `SELECT q.*, c.display_name AS client_name, c.address1 AS client_address1, c.address2 AS client_address2,
+            c.city AS client_city, c.postal_code AS client_postal_code, c.country AS client_country,
+            c.tax_id AS client_tax_id
+     FROM quotes q JOIN clients c ON c.id = q.client_id
+     WHERE q.id = ? AND q.deleted_at IS NULL`,
+  ).bind(c.req.param('id')).first<Record<string, unknown>>();
+  if (!quote) return fail(404, 'NOT_FOUND');
+
+  // T-108a: quotes now print with the same wording rules as invoices.
+  const bytes = await buildDocumentPdf('quote', company, {
+    number: quote.number as string | null,
+    date: String(quote.date),
+    secondary: (quote.valid_until as string | null) ?? null,
+    currency: String(quote.currency ?? company.currency),
+    line_items: safeLines(quote.line_items),
+    discount_type: String(quote.discount_type ?? 'percent'),
+    discount_value: Number(quote.discount_value ?? 0),
+    discount_total: Number(quote.discount_total ?? 0),
+    subtotal: Number(quote.subtotal ?? 0),
+    tax_total: Number(quote.tax_total ?? 0),
+    total: Number(quote.total ?? 0),
+    tax_exempt: Number(quote.tax_exempt ?? 0),
+    notes: (quote.notes as string | null) ?? null,
+    terms: (quote.terms as string | null) ?? null,
+    client: {
+      name: String(quote.client_name ?? ''),
+      address1: (quote.client_address1 as string | null) ?? null,
+      address2: (quote.client_address2 as string | null) ?? null,
+      city: (quote.client_city as string | null) ?? null,
+      postal_code: (quote.client_postal_code as string | null) ?? null,
+      country: (quote.client_country as string | null) ?? null,
+      tax_id: (quote.client_tax_id as string | null) ?? null,
+    },
+  });
+  return new Response(bytes, {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${String(quote.number ?? 'devis')}.pdf"`,
+      'Cache-Control': 'no-store',
+    },
   });
 });
 
