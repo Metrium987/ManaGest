@@ -606,8 +606,9 @@ données). Ce qui est appliqué, et ce qui reste à ouvrir :
 > **État au 2 novembre 2026** — tout ce qui relève du code est livré et vérifié sur
 > la preview (contrôles hébergés rejoués à chaque déploiement). Il ne reste plus que
 > **Q16**, bloqué par l'absence de binaire Chromium dans l'environnement, et les
-> arbitrages qui reviennent au propriétaire : **G2/G3** (capacité, SLA), **H4**
-> (fichiers d'import), **H5** (environnement de test).
+> points qui dépendent du propriétaire ou d'un environnement : **H4** (fichiers
+> d'import), **H5** (environnement de test). **G2/G3** sont fermés depuis le
+> 2/11/2026 (capacité, SLA, liste des fériés validée).
 > Chacun porte sa date et sa raison ci-dessous ; aucune tâche de code n'est laissée
 > ouverte.
 >
@@ -818,7 +819,7 @@ d'afficher une ligne à zéro (vérifié sur la preview : base 100 000 → 70 00
   avec la charge estimée. Le déclencheur est l'acceptation du devis parce qu'il
   n'existe pas de bon de commande de service distinct dans l'application ; le jour où
   il en existera un, c'est lui qui déclenchera, pas la facture.
-- **G2 — Compétences et capacité** — **livré côté serveur le 2/11/2026 ; écran à faire** :
+- **G2 — Compétences et capacité** — **fait (2/11/2026)** :
   réponses reçues — (1) sont planifiables **tous les comptes actifs**, avec une
   capacité hebdomadaire en heures saisie par compte ; (2) unité **heures par
   semaine**, agrégation mensuelle à l'affichage ; (3) jours ouvrés **lundi–vendredi**
@@ -843,25 +844,26 @@ d'afficher une ligne à zéro (vérifié sur la preview : base 100 000 → 70 00
   capacité par compte), calendrier (liste, ajout, modification, suppression des jours
   non travaillés) et SLA. Tous les libellés passent par le dictionnaire fr/en ; aucune
   valeur n'est écrite dans les composants : la grille, les jours ouvrés et les horaires
-  viennent de l'API. *Ce qui reste* : valider la **liste des fériés** pré-remplie.
-- **G3 — SLA exécutés** — **livré côté serveur le 2/11/2026, valeurs par défaut à
-  compléter ; écran à faire** : sont tranchés — le SLA est porté par le **client**, avec surcharge
+  viennent de l'API. **Liste des fériés validée le 2/11/2026** : le 29 juin
+  (Fête de l'autonomie) a été retiré de la liste légale à compter de 2026 et
+  remplacé par le **20 novembre** (Matari'i — fête de l'abondance) ; le
+  pré-remplissage suit cette règle pour 2026 et 2027, et les espaces déjà ouverts
+  reçoivent la correction ciblée décrite en fin de document.
+- **G3 — SLA exécutés** — **fait (2/11/2026)** : sont tranchés — le SLA est porté par le **client**, avec surcharge
   possible par **contrat** ; **aucune suspension** du chronomètre ; dépassement =
-  **alerte au tableau de bord** et **visible sur la fiche client**. Manquent encore,
-  et sans eux une échéance ne peut pas être calculée : (a) **quels chronomètres et
-  quels délais** (prise en compte seule, résolution seule, ou les deux ; nombre de
-  priorités et heures cibles par priorité) ; (b) **les heures ouvrées exactes et la
-  liste des jours fériés**.  On ne peut pas deviner un engagement contractuel : une
-  échéance inventée produirait des alertes fausses, pires que pas d'alerte.
+  **alerte au tableau de bord** et **visible sur la fiche client**. Les deux inconnues qui empêchaient de calculer une échéance ont été tranchées le
+  2/11/2026 : (a) **trois paliers standard** (P1 1 h / 4 h, P2 4 h / 8 h,
+  P3 8 h / 24 h, en minutes ouvrées) sont créés **une seule fois** par espace ;
+  (b) les **heures ouvrées, les jours ouvrés et les fériés** sont des réglages
+  (`PLANNING_DEFAULTS`, calendrier éditable), donc aucune valeur contractuelle
+  n'est devinée dans le code.
   *Réalisé* : tables `sla_policies` (par **client** ou par **contrat**, priorité,
   délai de prise en compte et de résolution, désactivation sans suppression) et
   `task_sla` (échéances calculées sur le **calendrier ouvré** de l'espace), routes
   `GET/POST /api/planning/sla-policies`, `POST /api/planning/tasks/:id/sla` (politique
   la plus spécifique, contrat avant client) et `GET /api/planning/sla-breaches` (les
   dépassements que le tableau de bord et la fiche client liront). Aucun délai n'est
-  codé en dur : ce sont des lignes. *Ce qui reste* : fournir les **délais par
-  priorité** et les **heures ouvrées exactes** (Q-G3.2 / Q-G3.3) pour amorcer les
-  politiques, et l'écran de saisie — **livré** : onglet SLA de Planification (liste des politiques par client ou contrat, création, désactivation sans suppression, application à une tâche et échéances dépassées reliées à la fiche client).
+  codé en dur : ce sont des lignes. Écran : onglet SLA de Planification (liste des politiques par client ou contrat, création, désactivation sans suppression, application à une tâche et échéances dépassées reliées à la fiche client).
 
 ## Phase H — Qualité, droits, audit
 
@@ -1166,3 +1168,18 @@ calculs de coût rendu et les totaux d'import sont libellés en XPF parce que la
 règle de change du module est exprimée en francs Pacifique (`XPF_PER_EUR`) ; les
 placeholders `98713`, `123456`, `611000` sont des exemples de saisie, pas des
 valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18n.
+
+## 2026-11-02 — Phase G fermée : fériés corrigés, capacités et SLA par défaut
+
+- **Fériés** : depuis 2026, le 29 juin n'est plus férié ; il est remplacé par le
+  **20 novembre** (Matari'i — fête de l'abondance). Le pré-remplissage
+  (`POLYNESIA_HOLIDAYS`, années 2026 et 2027) suit cette règle, et
+  `correctedHolidaySeeds` remplace l'ancienne ligne pré-remplie dans un espace
+  déjà ouvert — jamais une ligne renommée par le propriétaire, jamais un doublon.
+- **Preuve exécutée** : `tests/planning-sla.test.ts` (20 novembre présent, 29 juin
+  absent, correction ciblée, ligne éditée conservée) et `tests/planning.test.ts`
+  pour l'arithmétique ouvrée.
+- **G2/G3** : les onglets Charge, Réglages, Calendrier et SLA sont livrés ; les
+  trois paliers standard sont créés une seule fois et restent éditables, les
+  heures, jours ouvrés et fériés sont des données. Aucune tâche de code ne reste
+  ouverte dans ces deux items.

@@ -13,6 +13,7 @@ import {
   addBusinessMinutes,
   businessHoursError,
   holidayError,
+  correctedHolidaySeeds,
   missingHolidaySeeds,
   missingSlaDefaults,
   slaTierError,
@@ -77,8 +78,15 @@ async function readCalendar(database: D1Database): Promise<PlanningCalendar> {
  * editable: seeding only fills a year that has no row yet, so a deleted day is
  * never re-created and a new year is ready without any data entry. */
 async function seedCalendar(database: D1Database): Promise<void> {
-  const rows = await database.prepare(`SELECT day FROM non_working_days`).all<{ day: string }>();
-  const missing = missingHolidaySeeds((rows.results ?? []).map((row) => row.day));
+  const rows = await database
+    .prepare(`SELECT day, label FROM non_working_days`)
+    .all<{ day: string; label: string | null }>();
+  const existing = rows.results ?? [];
+  const corrections = correctedHolidaySeeds(existing);
+  for (const day of corrections.remove) {
+    await database.prepare(`DELETE FROM non_working_days WHERE day = ?`).bind(day).run();
+  }
+  const missing = [...corrections.add, ...missingHolidaySeeds(existing.map((row) => row.day))];
   if (!missing.length) return;
   const now = nowISO();
   for (const holiday of missing) {

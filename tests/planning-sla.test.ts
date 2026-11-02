@@ -7,6 +7,7 @@ import {
   businessHoursError,
   easterSunday,
   holidayError,
+  correctedHolidaySeeds,
   missingHolidaySeeds,
   missingSlaDefaults,
   slaTierError,
@@ -82,9 +83,11 @@ describe('planning configuration rules (G3)', () => {
     const dates = POLYNESIA_HOLIDAYS.map((holiday) => holiday.date);
     expect(new Set(dates).size).toBe(dates.length);
     expect(dates).toContain('2026-03-05'); // Arrivée de l’Évangile
-    expect(dates).toContain('2026-06-29'); // Fête de l’autonomie
+    expect(dates).not.toContain('2026-06-29'); // worked since 2026
+    expect(dates).toContain('2026-11-20'); // Matari’i — fête de l’abondance
     expect(dates).toContain('2027-03-05');
-    expect(dates).toContain('2027-06-29');
+    expect(dates).not.toContain('2027-06-29');
+    expect(dates).toContain('2027-11-20');
     // Easter-derived days follow the calendar, never a frozen list.
     expect(easterSunday(2026)).toBe('2026-04-05');
     expect(dates).toContain('2026-04-03'); // Vendredi saint
@@ -93,6 +96,20 @@ describe('planning configuration rules (G3)', () => {
     expect(dates).toContain('2027-03-26');
     expect(dates).toContain('2027-03-29');
     expect(dates).toContain('2027-05-06'); // Ascension
+  });
+
+  it('replaces the old seeded autonomy day without overruling the owner', () => {
+    const untouched = correctedHolidaySeeds([{ day: '2026-06-29', label: 'Fête de l’autonomie' }]);
+    expect(untouched.remove).toEqual(['2026-06-29']);
+    expect(untouched.add).toEqual([{ date: '2026-11-20', label: 'Matari’i — fête de l’abondance' }]);
+    // A day the owner renamed is their decision, not a stale seed.
+    expect(correctedHolidaySeeds([{ day: '2026-06-29', label: 'Autonomie (gardée)' }]))
+      .toEqual({ remove: [], add: [] });
+    // Already corrected: neither removed nor added twice.
+    expect(correctedHolidaySeeds([
+      { day: '2026-06-29', label: 'Fête de l’autonomie' },
+      { day: '2026-11-20', label: 'Matari’i' },
+    ])).toEqual({ remove: [], add: [] });
   });
 
   it('fills a new year without re-creating a day the owner deleted', () => {

@@ -102,7 +102,9 @@ function seedHolidaysFor(year: number): { date: string; label: string }[] {
     ['03-05', 'Arrivée de l’Évangile'],
     ['05-01', 'Fête du Travail'],
     ['05-08', 'Victoire 1945'],
-    ['06-29', 'Fête de l’autonomie'],
+    // Since 2026 the 29 June autonomy day is no longer a holiday: it was replaced
+    // by 20 November (Matari’i — fête de l’abondance) by the loi du Pays of 2025.
+    ['11-20', 'Matari’i — fête de l’abondance'],
     ['07-14', 'Fête nationale'],
     ['08-15', 'Assomption'],
     ['11-01', 'Toussaint'],
@@ -130,6 +132,33 @@ export const POLYNESIA_HOLIDAYS: { date: string; label: string }[] =
 export function missingHolidaySeeds(existingDays: string[]): { date: string; label: string }[] {
   const years = new Set(existingDays.map((day) => day.slice(0, 4)));
   return POLYNESIA_HOLIDAYS.filter((holiday) => !years.has(holiday.date.slice(0, 4)));
+}
+
+/**
+ * Days that were seeded before a holiday moved. The seed used to write
+ * 29 June as "Fête de l’autonomie"; since 2026 that day is worked and
+ * 20 November is the holiday. A workspace opened before the correction still
+ * holds the old row, so it is replaced — but only when it is untouched: a row
+ * the owner renamed is left alone, and the new day is never added twice.
+ */
+const AUTONOMY_SEED = { monthDay: '06-29', label: 'Fête de l’autonomie' };
+const MATARII_SEED = { monthDay: '11-20', label: 'Matari’i — fête de l’abondance' };
+
+export function correctedHolidaySeeds(
+  existing: { day: string; label: string | null }[],
+): { remove: string[]; add: { date: string; label: string }[] } {
+  const labels = new Map(existing.map((row) => [row.day, row.label ?? '']));
+  const remove: string[] = [];
+  const add: { date: string; label: string }[] = [];
+  for (const year of HOLIDAY_SEED_YEARS) {
+    const oldDay = `${year}-${AUTONOMY_SEED.monthDay}`;
+    const newDay = `${year}-${MATARII_SEED.monthDay}`;
+    if (labels.get(oldDay) !== AUTONOMY_SEED.label) continue;
+    if (labels.has(newDay)) continue;
+    remove.push(oldDay);
+    add.push({ date: newDay, label: MATARII_SEED.label });
+  }
+  return { remove, add };
 }
 
 /** Accepted span for a calendar day. Outside it the date is a typo, not a holiday. */
