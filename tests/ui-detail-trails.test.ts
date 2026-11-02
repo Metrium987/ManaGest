@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ROLE_PERMISSIONS, type Role } from '@shared/domain';
 import { ActivityTrail } from '@/components/domain/ActivityTrail';
 import { RecordDetailBody, type RecordDetail } from '@/components/ui/RecordDrawer';
+import { entryTrace } from '@/lib/accounting-trace';
 
 const state = vi.hoisted(() => ({
   permissions: [] as string[],
@@ -55,6 +56,8 @@ const ENTITIES = [
   'payment',
   'bank_transaction',
   'credit',
+  'accounting',
+  'revenue_schedule',
 ];
 
 const AUTHORITY: Role[] = ['owner', 'admin', 'accountant'];
@@ -90,6 +93,18 @@ describe('record trail on every instrumented module', () => {
     state.permissions = ROLE_PERMISSIONS.owner;
     const html = renderToStaticMarkup(createElement(ActivityTrail, { entityType: 'product', entityId: '' }));
     expect(html).toBe('');
+  });
+});
+
+describe('accounting entry trace mapping', () => {
+  it('points every posted source at the entity the server journals', () => {
+    for (const source of ['invoice', 'credit', 'payment', 'expense']) {
+      expect(entryTrace({ source_type: source, source_id: 'doc-1' }))
+        .toEqual({ entityType: source, entityId: 'doc-1' });
+    }
+    expect(entryTrace({ source_type: 'opening', source_id: '2026-01-01' }))
+      .toEqual({ entityType: 'accounting', entityId: 'opening-balances' });
+    expect(entryTrace({ source_type: 'unknown', source_id: 'x' })).toBeNull();
   });
 });
 

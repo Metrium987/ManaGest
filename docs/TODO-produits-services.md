@@ -1139,8 +1139,16 @@ Chaque panneau lit `GET /activity?entity_type=…&entity_id=…` derrière
 `activity.read` ; sans la permission, ni section, ni titre, ni requête : le
 composant rend `null` et l'appel est monté avec `enabled: false`.
 
-Modules sans surface de trace par fiche, avec la raison : comptabilité (écran de
-balance et de journaux, pas de fiche d'écriture à ouvrir), import (une exécution
+**Comptabilité** : chaque écriture du journal (`journal_entries.id`, avec
+`source_type`, `source_id` et `event`) ouvre un détail qui affiche ses lignes et
+la trace de **sa source** — la facture, l'avoir, le paiement ou la dépense qui l'a
+produite (`src/lib/accounting-trace.ts`) ; une reprise de balance pointe sur
+`accounting` / `opening-balances`. Aucune entité « écriture » n'est journalisée
+séparément, et c'est volontaire : le journal comptable est dérivé et idempotent
+(clé unique `source_type/source_id/event`), donc l'action traçable est celle du
+document, pas la recopie comptable.
+
+Modules sans surface de trace par fiche, avec la raison : import (une exécution
 d'import n'a pas d'écran de détail), tableau de bord et rapports (agrégats). Leur
 historique reste dans le journal global, réservé à `activity.read`.
 

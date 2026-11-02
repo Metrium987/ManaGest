@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CLIENT_ROUTES, PUBLIC_ROUTES } from '@/lib/access';
 import { NAV } from '@/components/layout/AppShell';
+import { entryTrace } from '@/lib/accounting-trace';
 
 const app = readFileSync(join(process.cwd(), 'src/App.tsx'), 'utf8');
 const shell = readFileSync(join(process.cwd(), 'src/components/layout/AppShell.tsx'), 'utf8');
@@ -64,7 +65,7 @@ describe('client surface inventory', () => {
     for (const file of drawers) {
       const text = readFileSync(file, 'utf8');
       const calls = (text.match(/showRecord\(\{/g) ?? []).length;
-      const traces = (text.match(/trace: \{/g) ?? []).length;
+      const traces = (text.match(/trace:/g) ?? []).length;
       expect(traces, `${file}: ${calls} drawer(s) without a traced record`).toBeGreaterThanOrEqual(calls);
     }
   });
@@ -98,6 +99,12 @@ describe('client surface inventory', () => {
     }
     expect(clientTypes.size).toBeGreaterThan(10);
     for (const type of clientTypes) expect(serverTypes, `unknown entity type ${type}`).toContain(type);
+    const mapped = [
+      ...['invoice', 'credit', 'payment', 'expense'].map((source) => entryTrace({ source_type: source, source_id: 'x' })),
+      entryTrace({ source_type: 'opening', source_id: 'x' }),
+    ].filter((ref): ref is { entityType: string; entityId: string } => Boolean(ref));
+    expect(mapped.length).toBe(5);
+    for (const ref of mapped) expect(serverTypes, `accounting maps to unjournalled ${ref.entityType}`).toContain(ref.entityType);
   });
 
   it('gates the settings entry of the account menu as well', () => {

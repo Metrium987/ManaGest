@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/Button';
 import { Field, Input } from '@/components/ui/Form';
 import { GatedButton } from '@/components/ui/GatedButton';
 import { useToast } from '@/components/ui/Toast';
+import { showRecord } from '@/components/ui/RecordDrawer';
+import { entryTrace } from '@/lib/accounting-trace';
 
 interface BalanceRow {
   account_code: string;
@@ -34,6 +36,7 @@ interface JournalEntry {
   reference: string;
   label: string;
   source_type: string;
+  source_id: string;
   event: string;
 }
 
@@ -294,7 +297,35 @@ export function AccountingPage() {
                     <tr key={`${entry.id}-${line.account_code}-${index}`}>
                       <td className="text-muted">{index === 0 ? formatDate(entry.date) : ''}</td>
                       <td className="text-muted">{index === 0 ? entry.journal : ''}</td>
-                      <td className="font-medium">{index === 0 ? entry.reference : ''}</td>
+                      <td className="font-medium">
+                        {index === 0 ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 text-left hover:text-brand-700"
+                            aria-label={`${t('records.view')} ${entry.reference}`}
+                            onClick={() => showRecord({
+                              trace: entryTrace(entry) ?? undefined,
+                              title: entry.reference,
+                              subtitle: `${entry.journal} · ${formatDate(entry.date)}`,
+                              fields: [
+                                { label: t('common.date'), value: formatDate(entry.date) },
+                                { label: t('accounting.journalCode'), value: entry.journal },
+                                { label: t('accounting.label'), value: entry.label },
+                                { label: t('accounting.reference'), value: entry.reference },
+                              ],
+                              sections: [{
+                                title: t('invoices.lines'),
+                                fields: linesFor(entry.id).map((line) => ({
+                                  label: `${line.account_code} · ${line.label}`,
+                                  value: `${formatMoney(line.debit, currency)} / ${formatMoney(line.credit, currency)}`,
+                                })),
+                              }],
+                            })}
+                          >
+                            {entry.reference}
+                          </button>
+                        ) : ''}
+                      </td>
                       <td>
                         <span className="font-mono text-xs text-muted">{line.account_code}</span>
                         <span className="ml-2 text-xs">{line.label}</span>
