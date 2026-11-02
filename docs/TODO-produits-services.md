@@ -625,7 +625,7 @@ données). Ce qui est appliqué, et ce qui reste à ouvrir :
 > atteint (10 042 / 10 000), ce qui met les sites en pause ; les autres quotas sont
 > loin (requêtes 1 892 / 100 000, CPU 27 s / 5 000 s, stockage 1,9 Mo / 100 Mo) et les
 > **données sont conservées**. Remise à zéro le **3 novembre 2026 à 00:00 UTC** ; la
-> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **76 fichiers
+> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **77 fichiers
 > de tests (662 cas)**, build OK) ; la **vérification hébergée** de ces deux points reste **bloquée par ce quota** :
 > à faire dès la remise à zéro (3/11/2026 00:00 UTC) — construire, publier, puis
 > `npm run check:preview:hosted` (quatre contrôles : écrans de stock, tarif, démo et
@@ -1293,7 +1293,7 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
   avec une URL non http(s) → **EXIT:2** ; avec une configuration complète →
   **EXIT:0**. Le code 2 distingue donc une configuration absente d'un contrôle rouge.
 - **Build sur l'arbre commité** : `npm run typecheck` → **0 erreur** ;
-  `npm test` → **76 fichiers, 662 tests verts** ; `npm run build` → **OK**.
+  `npm test` → **77 fichiers, 662 tests verts** ; `npm run build` → **OK**.
 - **Cases à cocher** : les `- [ ]` de `docs/build/VERIFICATION-GATES.md` sont le
   **modèle de porte** (chaque ligne porte déjà son ✓), pas des tâches ouvertes.
 - **Ce qui reste, avec son blocage** :
@@ -1403,7 +1403,7 @@ captures dans `artifacts/ui-verification/`. **27 contrôles, 27 verts.**
    maintenant lequel des trois réglages est refusé, au lieu de « certains champs
    sont invalides ».
 
-**Contrôles finaux** : `npm run typecheck` → **0 erreur** ; `npm test` → **76
+**Contrôles finaux** : `npm run typecheck` → **0 erreur** ; `npm test` → **77
 fichiers, 662 tests verts** ; `npm run build` → **OK**. Commit unique sur
 `freebuff/a6f86ced7cc9d3ad744d42ee`, arbre propre, rien poussé, aucun déploiement,
 aucun secret écrit.
@@ -1437,4 +1437,4 @@ aucun secret écrit.
 
 **Reste hors de portée sans hébergement** : la sauvegarde automatique D1 côté Cloudflare (PQ-4) s'active dans le tableau de bord ; elle ne peut être ni activée ni vérifiée depuis cet hôte. La restauration, elle, n'attend plus rien.
 
-**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → 76 fichiers, 662 tests verts ; `npm run build` → OK.
+**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → 77 fichiers, 662 tests verts ; `npm run build` → OK.

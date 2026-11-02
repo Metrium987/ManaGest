@@ -16,6 +16,7 @@ import {
   dumpChecksum,
   exportDatabase,
   restoreDatabase,
+  SCHEMA_TABLE_ORDER,
   type BackupDump,
   type BackupSource,
 } from '../server/lib/backup';
@@ -153,9 +154,11 @@ describe('P-03 backup export and restore', () => {
     expect(dump.schema_version).toBe(SCHEMA_VERSION);
     expect(dump.exported_at).toBe(NOW);
     expect(dump.checksum).toMatch(/^[0-9a-f]{64}$/);
-    expect(dump.tables.length).toBeGreaterThanOrEqual(70);
+    // Exactly the tables the schema declares, and nothing else.
+    expect(dump.tables.length).toBe(SCHEMA_TABLE_ORDER.length);
 
     const names = dump.tables.map((table) => table.name);
+    expect(names).toEqual(expect.arrayContaining(SCHEMA_TABLE_ORDER));
     for (const name of SEEDED_TABLES) expect(names).toContain(name);
     for (const table of dump.tables) expect(table.row_count).toBe(table.rows.length);
 
