@@ -43,8 +43,8 @@ Légende effort : **S** ≈ une demi-journée, **M** ≈ 1 à 2 jours, **L** ≈
 | Comptes par famille | **Fait (F2)** | table `family_accounts`, `resolveFamilyAccounts`, `effective_accounts` sur la fiche, modale « Comptes par famille » |
 | Alertes de stock (tableau de bord + digest) | **Fait (C4)** | `server/lib/stock-alerting.ts`, `stock_alerts` dans `/api/dashboard`, digest quotidien gardé par jour |
 | Réceptions partielles et reliquats | **Fait (C3)** | `purchase_order_receipts`, `POST /purchase-orders/:id/receive`, soldes par ligne dans le détail, écran de réception |
-| Historique des prix d'achat | **Absent — module non ouvert** | le prix payé est déjà enregistré à la réception (C2) ; un historique daté demande une table et un écran, donc une décision d'ouverture du propriétaire |
-| Prévision de la demande, fabrication MRP | **Absent — hors périmètre assumé** | les seuils restent saisis ; pas de module de production | seuls `products.ts`, les services de stock et le comptage touchent `quantity_milli` |
+| Historique des prix d'achat | **Absent — décision propriétaire requise** | à fournir : les informations attendues (prix, fournisseur, date, document source) et l'accord d'ouvrir le module ; où : décision du propriétaire ; débloque : une table datée, un écran sur la fiche article et la reprise du prix payé à la réception (C2) |
+| Prévision de la demande, fabrication MRP | **Absent — hors périmètre assumé** | à fournir : rien à ce stade ; où : listé dans « À ne pas ouvrir maintenant » (GPAO, WMS, EDI) ; débloque : un module de production distinct, à ouvrir seulement sur demande explicite du propriétaire |
 
 **Conséquence directe** : les deux fiches sont aujourd'hui descriptives et
 facturables à la main ; elles ne pilotent encore ni le stock, ni les coûts, ni la
@@ -555,7 +555,7 @@ effet mesurable sur le stock et la marge.
   coût sur la ligne) ; les avoirs ne portent pas d'instantané de famille et se
   rabattent donc sur la fiche, et un avoir dont l'article a été supprimé tombe
   dans « sans famille » ; pas d'export CSV côté serveur pour ce rapport ; l'écran
-  n'a pas été vu dans un navigateur (pas de navigateur dans l'environnement).
+  n'a pas été capturé à cette date ; Chromium est installé depuis le 2/11/2026 (voir Q16).
 - **F4 — Coût rendu Tahiti calculé** *(M)* — **fait**
   Saisie du fret, de l'assurance, des droits et frais d'approche, taux de change
   d'origine, calcul et historique au lieu d'un montant saisi à la main.
@@ -625,12 +625,12 @@ données). Ce qui est appliqué, et ce qui reste à ouvrir :
 > atteint (10 042 / 10 000), ce qui met les sites en pause ; les autres quotas sont
 > loin (requêtes 1 892 / 100 000, CPU 27 s / 5 000 s, stockage 1,9 Mo / 100 Mo) et les
 > **données sont conservées**. Remise à zéro le **3 novembre 2026 à 00:00 UTC** ; la
-> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **61 fichiers
-> de tests**, build OK) ; la **vérification hébergée** de ces deux points reste à faire
-> dès la reprise (construire puis Publish, puis `npm run check:preview`, qui enchaîne
-> désormais **quatre** contrôles hébergés : écrans de stock/tarif/démo/centres,
-> historique de prix et révision, séparation des droits, et **planification/SLA** —
-> paliers standard présents, édition persistée sans doublon, politique appliquée et
+> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **74 fichiers
+> de tests (639 cas)**, build OK) ; la **vérification hébergée** de ces deux points reste **bloquée par ce quota** :
+> à faire dès la remise à zéro (3/11/2026 00:00 UTC) — construire, publier, puis
+> `npm run check:preview:hosted` (quatre contrôles : écrans de stock, tarif, démo et
+> centres ; historique de prix et révision ; séparation des droits ;
+> planification/SLA — paliers standard, édition persistée, politique appliquée et
 > échéances relues après rechargement).
 
 - **Q1 — TVA d'import comptabilisée** — **fait** : au dédouanement, débit `445660`
@@ -1218,3 +1218,37 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
   `apt-get -o Dir::State::lists=/tmp/apt/lists -o Dir::Cache=/tmp/apt download <paquets>`
   puis `dpkg-deb -x`, `LD_LIBRARY_PATH=/tmp/sysroot/usr/lib/x86_64-linux-gnu`,
   `FONTCONFIG_FILE` local, `PW_NO_SANDBOX=1` et `PW_CHROME_PATH` vers le binaire.
+
+## 2026-11-02 — Vérification de l'état final (sorties réelles)
+
+- **Commit et arbre** : `60eb14b Finish H4, H5 and Q16…` porte les captures et
+  l'outillage, et le présent rapport est le commit qui suit ; `git status --short`
+  → **0 ligne** après lui ; `git show --stat 60eb14b` liste bien les
+  **8 PNG** sous `artifacts/`. La branche `freebuff/a6f86ced7cc9d3ad744d42ee` n'a
+  **aucune référence distante suivie** : aucun push, aucune PR, aucun déploiement.
+- **Captures** : `artifacts/*.png`, **76 844 à 197 571 octets**, toutes en
+  **1440×900**, **2 112 à 4 628 couleurs uniques**, couleur dominante ≤ 66,9 % —
+  aucune page blanche. Les huit ont été ouvertes et montrent réellement : connexion,
+  tableau de bord (KPI et graphique), produits (6 articles), feuille d'import
+  (modale), projets (carte projet), modèles de projet (modale), devis (1 devis),
+  paramètres (formulaire société).
+- **CI hébergée** : `node scripts/check-preview-config.mjs` sans variables →
+  message nommant `PREVIEW_URL`, `PREVIEW_EMAIL`, `PREVIEW_PASSWORD` et **EXIT:2** ;
+  avec une URL non http(s) → **EXIT:2** ; avec une configuration complète →
+  **EXIT:0**. Le code 2 distingue donc une configuration absente d'un contrôle rouge.
+- **Build sur l'arbre commité** : `npm run typecheck` → **0 erreur** ;
+  `npm test` → **74 fichiers, 639 tests verts** ; `npm run build` → **OK**.
+- **Cases à cocher** : les `- [ ]` de `docs/build/VERIFICATION-GATES.md` sont le
+  **modèle de porte** (chaque ligne porte déjà son ✓), pas des tâches ouvertes.
+- **Ce qui reste, avec son blocage** :
+  1. **H4** — fournir les **3 à 5 fichiers CSV réels** de l'ancien logiciel ;
+     débloque l'ajout des colonnes/alias propres à ces fichiers.
+  2. **H5** — créer la **preview dédiée** puis, dans **GitHub → Settings → Secrets
+     and variables → Actions**, `PREVIEW_URL`, `PREVIEW_EMAIL`, `PREVIEW_PASSWORD` ;
+     débloque le workflow « Hosted preview checks ».
+  3. **Vérification hébergée** — bloquée par le **quota D1** (10 042 / 10 000,
+     remise à zéro le 3/11/2026 00:00 UTC) ; débloque `npm run check:preview:hosted`.
+  4. **Historique des prix d'achat** — décision du propriétaire sur le périmètre.
+  5. **MRP / GPAO** — hors périmètre assumé, listé dans « À ne pas ouvrir maintenant ».
+  6. **Q15 (multi-devises)** — non fait avec justification datée : aucune facture
+     dans une devise non arrimée à l'euro n'existe.
