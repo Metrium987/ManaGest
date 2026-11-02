@@ -98,6 +98,7 @@ importTaxRoutes.delete('/rules/:code', requirePermission('products.write'), asyn
     .bind(nowISO(), code)
     .run();
   if (!result.meta.changes) return fail(404, 'NOT_FOUND');
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deactivated', entityType: 'import_tax_rule', entityId: code, summary: 'activity.import_tax_rule_deactivated', meta: { code } });
   return c.json({ ok: true });
 });
 

@@ -567,6 +567,7 @@ taxRateRoutes.get('/', requirePermission('invoices.read'), async (c) => {
 });
 
 taxRateRoutes.post('/', requirePermission('settings.write'), async (c) => {
+  const user = c.get('user')!;
   const body = parseInput(
     z.object({ name: z.string().trim().min(1).max(80), rate: z.coerce.number().int().min(0).max(100) }),
     await c.req.json().catch(() => ({})),
@@ -574,11 +575,15 @@ taxRateRoutes.post('/', requirePermission('settings.write'), async (c) => {
   const id = crypto.randomUUID();
   await c.env.DB.prepare(`INSERT INTO tax_rates (id, name, rate, is_default, created_at) VALUES (?, ?, ?, 0, ?)`)
     .bind(id, body.name, body.rate, nowISO()).run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'created', entityType: 'tax_rate', entityId: id, summary: 'activity.tax_rate_added', meta: { name: body.name, rate: body.rate } });
   return c.json({ id }, 201);
 });
 
 taxRateRoutes.delete('/:id', requirePermission('settings.write'), async (c) => {
+  const row = await c.env.DB.prepare(`SELECT name, rate FROM tax_rates WHERE id = ?`)
+    .bind(c.req.param('id')).first<{ name: string; rate: number }>();
   await c.env.DB.prepare(`DELETE FROM tax_rates WHERE id = ?`).bind(c.req.param('id')).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deleted', entityType: 'tax_rate', entityId: c.req.param('id'), summary: 'activity.tax_rate_deleted', meta: { name: row?.name ?? null, rate: row?.rate ?? null } });
   return c.json({ ok: true });
 });
 
@@ -754,6 +759,7 @@ userRoutes.delete('/:id', requirePermission('users.write'), async (c) => {
     c.env.DB.prepare(`UPDATE users SET deleted_at = ?, is_active = 0, updated_at = ? WHERE id = ?`).bind(nowISO(), nowISO(), id),
     c.env.DB.prepare(`DELETE FROM sessions WHERE user_id = ?`).bind(id),
   ]);
+  await logActivity(c.env.DB, { userId: actor.id, action: 'deleted', entityType: 'user', entityId: id, summary: 'activity.user_deleted', meta: { email: target.email }, ip: clientIp(c) });
   return c.json({ ok: true });
 });
 

@@ -137,13 +137,16 @@ planningRoutes.post('/calendar', requirePermission('projects.write'), async (c) 
     `INSERT INTO non_working_days (day, label, created_at) VALUES (?, ?, ?)
      ON CONFLICT(day) DO UPDATE SET label = excluded.label`,
   ).bind(body.day, body.label ?? null, nowISO()).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'created', entityType: 'non_working_day', entityId: body.day, summary: 'activity.working_day_added', meta: { day: body.day } });
   return c.json({ ok: true }, 201);
 });
 
 planningRoutes.delete('/calendar/:day', requirePermission('projects.write'), async (c) => {
+  const day = c.req.param('day');
   const result = await c.env.DB.prepare(`DELETE FROM non_working_days WHERE day = ?`)
-    .bind(c.req.param('day')).run();
+    .bind(day).run();
   if (!result.meta.changes) return fail(404, 'NOT_FOUND');
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deleted', entityType: 'non_working_day', entityId: day, summary: 'activity.working_day_removed', meta: { day } });
   return c.json({ ok: true });
 });
 
@@ -173,6 +176,7 @@ planningRoutes.put('/capacities/:userId', requirePermission('projects.write'), a
     `INSERT INTO weekly_capacities (user_id, weekly_minutes, updated_at) VALUES (?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET weekly_minutes = excluded.weekly_minutes, updated_at = excluded.updated_at`,
   ).bind(c.req.param('userId'), body.weekly_minutes, nowISO()).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'updated', entityType: 'weekly_capacity', entityId: c.req.param('userId'), summary: 'activity.capacity_updated', meta: { minutes: body.weekly_minutes } });
   return c.json({ ok: true });
 });
 
@@ -205,6 +209,7 @@ planningRoutes.put('/tasks/:taskId', requirePermission('tasks.write'), async (c)
      ON CONFLICT(task_id) DO UPDATE SET assignee_id = excluded.assignee_id,
        planned_start = excluded.planned_start, planned_end = excluded.planned_end, updated_at = excluded.updated_at`,
   ).bind(taskId, body.assignee_id ?? null, body.planned_start ?? null, body.planned_end ?? null, nowISO()).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'planned', entityType: 'task', entityId: taskId, summary: 'activity.task_planned', meta: { assignee: body.assignee_id ?? null, start: body.planned_start ?? null, end: body.planned_end ?? null } });
   return c.json({ ok: true });
 });
 
@@ -325,6 +330,7 @@ planningRoutes.put('/sla-policies/:id', requirePermission('projects.write'), asy
     `UPDATE sla_policies SET name = ?, priority = ?, response_minutes = ?, resolution_minutes = ?, updated_at = ?
      WHERE id = ?`,
   ).bind(merged.name, merged.priority, merged.response_minutes, merged.resolution_minutes, nowISO(), c.req.param('id')).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'updated', entityType: 'sla_policy', entityId: c.req.param('id'), summary: 'activity.sla_policy_updated', meta: { name: merged.name, priority: merged.priority } });
   return c.json({ ok: true, policy: merged });
 });
 
@@ -347,6 +353,7 @@ planningRoutes.post('/sla-policies', requirePermission('projects.write'), async 
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
   ).bind(id, body.name, body.scope, body.client_id ?? null, body.contract_id ?? null, body.priority,
     body.response_minutes, body.resolution_minutes, now, now).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'created', entityType: 'sla_policy', entityId: id, summary: 'activity.sla_policy_created', meta: { name: body.name, priority: body.priority } });
   return c.json({ id }, 201);
 });
 
@@ -354,6 +361,7 @@ planningRoutes.delete('/sla-policies/:id', requirePermission('projects.write'), 
   const result = await c.env.DB.prepare(`UPDATE sla_policies SET is_active = 0, updated_at = ? WHERE id = ?`)
     .bind(nowISO(), c.req.param('id')).run();
   if (!result.meta.changes) return fail(404, 'NOT_FOUND');
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deleted', entityType: 'sla_policy', entityId: c.req.param('id'), summary: 'activity.sla_policy_deleted' });
   return c.json({ ok: true });
 });
 
@@ -401,6 +409,7 @@ planningRoutes.post('/tasks/:taskId/sla', requirePermission('tasks.write'), asyn
      ON CONFLICT(task_id) DO UPDATE SET policy_id = excluded.policy_id, priority = excluded.priority,
        opened_at = excluded.opened_at, response_due = excluded.response_due, resolution_due = excluded.resolution_due`,
   ).bind(taskId, policy.id, policy.priority, openedAt, responseDue, resolutionDue).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'applied', entityType: 'task_sla', entityId: taskId, summary: 'activity.sla_applied', meta: { priority: policy.priority, policy: policy.name } });
 
   return c.json({
     policy_id: policy.id,

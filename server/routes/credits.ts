@@ -164,6 +164,7 @@ creditRoutes.post('/', requirePermission('credits.write'), async (c) => {
 });
 
 creditRoutes.post('/:id/send', requirePermission('credits.write'), async (c) => {
+  const user = c.get('user')!;
   // T-302: an amount above the configured threshold must be approved first.
   const creditForApproval = await c.env.DB.prepare(
     `SELECT id, total FROM credits WHERE id = ? AND deleted_at IS NULL`,
@@ -185,6 +186,7 @@ creditRoutes.post('/:id/send', requirePermission('credits.write'), async (c) => 
   await c.env.DB.prepare(`UPDATE credits SET status = 'sent', updated_at = ? WHERE id = ?`)
     .bind(nowISO(), id)
     .run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'sent', entityType: 'credit', entityId: id, summary: 'activity.credit_sent' });
   return c.json({ ok: true });
 });
 
@@ -263,5 +265,6 @@ creditRoutes.delete('/:id', requirePermission('credits.delete'), async (c) => {
   await c.env.DB.prepare(`UPDATE credits SET deleted_at = ?, updated_at = ? WHERE id = ?`)
     .bind(nowISO(), nowISO(), id)
     .run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'deleted', entityType: 'credit', entityId: id, summary: 'activity.credit_deleted', meta: { number: credit.number } });
   return c.json({ ok: true });
 });

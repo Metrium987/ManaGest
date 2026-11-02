@@ -655,6 +655,7 @@ clientRoutes.get('/:id/statement', requirePermission('clients.read'), async (c) 
 
 clientRoutes.post('/:id/contacts', requirePermission('clients.write'), async (c) => {
   const id = c.req.param('id');
+  const user = c.get('user')!;
   const body = parseInput(
     z.object({
       first_name: optionalText(80),
@@ -671,6 +672,7 @@ clientRoutes.post('/:id/contacts', requirePermission('clients.write'), async (c)
   )
     .bind(crypto.randomUUID(), id, body.first_name, body.last_name, body.email, body.phone, body.is_primary ? 1 : 0, nowISO())
     .run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'created', entityType: 'client_contact', entityId: id, summary: 'activity.client_contact_added', meta: { email: body.email } });
   return c.json({ ok: true }, 201);
 });
 

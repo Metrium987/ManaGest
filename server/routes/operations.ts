@@ -204,18 +204,21 @@ vendorRoutes.post('/', requirePermission('vendors.write'), async (c) => {
 
 vendorRoutes.patch('/:id', requirePermission('vendors.write'), async (c) => {
   const id = c.req.param('id');
+  const user = c.get('user')!;
   const body = parseInput(vendorSchema, await c.req.json().catch(() => ({})));
   const existing = await c.env.DB.prepare(`SELECT id FROM vendors WHERE id = ? AND deleted_at IS NULL`).bind(id).first();
   if (!existing) return fail(404, 'NOT_FOUND');
   await c.env.DB.prepare(
     `UPDATE vendors SET name = ?, email = ?, phone = ?, address1 = ?, city = ?, postal_code = ?, country = ?, tax_id = ?, notes = ?, updated_at = ? WHERE id = ?`,
   ).bind(body.name, body.email, body.phone, body.address1, body.city, body.postal_code, body.country, body.tax_id, body.notes, nowISO(), id).run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'updated', entityType: 'vendor', entityId: id, summary: 'activity.vendor_updated', meta: { name: body.name } });
   return c.json({ ok: true });
 });
 
 vendorRoutes.delete('/:id', requirePermission('vendors.delete'), async (c) => {
   const id = c.req.param('id');
   await c.env.DB.prepare(`UPDATE vendors SET deleted_at = ?, updated_at = ? WHERE id = ?`).bind(nowISO(), nowISO(), id).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deleted', entityType: 'vendor', entityId: id, summary: 'activity.vendor_deleted' });
   return c.json({ ok: true });
 });
 
@@ -642,6 +645,7 @@ purchaseOrderRoutes.post('/:id/status', requirePermission('purchase_orders.write
 purchaseOrderRoutes.delete('/:id', requirePermission('purchase_orders.delete'), async (c) => {
   const id = c.req.param('id');
   await c.env.DB.prepare(`UPDATE purchase_orders SET deleted_at = ?, updated_at = ? WHERE id = ?`).bind(nowISO(), nowISO(), id).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deleted', entityType: 'purchase_order', entityId: id, summary: 'activity.po_deleted' });
   return c.json({ ok: true });
 });
 
@@ -700,16 +704,19 @@ projectRoutes.post('/', requirePermission('projects.write'), async (c) => {
 
 projectRoutes.patch('/:id', requirePermission('projects.write'), async (c) => {
   const id = c.req.param('id');
+  const user = c.get('user')!;
   const body = parseInput(projectSchema, await c.req.json().catch(() => ({})));
   await c.env.DB.prepare(
     `UPDATE projects SET client_id = ?, name = ?, description = ?, status = ?, budget = ?, start_date = ?, deadline = ?, updated_at = ? WHERE id = ?`,
   ).bind(body.client_id || null, body.name, body.description, body.status, body.budget, body.start_date, body.deadline, nowISO(), id).run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'updated', entityType: 'project', entityId: id, summary: 'activity.project_updated', meta: { name: body.name } });
   return c.json({ ok: true });
 });
 
 projectRoutes.delete('/:id', requirePermission('projects.delete'), async (c) => {
   const id = c.req.param('id');
   await c.env.DB.prepare(`UPDATE projects SET deleted_at = ?, updated_at = ? WHERE id = ?`).bind(nowISO(), nowISO(), id).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deleted', entityType: 'project', entityId: id, summary: 'activity.project_deleted' });
   return c.json({ ok: true });
 });
 
@@ -789,11 +796,13 @@ taskRoutes.post('/', requirePermission('tasks.write'), async (c) => {
     body.minutes, body.hourly_rate, body.billable ? 1 : 0, body.product_id || null, body.service_level,
     body.work_date ?? null, body.premium_label, body.premium_percent, user.id, nowISO(), nowISO(),
   ).run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'created', entityType: 'task', entityId: id, summary: 'activity.task_created', meta: { title: body.title } });
   return c.json({ id }, 201);
 });
 
 taskRoutes.patch('/:id', requirePermission('tasks.write'), async (c) => {
   const id = c.req.param('id');
+  const user = c.get('user')!;
   const body = parseInput(taskSchema, await c.req.json().catch(() => ({})));
   await assertServiceProduct(c.env.DB, body.product_id);
   const existing = await c.env.DB.prepare(
@@ -826,6 +835,7 @@ taskRoutes.patch('/:id', requirePermission('tasks.write'), async (c) => {
     body.hourly_rate, body.billable ? 1 : 0, body.product_id || null, body.service_level, body.work_date ?? null,
     body.premium_label, body.premium_percent, nowISO(), id,
   ).run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'updated', entityType: 'task', entityId: id, summary: 'activity.task_updated', meta: { title: body.title } });
   return c.json({ ok: true });
 });
 
@@ -978,5 +988,6 @@ taskRoutes.patch('/:id/status', requirePermission('tasks.write'), async (c) => {
 taskRoutes.delete('/:id', requirePermission('tasks.delete'), async (c) => {
   const id = c.req.param('id');
   await c.env.DB.prepare(`UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ?`).bind(nowISO(), nowISO(), id).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deleted', entityType: 'task', entityId: id, summary: 'activity.task_deleted' });
   return c.json({ ok: true });
 });

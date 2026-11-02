@@ -467,15 +467,17 @@ authRoutes.delete('/sessions/:id', requireAuth, async (c) => {
   await c.env.DB.prepare(`DELETE FROM sessions WHERE id = ? AND user_id = ?`)
     .bind(id, user.id)
     .run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'revoked', entityType: 'session', entityId: id, summary: 'activity.session_revoked' });
   return c.json({ ok: true });
 });
 
 authRoutes.delete('/sessions', requireAuth, async (c) => {
   const user = c.get('user')!;
   const session = c.get('session')!;
-  await c.env.DB.prepare(`DELETE FROM sessions WHERE user_id = ? AND id <> ?`)
+  const revoked = await c.env.DB.prepare(`DELETE FROM sessions WHERE user_id = ? AND id <> ?`)
     .bind(user.id, session.id)
     .run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'revoked', entityType: 'session', entityId: null, summary: 'activity.sessions_revoked', meta: { count: revoked.meta.changes } });
   return c.json({ ok: true });
 });
 

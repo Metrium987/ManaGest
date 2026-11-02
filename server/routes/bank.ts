@@ -25,6 +25,7 @@ bankRoutes.get('/accounts', requirePermission('bank.read'), async (c) => {
 });
 
 bankRoutes.post('/accounts', requirePermission('bank.write'), async (c) => {
+  const user = c.get('user')!;
   const body = parseInput(
     z.object({
       name: z.string().trim().min(1).max(120),
@@ -40,6 +41,7 @@ bankRoutes.post('/accounts', requirePermission('bank.write'), async (c) => {
     `INSERT INTO bank_accounts (id, name, bank_name, iban, currency, opening_balance, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(id, body.name, body.bank_name || null, body.iban || null, body.currency, body.opening_balance, nowISO(), nowISO()).run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'created', entityType: 'bank_account', entityId: id, summary: 'activity.bank_account_created', meta: { name: body.name } });
   return c.json({ id }, 201);
 });
 
@@ -128,6 +130,7 @@ bankRoutes.get('/ledger', requirePermission('bank.read'), async (c) => {
 });
 
 bankRoutes.post('/transactions/import', requirePermission('bank.write'), async (c) => {
+  const user = c.get('user')!;
   const body = parseInput(
     z.object({
       account_id: z.string().min(8).max(60),
@@ -155,6 +158,7 @@ bankRoutes.post('/transactions/import', requirePermission('bank.write'), async (
     ),
   );
 
+  await logActivity(c.env.DB, { userId: user.id, action: 'imported', entityType: 'bank_transaction', entityId: body.account_id, summary: 'activity.bank_transactions_imported', meta: { count: body.transactions.length } });
   return c.json({ imported: body.transactions.length }, 201);
 });
 
@@ -206,5 +210,6 @@ bankRoutes.patch('/transactions/:id', requirePermission('bank.write'), async (c)
   const id = c.req.param('id');
   const body = parseInput(z.object({ status: z.enum(['ignored', 'unmatched']) }), await c.req.json().catch(() => ({})));
   await c.env.DB.prepare(`UPDATE bank_transactions SET status = ? WHERE id = ?`).bind(body.status, id).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'updated', entityType: 'bank_transaction', entityId: id, summary: 'activity.bank_transaction_updated', meta: { status: body.status } });
   return c.json({ ok: true });
 });

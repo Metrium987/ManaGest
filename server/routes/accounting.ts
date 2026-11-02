@@ -48,7 +48,9 @@ accountingRoutes.get('/income-statement', requirePermission('accounting.read'), 
 });
 
 accountingRoutes.post('/sync', requirePermission('accounting.write'), async (c) => {
+  const user = c.get('user')!;
   const created = await syncAccounting(c.env.DB);
+  await logActivity(c.env.DB, { userId: user.id, action: 'synced', entityType: 'accounting', entityId: 'journal', summary: 'activity.accounting_synced', meta: { entries: created } });
   return c.json({ created });
 });
 

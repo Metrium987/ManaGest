@@ -1131,6 +1131,7 @@ productRoutes.delete('/:id/vendors/:linkId', requirePermission('products.write')
     .bind(c.req.param('linkId'), id)
     .run();
   if (!result.meta.changes) return fail(404, 'NOT_FOUND');
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deleted', entityType: 'product_vendor', entityId: id, summary: 'activity.vendor_unlinked', meta: { link: c.req.param('linkId') } });
   return c.json({ ok: true });
 });
 
@@ -1434,6 +1435,7 @@ productRoutes.delete('/:id', requirePermission('products.delete'), async (c) => 
   await c.env.DB.prepare(`UPDATE products SET deleted_at = ?, updated_at = ? WHERE id = ?`)
     .bind(nowISO(), nowISO(), id)
     .run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deleted', entityType: 'product', entityId: id, summary: 'activity.product_deleted' });
   return c.json({ ok: true });
 });
 
@@ -1541,6 +1543,7 @@ productRoutes.post('/:id/adjust-stock', requirePermission('stock.adjust'), async
   }
 
   await c.env.DB.batch(statements);
+  await logActivity(c.env.DB, { userId: user.id, action: 'adjusted', entityType: 'product', entityId: id, summary: 'activity.stock_adjusted', meta: { delta: body.delta, reason: body.reason ?? null, quantity: next } });
 
   const updated = { ...product, quantity_milli: next };
   return c.json({

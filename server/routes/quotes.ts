@@ -195,6 +195,7 @@ quoteRoutes.post('/', requirePermission('quotes.write'), async (c) => {
 
 quoteRoutes.patch('/:id', requirePermission('quotes.write'), async (c) => {
   const id = c.req.param('id');
+  const user = c.get('user')!;
   const body = parseInput(quoteSchema, await c.req.json().catch(() => ({})));
   body.line_items = await enrichLines(c.env.DB, body.line_items);
   // D1: the client grid only fills lines nobody priced yet.
@@ -232,6 +233,7 @@ quoteRoutes.patch('/:id', requirePermission('quotes.write'), async (c) => {
       body.project_template_id ?? null, body.project_template_version ?? null, nowISO(), id,
     )
     .run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'updated', entityType: 'quote', entityId: id, summary: 'activity.quote_updated', meta: { total: totals.total } });
   return c.json({ ok: true });
 });
 
@@ -314,6 +316,7 @@ quoteRoutes.post('/:id/reject', requirePermission('quotes.write'), async (c) => 
   await c.env.DB.prepare(`UPDATE quotes SET status = 'rejected', updated_at = ? WHERE id = ?`)
     .bind(nowISO(), id)
     .run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'rejected', entityType: 'quote', entityId: id, summary: 'activity.quote_rejected' });
   return c.json({ ok: true });
 });
 
@@ -384,5 +387,6 @@ quoteRoutes.delete('/:id', requirePermission('quotes.delete'), async (c) => {
   await c.env.DB.prepare(`UPDATE quotes SET deleted_at = ?, updated_at = ? WHERE id = ?`)
     .bind(nowISO(), nowISO(), id)
     .run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deleted', entityType: 'quote', entityId: id, summary: 'activity.quote_deleted' });
   return c.json({ ok: true });
 });

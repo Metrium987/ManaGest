@@ -106,6 +106,7 @@ recurringRoutes.post('/from-service', requirePermission('recurring.write'), asyn
     )
     .run();
 
+  await logActivity(c.env.DB, { userId: user.id, action: 'created', entityType: 'recurring', entityId: id, summary: 'activity.contract_created', meta: { service: service.name } });
   return c.json({ id, frequency: draft.frequency, notice_days: draft.notice_days, renewal_mode: draft.renewal_mode }, 201);
 });
 
@@ -223,12 +224,14 @@ recurringRoutes.post('/', requirePermission('recurring.write'), async (c) => {
       body.terms ?? null, user.id, nowISO(), nowISO(),
     )
     .run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'created', entityType: 'recurring', entityId: id, summary: 'activity.contract_created' });
 
   return c.json({ id }, 201);
 });
 
 recurringRoutes.patch('/:id', requirePermission('recurring.write'), async (c) => {
   const id = c.req.param('id');
+  const user = c.get('user')!;
   const body = parseInput(recurringSchema, await c.req.json().catch(() => ({})));
   const existing = await c.env.DB.prepare(`SELECT id FROM recurring_invoices WHERE id = ? AND deleted_at IS NULL`)
     .bind(id)
@@ -248,6 +251,7 @@ recurringRoutes.patch('/:id', requirePermission('recurring.write'), async (c) =>
       serialiseLines(body.line_items), body.notes ?? null, body.terms ?? null, nowISO(), id,
     )
     .run();
+  await logActivity(c.env.DB, { userId: user.id, action: 'updated', entityType: 'recurring', entityId: id, summary: 'activity.contract_updated' });
   return c.json({ ok: true });
 });
 
@@ -264,6 +268,7 @@ recurringRoutes.post('/:id/status', requirePermission('recurring.write'), async 
   await c.env.DB.prepare(`UPDATE recurring_invoices SET status = ?, updated_at = ? WHERE id = ?`)
     .bind(body.status, nowISO(), id)
     .run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'updated', entityType: 'recurring', entityId: id, summary: 'activity.contract_status_changed', meta: { status: body.status } });
   return c.json({ ok: true });
 });
 
@@ -281,6 +286,7 @@ recurringRoutes.post('/:id/run', requirePermission('recurring.write'), async (c)
 
   const today = todayIn(company.timezone);
   const result = await generateRecurringInvoice(c.env.DB, company, recurring, { today, userId: user.id });
+  await logActivity(c.env.DB, { userId: user.id, action: 'invoiced', entityType: 'recurring', entityId: id, summary: 'activity.contract_invoiced', meta: { number: result.number } });
   return c.json({ id: result.invoiceId, number: result.number, next_run_date: result.nextRunDate, completed: result.finished });
 });
 
@@ -289,5 +295,6 @@ recurringRoutes.delete('/:id', requirePermission('recurring.delete'), async (c) 
   await c.env.DB.prepare(`UPDATE recurring_invoices SET deleted_at = ?, updated_at = ? WHERE id = ?`)
     .bind(nowISO(), nowISO(), id)
     .run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deleted', entityType: 'recurring', entityId: id, summary: 'activity.contract_deleted' });
   return c.json({ ok: true });
 });

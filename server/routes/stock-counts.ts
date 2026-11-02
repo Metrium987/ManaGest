@@ -242,6 +242,7 @@ stockCountRoutes.patch('/:id/lines', requirePermission('products.write'), async 
   );
   if (statements.length) await c.env.DB.batch(statements);
   await c.env.DB.prepare(`UPDATE stock_counts SET note = COALESCE(note, note) WHERE id = ?`).bind(count.id).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'updated', entityType: 'stock_count', entityId: count.id, summary: 'activity.stock_count_updated', meta: { count: body.counts.length } });
 
   return c.json({ ok: true, saved: body.counts.length, saved_at: now });
 });

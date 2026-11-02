@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { nowISO } from '../db';
 import { fail } from '../lib/errors';
 import { parseInput } from '../lib/validation';
+import { logActivity } from '../lib/audit';
 import { requireAuth } from '../middleware';
 import type { AppEnv } from '../types';
 import type { Permission } from '../../shared/domain';
@@ -76,6 +77,7 @@ filterRoutes.post('/', requireAuth, async (c) => {
   const row = await c.env.DB.prepare(
     `SELECT id, list_key, name, query, created_at FROM saved_filters WHERE list_key = ? AND name = ?`,
   ).bind(body.list, body.name).first();
+  await logActivity(c.env.DB, { userId: user.id, action: 'saved', entityType: 'saved_filter', entityId: (row as { id?: string } | null)?.id ?? null, summary: 'activity.filter_saved', meta: { list: body.list, name: body.name } });
   return c.json(row, 201);
 });
 
@@ -87,5 +89,6 @@ filterRoutes.delete('/:id', requireAuth, async (c) => {
   if (!permission) return fail(404, 'NOT_FOUND');
   requireListPermission(c, permission);
   await c.env.DB.prepare(`DELETE FROM saved_filters WHERE id = ?`).bind(c.req.param('id')).run();
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'deleted', entityType: 'saved_filter', entityId: c.req.param('id'), summary: 'activity.filter_deleted', meta: { list: row.list_key } });
   return c.body(null, 204);
 });

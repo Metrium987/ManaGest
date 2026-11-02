@@ -1070,3 +1070,19 @@ traçabilité des utilisateurs lisible par les seuls responsables.
 - **Valeurs métier.** Balayage final : aucun taux, délai, horaire, férié ou code
   comptable en dur hors des défauts partagés (`shared/*`) ; les seeds de démo
   restent des exemples, pas des règles.
+
+### Correctif du même jour — l'inventaire n'était pas complet
+
+Le premier passage affirmait une couverture totale du journal : c'était faux.
+Un script a comparé chaque handler mutant (`POST/PUT/PATCH/DELETE`) à la présence
+d'un `logActivity` dans son corps, et 41 mutations n'écrivaient rien : suppression
+d'avoir et de devis, ajustement de stock manuel, corbeille produit et fournisseur,
+barèmes SLA, jours non travaillés et capacités, planification de tâche, contrats
+récurrents, comptes et opérations bancaires, taux de TVA, suppression
+d'utilisateur, contacts client, modèles de projet archivés, filtres enregistrés.
+
+Toutes sont désormais journalisées, avec le libellé de la ligne concernée
+(numéro, nom, e-mail, priorité, écart de stock). Deux cas restent volontairement
+hors journal : `POST /import/preview` (lecture seule déguisée en POST) et
+`POST /runs/daily` (passe planifiée par jeton, sans utilisateur). Les approbations
+sont journalisées dans `server/services/approvals.ts`, pas dans la route.

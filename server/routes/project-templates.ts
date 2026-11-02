@@ -181,5 +181,6 @@ projectTemplateRoutes.delete('/:id', requirePermission('projects.write'), async 
   const result = await c.env.DB.prepare(`UPDATE project_templates SET archived = 1, updated_at = ? WHERE id = ?`)
     .bind(nowISO(), c.req.param('id')).run();
   if (!result.meta.changes) return fail(404, 'NOT_FOUND');
+  await logActivity(c.env.DB, { userId: c.get('user')!.id, action: 'archived', entityType: 'project_template', entityId: c.req.param('id'), summary: 'activity.project_template_archived' });
   return c.json({ ok: true });
 });
