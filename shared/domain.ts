@@ -65,6 +65,11 @@ const OPERATIONAL_READ: Permission[] = PERMISSIONS.filter(
     && p !== 'users.read'
     && p !== 'activity.read'
     && p !== 'periods.read'
+    // The settings screen configures the workspace itself: who reads the
+    // journals and the prices only needs the operational data, not the
+    // authority screen. Sales and read-only accounts reach the VAT rates
+    // through `/tax-rates`, which is guarded by `invoices.read`.
+    && p !== 'settings.read'
     // The general ledger is accounting evidence, not operational data: a
     // read-only or sales account must not see the books.
     && p !== 'accounting.read'
@@ -119,7 +124,9 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   owner: [...PERMISSIONS],
   admin: [...PERMISSIONS],
   // The accountant closes and reopens periods: that is their core control.
-  accountant: [...OPERATIONAL_READ, 'activity.read', 'periods.read', 'periods.write', ...FINANCE_WRITE, 'accounting.read', 'accounting.write', 'approvals.read', 'approvals.write', 'products.cost.read'],
+  // The accountant may read the settings that frame the books (taxes,
+  // numbering, fiscal keys) without being able to change them.
+  accountant: [...OPERATIONAL_READ, 'settings.read', 'activity.read', 'periods.read', 'periods.write', ...FINANCE_WRITE, 'accounting.read', 'accounting.write', 'approvals.read', 'approvals.write', 'products.cost.read'],
   sales: [...SALES_READ, ...SALES_WRITE],
   viewer: [...OPERATIONAL_READ],
 };

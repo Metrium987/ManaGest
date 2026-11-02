@@ -62,6 +62,18 @@ Chaque requête non sûre (POST, PATCH, DELETE) est contrôlée :
   silence) et retirer le dernier propriétaire actif est refusé. Toute création,
   modification, suppression et attribution est journalisée avec sa valeur
   précédente.
+- **Écran de réglages réservé.** `settings.read` n'est pas hérité par les rôles
+  opérationnels : le propriétaire, l'administrateur et le comptable ouvrent
+  Paramètres ; vente et lecture seule ne le voient ni dans le menu ni par URL
+  directe, et le serveur répond `403`. Pour saisir un document, ils lisent les
+  taux de TVA par `GET /tax-rates`, gardée par `invoices.read` — la configuration
+  reste chez ceux qui détiennent l'autorité, la donnée opérationnelle reste
+  disponible à la saisie.
+- **Journal d'activité réservé.** `activity.read` est refusé à vente et lecture
+  seule : la consultation du journal et la vérification de la chaîne de hachage
+  sont réservées au propriétaire, à l'administrateur et au comptable. Les
+  snapshots de champs contenant des prix ou des marges sont masqués pour un
+  lecteur sans `products.cost.read`.
 - Toute route protégée vérifie d'abord la session, puis la permission.
 - Les données sont toujours filtrées par la société du déploiement ; aucun identifiant
   de société n'est accepté depuis le client.

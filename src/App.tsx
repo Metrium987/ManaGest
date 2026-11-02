@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import type { Permission } from '@shared/domain';
 import { useSession } from '@/lib/session';
 import { t } from '@/lib/i18n';
 import { AppShell } from '@/components/layout/AppShell';
@@ -66,6 +67,30 @@ function PublicOnly({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Hides the authority screens from an account that cannot use them. The server
+ * already answers 403 on their endpoints; this only avoids opening an empty,
+ * confusing page when the address is typed directly.
+ */
+function RequirePermission({ permission, children }: { permission: Permission; children: React.ReactNode }) {
+  const { can, isLoading } = useSession();
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner />
+      </div>
+    );
+  }
+  if (!can(permission)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <EmptyState title={t('settings.permissionDenied')} description={t('errors.FORBIDDEN')} />
+      </div>
+    );
+  }
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -101,10 +126,10 @@ export default function App() {
         <Route path="rapports" element={<ReportsPage />} />
         <Route path="comptabilite" element={<AccountingPage />} />
         <Route path="approbations" element={<ApprovalsPage />} />
-        <Route path="parametres" element={<SettingsPage />} />
-        <Route path="parametres/utilisateurs" element={<UsersPage />} />
+        <Route path="parametres" element={<RequirePermission permission="settings.read"><SettingsPage /></RequirePermission>} />
+        <Route path="parametres/utilisateurs" element={<RequirePermission permission="users.read"><UsersPage /></RequirePermission>} />
         <Route path="importer" element={<ImportPage />} />
-        <Route path="journal" element={<ActivityPage />} />
+        <Route path="journal" element={<RequirePermission permission="activity.read"><ActivityPage /></RequirePermission>} />
         <Route path="profil" element={<ProfilePage />} />
       </Route>
 

@@ -1044,3 +1044,29 @@ nouveau.
   le journal, il s'applique aux écritures suivantes.
 - Preuve : `tests/account-codes.test.ts` (facture, règlement, dépense, reprise de
   balance, TVA à l'import et ventilation sur des codes personnalisés).
+
+---
+
+## 2026-11-02 — Réglages et journal réservés à l'autorité
+
+Parcours de l'application pour vérifier les trois garanties demandées : rien de
+métier en dur, un écran de réglages qui appartient à l'autorité, et une
+traçabilité des utilisateurs lisible par les seuls responsables.
+
+- **Réglages.** `settings.read` n'est plus hérité par les rôles opérationnels :
+  propriétaire, administrateur et comptable ouvrent Paramètres, vente et lecture
+  seule non — ni dans le menu, ni par URL directe (nouveau garde de route), ni
+  par l'API (`403`). Les taux de TVA restent lisibles à la saisie par
+  `GET /tax-rates` (`invoices.read`), pour qu'un commercial utilise les taux
+  configurés sans ouvrir la configuration.
+- **Traçabilité.** Le journal `activities` est append-only et chaîné par hash ;
+  118 appels `logActivity` couvrent factures, devis, avoirs, paiements, dépenses,
+  achats, projets, stocks, comptabilité, banque, réglages, rôles, sessions,
+  jetons et exports. Il est réservé à `activity.read` (propriétaire,
+  administrateur, comptable), avec masquage des prix et marges pour qui n'a pas
+  `products.cost.read`, et vérification de chaîne exposée par `/activity/verify`.
+  Seul `saved_filters` (préférences de vue personnelles) n'écrit pas au journal :
+  aucune donnée d'entreprise n'y est modifiée.
+- **Valeurs métier.** Balayage final : aucun taux, délai, horaire, férié ou code
+  comptable en dur hors des défauts partagés (`shared/*`) ; les seeds de démo
+  restent des exemples, pas des règles.

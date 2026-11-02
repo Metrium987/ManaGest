@@ -89,6 +89,16 @@ describe('role permissions', () => {
     expect(hasPermission('admin', 'invoices.delete')).toBe(true);
   });
 
+  it('keeps the settings screen for roles holding authority', () => {
+    expect(hasPermission('owner', 'settings.read')).toBe(true);
+    expect(hasPermission('admin', 'settings.read')).toBe(true);
+    expect(hasPermission('accountant', 'settings.read')).toBe(true);
+    expect(hasPermission('sales', 'settings.read')).toBe(false);
+    expect(hasPermission('viewer', 'settings.read')).toBe(false);
+    expect(hasPermission('sales', 'settings.write')).toBe(false);
+    expect(hasPermission('viewer', 'settings.write')).toBe(false);
+  });
+
   it('gives accountants financial write access without settings or user rights', () => {
     expect(hasPermission('accountant', 'settings.read')).toBe(true);
     expect(hasPermission('accountant', 'settings.write')).toBe(false);
