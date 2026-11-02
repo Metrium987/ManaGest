@@ -625,8 +625,8 @@ données). Ce qui est appliqué, et ce qui reste à ouvrir :
 > atteint (10 042 / 10 000), ce qui met les sites en pause ; les autres quotas sont
 > loin (requêtes 1 892 / 100 000, CPU 27 s / 5 000 s, stockage 1,9 Mo / 100 Mo) et les
 > **données sont conservées**. Remise à zéro le **3 novembre 2026 à 00:00 UTC** ; la
-> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **74 fichiers
-> de tests (639 cas)**, build OK) ; la **vérification hébergée** de ces deux points reste **bloquée par ce quota** :
+> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **76 fichiers
+> de tests (654 cas)**, build OK) ; la **vérification hébergée** de ces deux points reste **bloquée par ce quota** :
 > à faire dès la remise à zéro (3/11/2026 00:00 UTC) — construire, publier, puis
 > `npm run check:preview:hosted` (quatre contrôles : écrans de stock, tarif, démo et
 > centres ; historique de prix et révision ; séparation des droits ;
@@ -1293,12 +1293,11 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
   avec une URL non http(s) → **EXIT:2** ; avec une configuration complète →
   **EXIT:0**. Le code 2 distingue donc une configuration absente d'un contrôle rouge.
 - **Build sur l'arbre commité** : `npm run typecheck` → **0 erreur** ;
-  `npm test` → **74 fichiers, 639 tests verts** ; `npm run build` → **OK**.
+  `npm test` → **76 fichiers, 654 tests verts** ; `npm run build` → **OK**.
 - **Cases à cocher** : les `- [ ]` de `docs/build/VERIFICATION-GATES.md` sont le
   **modèle de porte** (chaque ligne porte déjà son ✓), pas des tâches ouvertes.
 - **Ce qui reste, avec son blocage** :
   1. **H4** — plus rien de bloquant : le **modèle ManaGest** et l'**export** des données actuelles forment la voie de migration, avec des en-têtes identiques (preuve : `tests/import-roundtrip.test.ts`). Un ancien fichier reste utile seulement s'il contient des champs propres.
-     débloque l'ajout des colonnes/alias propres à ces fichiers.
   2. **H5** — créer la **preview dédiée** puis, dans **GitHub → Settings → Secrets
      and variables → Actions**, `PREVIEW_URL`, `PREVIEW_EMAIL`, `PREVIEW_PASSWORD` ;
      débloque le workflow « Hosted preview checks ».
@@ -1307,7 +1306,6 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
   4. **Historique des prix d'achat** — **fait** : ledgers datés avec source, prix payé à la réception, écran et seuils paramétrables (conservation 36 mois, alerte 10 %, fenêtre 90 jours).
   5. **MRP / GPAO** — hors périmètre assumé ; le détail de ce qu'il faudrait est en **H8**, pas une tâche de code ouverte.
   6. **Q15 (multi-devises)** — **reporté après arbitrage** : ce n'est pas une petite modification (taux figé par document, journal, TVA, règlements, avoirs, rapports, réévaluation). Plan en trois étapes et condition de réouverture dans la section Q15.
-     dans une devise non arrimée à l'euro n'existe.
 
 ## 2026-11-02 — Modèle ManaGest, historique des prix, MRP expliqué, multi-devises arbitré
 
