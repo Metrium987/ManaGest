@@ -36,6 +36,8 @@ interface SetupForm {
   legal_name: string;
   tax_id: string;
   rcs: string;
+  ridet: string;
+  nif: string;
   numero_tps: string;
   share_capital: string;
   vat_regime_detail: ClientVatRegime | '';
@@ -78,6 +80,8 @@ const INITIAL: SetupForm = {
   legal_name: '',
   tax_id: '',
   rcs: '',
+  ridet: '',
+  nif: '',
   numero_tps: '',
   share_capital: '',
   vat_regime_detail: '',
@@ -168,6 +172,8 @@ export function SetupPage() {
           delivery_instructions: form.delivery_instructions,
           tax_id: form.tax_id,
           rcs: form.rcs,
+          ridet: form.ridet,
+          nif: form.nif,
           numero_tps: form.numero_tps,
           share_capital: form.share_capital,
           vat_regime_detail: form.vat_regime_detail,
@@ -232,8 +238,7 @@ export function SetupPage() {
       if (!form.company_name.trim()) next.company_name = t('validation.required');
       if (!form.legal_name.trim()) next.legal_name = t('validation.required');
       if (!form.legal_form) next.legal_form = t('validation.required');
-      if (!form.tax_id.trim()) next.tax_id = t('validation.required');
-      else if (!/^([A-Za-z]\d{5}|\d{7})$/.test(form.tax_id.trim())) {
+      if (form.tax_id.trim() && !/^([A-Za-z]\d{5}|\d{7})$/.test(form.tax_id.trim())) {
         next.tax_id = t('validation.invalid_tahiti_number');
       }
       if (!form.vat_regime_detail) next.vat_regime_detail = t('validation.required');
@@ -370,18 +375,23 @@ export function SetupPage() {
                     ))}
                   </Select>
                 </Field>
-                <Field label={t('setup.tahitiNumber')} htmlFor="tax_id" hint={t('setup.tahitiHint')} required error={errorText('tax_id')}>
+                <Field label={t('setup.tahitiNumber')} htmlFor="tax_id" hint={t('setup.tahitiHint')} error={errorText('tax_id')}>
                   <Input
                     id="tax_id"
                     value={form.tax_id}
                     onChange={(event) => set('tax_id', event.target.value.toUpperCase())}
                     placeholder="T12345"
                     maxLength={7}
-                    required
                   />
                 </Field>
                 <Field label={t('setup.rcs')} htmlFor="rcs">
                   <Input id="rcs" value={form.rcs} onChange={(event) => set('rcs', event.target.value)} placeholder="Papeete B 12345" />
+                </Field>
+                <Field label={t('setup.ridet')} htmlFor="ridet">
+                  <Input id="ridet" value={form.ridet} onChange={(event) => set('ridet', event.target.value)} />
+                </Field>
+                <Field label={t('setup.nif')} htmlFor="nif">
+                  <Input id="nif" value={form.nif} onChange={(event) => set('nif', event.target.value)} />
                 </Field>
                 <Field label={t('clientProfile.tps')} htmlFor="numero_tps">
                   <Input id="numero_tps" value={form.numero_tps} onChange={(event) => set('numero_tps', event.target.value)} />

@@ -38,6 +38,8 @@ export interface Company {
   locale: string;
   tax_id: string | null;
   rcs: string | null;
+  ridet: string | null;
+  nif: string | null;
   share_capital: string | null;
   vat_regime: 'standard' | 'franchise';
   vat_regime_detail: ClientVatRegime | null;
@@ -104,6 +106,7 @@ export interface Client {
   legal_form: LegalForm | null;
   numero_rcs: string | null;
   numero_tps: string | null;
+  nif: string | null;
   vat_regime: ClientVatRegime | null;
   price_tier: 'public' | 'pro' | 'member';
   first_name: string | null;

@@ -10,7 +10,7 @@ import {
 } from '../../shared/company-defaults';
 import { SLA_DEFAULT_POLICIES } from '../../shared/planning';
 
-export const SCHEMA_VERSION = 48;
+export const SCHEMA_VERSION = 49;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (

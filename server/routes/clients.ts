@@ -51,6 +51,7 @@ const clientSchema = z
     tax_id: optionalText(20).transform((value) => (value ? value.toUpperCase() : null)),
     numero_rcs: optionalText(40),
     numero_tps: optionalText(40),
+    nif: optionalText(30),
     vat_regime: z.enum(CLIENT_VAT_REGIMES).nullish().transform((value) => value ?? null),
     price_tier: z.enum(PRICE_TIERS).default('public'),
 
@@ -466,18 +467,18 @@ clientRoutes.post('/', requirePermission('clients.write'), async (c) => {
 
   await c.env.DB.prepare(
     `INSERT INTO clients (id, number, display_name, entity_category, legal_name, trade_name, legal_form,
-      tax_id, numero_rcs, numero_tps, vat_regime,
+      tax_id, numero_rcs, numero_tps, nif, vat_regime,
       first_name, last_name, email, phone, contact_role, has_delegation_authority,
       address1, address2, po_box_number, po_box_municipality, city, postal_code, island,
       physical_municipality, district, pk_landmark, street_building_zone, delivery_instructions,
       country, payment_method, payment_terms_code, payment_terms, bank_name, iban, credit_limit,
       is_tax_exempt, tax_exemption_decree_num, tax_exemption_expiry,
       data_consent_accepted, account_status, notes, created_at, updated_at, price_tier)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?))`,
   )
     .bind(
       id, number, body.display_name, body.entity_category, body.legal_name, body.trade_name, body.legal_form,
-      body.tax_id, body.numero_rcs, body.numero_tps, body.vat_regime,
+      body.tax_id, body.numero_rcs, body.numero_tps, body.nif, body.vat_regime,
       body.first_name, body.last_name, body.email, body.phone, body.contact_role,
       body.has_delegation_authority ? 1 : 0,
       address.address1, body.address2, body.po_box_number, body.po_box_municipality, address.city,
@@ -556,7 +557,7 @@ clientRoutes.patch('/:id', requirePermission('clients.write'), async (c) => {
 
   await c.env.DB.prepare(
     `UPDATE clients SET display_name = ?, number = ?, entity_category = ?, legal_name = ?, trade_name = ?,
-      legal_form = ?, tax_id = ?, numero_rcs = ?, numero_tps = ?, vat_regime = ?,
+      legal_form = ?, tax_id = ?, numero_rcs = ?, numero_tps = ?, nif = ?, vat_regime = ?,
       first_name = ?, last_name = ?, email = ?, phone = ?, contact_role = ?, has_delegation_authority = ?,
       address1 = ?, address2 = ?, po_box_number = ?, po_box_municipality = ?, city = ?, postal_code = ?,
       island = ?, physical_municipality = ?, district = ?, pk_landmark = ?, street_building_zone = ?,
@@ -568,7 +569,7 @@ clientRoutes.patch('/:id', requirePermission('clients.write'), async (c) => {
   )
     .bind(
       body.display_name, number, body.entity_category, body.legal_name, body.trade_name,
-      body.legal_form, body.tax_id, body.numero_rcs, body.numero_tps, body.vat_regime,
+      body.legal_form, body.tax_id, body.numero_rcs, body.numero_tps, body.nif, body.vat_regime,
       body.first_name, body.last_name, body.email, body.phone, body.contact_role,
       body.has_delegation_authority ? 1 : 0,
       address.address1, body.address2, body.po_box_number, body.po_box_municipality, address.city,

@@ -61,6 +61,13 @@ async function provision(database: D1Database): Promise<void> {
  * carry them in CREATE TABLE, which makes these a no-op there.
  */
 const COLUMN_MIGRATIONS: { table: string; column: string; definition: string }[] = [
+  // Schema 49: Polynesian legal identifiers and the date a tax rate starts to
+  // apply. Every column is nullable, so an existing workspace keeps working and
+  // the fields are filled when the owner edits the company or a client.
+  { table: 'company', column: 'ridet', definition: 'TEXT' },
+  { table: 'company', column: 'nif', definition: 'TEXT' },
+  { table: 'clients', column: 'nif', definition: 'TEXT' },
+  { table: 'tax_rates', column: 'valid_from', definition: 'TEXT' },
   // B2: existing articles keep working untouched; only the ones switched to lot
   // or serial tracking start demanding a batch.
   { table: 'products', column: 'lot_tracking', definition: "TEXT NOT NULL DEFAULT 'none'" },

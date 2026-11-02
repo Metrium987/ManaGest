@@ -153,15 +153,20 @@ export const PROJECT_STATUSES = ['planned', 'active', 'completed', 'archived'] a
 export const TASK_STATUSES = ['todo', 'in_progress', 'done'] as const;
 
 /** Local TVA rates in French Polynesia (percent). */
+/**
+ * The local tax plan (DICP): 16 % on goods, 13 % on services, 5 % reduced,
+ * 1 % for the archipelagos other than the Society islands from 1 July 2026,
+ * and 0 for exempt operations. `valid_from` is the date the rate starts to
+ * apply; null means it has no start date to announce.
+ */
 export const TVA_RATES = [
-  { rate: 16, label: 'TVA 16 % (taux normal)' },
-  // Q4: 1 % for the archipelagos other than the Society islands, since 1 July
-  // 2026. The server refuses it without the archipel evidence (see
-  // shared/archipelago.ts), so the rate is selectable but never free of proof.
-  { rate: 1, label: 'TVA 1 % (archipels)' },
-  { rate: 13, label: 'TVA 13 % (taux intermédiaire)' },
-  { rate: 5, label: 'TVA 5 % (taux réduit)' },
-  { rate: 0, label: 'Exonéré' },
+  { rate: 16, label: 'TVA 16 % (biens)', valid_from: null },
+  { rate: 13, label: 'TVA 13 % (services)', valid_from: null },
+  { rate: 5, label: 'TVA 5 % (taux réduit)', valid_from: null },
+  // Q4: the server refuses this rate without the archipel evidence (see
+  // shared/archipelago.ts), so it is selectable but never free of proof.
+  { rate: 1, label: 'TVA 1 % (archipels hors îles de la Société)', valid_from: '2026-07-01' },
+  { rate: 0, label: 'Exonéré', valid_from: null },
 ] as const;
 
 export const VAT_REGIMES = ['standard', 'franchise'] as const;
@@ -188,6 +193,9 @@ export const ZERO_DECIMAL_CURRENCIES = ['XPF', 'JPY'] as const;
 
 export const DEFAULT_TIMEZONE = 'Pacific/Tahiti';
 export const DEFAULT_CURRENCY = 'XPF';
+
+/** Country written on the company, the clients and every seeded address. */
+export const DEFAULT_COUNTRY = 'Polynésie française';
 /**
  * Display locale used by Intl formatters. French Polynesia uses metropolitan
  * French for dates and numbers with the Pacific-franc currency; the setting is
@@ -204,11 +212,12 @@ export const DISPLAY_LOCALES = [
 ] as const;
 
 /**
- * Default local TVA rate, used to seed a new company and as the fallback while
- * the company settings load. The live value is `company.default_tax_rate`
- * (Paramètres → Facturation), never this constant.
+ * Default local TVA rate for a service line: 13 % is the Polynesian rate on
+ * services (16 % is the rate on goods). It seeds a new company and is the
+ * fallback while the company settings load; the live value is
+ * `company.default_tax_rate` (Paramètres → Facturation), never this constant.
  */
-export const DEFAULT_TAX_RATE = 16;
+export const DEFAULT_TAX_RATE = 13;
 
 export const SESSION_COOKIE = 'mg_session';
 export const CSRF_COOKIE = 'mg_csrf';

@@ -2,6 +2,7 @@ import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf
 import { currencyDecimals, fromMinor } from '../lib/money';
 import { computeTotals, type LineItem } from '../lib/tax';
 import { styleFor, type DocLayout } from './pdf-style';
+import { identifierLine, identifierMentions } from '../../shared/invoice-mentions';
 import type { CompanyRow } from '../types';
 
 const PAGE_W = 595.28;
@@ -89,9 +90,14 @@ export async function buildInvoicePdf(
     if (subtitle) {
       target.drawText(subtitle.slice(0, 90), { x: MARGIN, y: PAGE_H - 78, size: 9, font: regular, color: bodyColor });
     }
-    if (company.tax_id) {
-      target.drawText(`Numéro TAHITI : ${company.tax_id}`, {
-        x: MARGIN, y: PAGE_H - 92, size: 8, font: regular, color: faintColor,
+    const identifiers = identifierLine({
+      tax_id: company.tax_id,
+      ridet: (company as unknown as { ridet?: string | null }).ridet,
+      nif: (company as unknown as { nif?: string | null }).nif,
+    });
+    if (identifiers) {
+      target.drawText(identifiers.slice(0, 120), {
+        x: MARGIN, y: PAGE_H - 92, size: 7, font: regular, color: faintColor,
       });
     }
     target.drawText(heading, {
@@ -126,7 +132,11 @@ export async function buildInvoicePdf(
     String(invoice.client_address1 ?? ''),
     [invoice.client_postal_code, invoice.client_city].filter(Boolean).join(' '),
     String(invoice.client_country ?? ''),
-    invoice.client_tax_id ? `TAHITI : ${invoice.client_tax_id}` : '',
+    ...identifierMentions({
+      tax_id: invoice.client_tax_id ? String(invoice.client_tax_id) : null,
+      ridet: (invoice as unknown as { client_ridet?: string | null }).client_ridet,
+      nif: (invoice as unknown as { client_nif?: string | null }).client_nif,
+    }),
   ].filter((value) => value && value !== 'null');
 
   ctx.page.drawRectangle({ x: MARGIN, y: ctx.y - 100, width: boxWidth, height: 100, color: SOFT });
@@ -318,7 +328,11 @@ export async function buildInvoicePdf(
       company.legal_name ?? company.name,
       company.address1,
       [company.postal_code, company.city].filter(Boolean).join(' '),
-      company.tax_id ? `Numéro TAHITI ${company.tax_id}` : '',
+      ...identifierMentions({
+        tax_id: company.tax_id,
+        ridet: (company as unknown as { ridet?: string | null }).ridet,
+        nif: (company as unknown as { nif?: string | null }).nif,
+      }),
       company.rcs ? `RCS ${company.rcs}` : '',
       company.share_capital ? `Capital ${company.share_capital}` : '',
       company.legal_notes ?? '',

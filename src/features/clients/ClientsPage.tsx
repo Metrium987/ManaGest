@@ -53,6 +53,7 @@ interface ClientFormState {
   tax_id: string;
   numero_rcs: string;
   numero_tps: string;
+  nif: string;
   vat_regime: ClientVatRegime | '';
   price_tier: 'public' | 'pro' | 'member';
   first_name: string;
@@ -92,6 +93,7 @@ const EMPTY: ClientFormState = {
   tax_id: '',
   numero_rcs: '',
   numero_tps: '',
+  nif: '',
   vat_regime: '',
   price_tier: 'public',
   first_name: '',
@@ -140,6 +142,7 @@ function fromClient(client: Client): ClientFormState {
     tax_id: client.tax_id ?? '',
     numero_rcs: client.numero_rcs ?? '',
     numero_tps: client.numero_tps ?? '',
+    nif: client.nif ?? '',
     vat_regime: (client.vat_regime ?? '') as ClientVatRegime | '',
     price_tier: client.price_tier ?? 'public',
     first_name: client.first_name ?? '',
@@ -236,6 +239,7 @@ export function ClientFormModal({
       legal_name: form.legal_name,
       legal_form: form.legal_form,
       tax_id: form.tax_id,
+      nif: form.nif,
       vat_regime: form.vat_regime,
         price_tier: form.price_tier,
       first_name: form.first_name,
@@ -349,7 +353,7 @@ export function ClientFormModal({
                   ))}
                 </Select>
               </Field>
-              <Field label={t('clientProfile.tahitiNumber')} htmlFor="tax_id" required error={errors.tax_id}
+              <Field label={t('clientProfile.tahitiNumber')} htmlFor="tax_id" error={errors.tax_id}
                 hint={t('clientProfile.tahitiHint')}>
                 <Input
                   id="tax_id"
@@ -364,6 +368,9 @@ export function ClientFormModal({
               </Field>
               <Field label={t('clientProfile.tps')} htmlFor="numero_tps">
                 <Input id="numero_tps" value={form.numero_tps} onChange={(event) => set('numero_tps', event.target.value)} />
+              </Field>
+              <Field label={t('clientProfile.nif')} htmlFor="nif">
+                <Input id="nif" value={form.nif} onChange={(event) => set('nif', event.target.value)} />
               </Field>
               <Field label={t('clients.priceTier')} htmlFor="price_tier">
                 <Select id="price_tier" value={form.price_tier}

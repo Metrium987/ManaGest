@@ -625,8 +625,8 @@ données). Ce qui est appliqué, et ce qui reste à ouvrir :
 > atteint (10 042 / 10 000), ce qui met les sites en pause ; les autres quotas sont
 > loin (requêtes 1 892 / 100 000, CPU 27 s / 5 000 s, stockage 1,9 Mo / 100 Mo) et les
 > **données sont conservées**. Remise à zéro le **3 novembre 2026 à 00:00 UTC** ; la
-> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **78 fichiers
-> de tests (667 cas)**, build OK) ; la **vérification hébergée** de ces deux points reste **bloquée par ce quota** :
+> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **79 fichiers
+> de tests (671 cas)**, build OK) ; la **vérification hébergée** de ces deux points reste **bloquée par ce quota** :
 > à faire dès la remise à zéro (3/11/2026 00:00 UTC) — construire, publier, puis
 > `npm run check:preview:hosted` (quatre contrôles : écrans de stock, tarif, démo et
 > centres ; historique de prix et révision ; séparation des droits ;
@@ -1293,7 +1293,7 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
   avec une URL non http(s) → **EXIT:2** ; avec une configuration complète →
   **EXIT:0**. Le code 2 distingue donc une configuration absente d'un contrôle rouge.
 - **Build sur l'arbre commité** : `npm run typecheck` → **0 erreur** ;
-  `npm test` → **78 fichiers, 667 tests verts** ; `npm run build` → **OK**.
+  `npm test` → **79 fichiers, 671 tests verts** ; `npm run build` → **OK**.
 - **Cases à cocher** : les `- [ ]` de `docs/build/VERIFICATION-GATES.md` sont le
   **modèle de porte** (chaque ligne porte déjà son ✓), pas des tâches ouvertes.
 - **Ce qui reste, avec son blocage** :
@@ -1404,7 +1404,7 @@ captures dans `artifacts/ui-verification/`. **27 contrôles, 27 verts.**
    sont invalides ».
 
 **Contrôles finaux** : `npm run typecheck` → **0 erreur** ; `npm test` → **77
-fichiers, 667 tests verts** ; `npm run build` → **OK**. Commit unique sur
+fichiers, 671 tests verts** ; `npm run build` → **OK**. Commit unique sur
 `freebuff/a6f86ced7cc9d3ad744d42ee`, arbre propre, rien poussé, aucun déploiement,
 aucun secret écrit.
 
@@ -1437,7 +1437,7 @@ aucun secret écrit.
 
 **Reste hors de portée sans hébergement** : la sauvegarde automatique D1 côté Cloudflare (PQ-4) s'active dans le tableau de bord ; elle ne peut être ni activée ni vérifiée depuis cet hôte. La restauration, elle, n'attend plus rien.
 
-**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → 78 fichiers, 667 tests verts ; `npm run build` → OK.
+**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → 79 fichiers, 671 tests verts ; `npm run build` → OK.
 
 ## Décisions du propriétaire, P-04, P-05 et alignement Odoo (2/11/2026)
 
@@ -1463,3 +1463,22 @@ aucun secret écrit.
 - Chorus Pro, Polynésie : <https://portail.chorus-pro.gouv.fr/aife_documentation?id=kb_article_view&sysparm_article=KB0012182> — obligation **uniquement pour les marchés publics** (loi du pays 2025-22), pas en B2B.
 
 **Ce que cela change dans le produit** : seuils d'approbation off par défaut, import Excel accepté, plafond plateforme visible, et trois décisions closes dans `PENDING.md` (D-01, D-02, D-03) plus P-04 et P-05.
+
+
+## Installation polynésienne par défaut (2/11/2026)
+
+Une base vierge démarre désormais en **Polynésie française**, sans réglage après coup.
+
+**Valeurs par défaut (toutes modifiables ensuite)**
+- Société : pays **Polynésie française**, devise **XPF** (aucune décimale), fuseau **Pacific/Tahiti**, locale **fr-PF** ; adresse/commune de Papeete proposées par défaut, identifiants légaux facultatifs.
+- Plan de taxes local : **0 % exonéré, 5 % réduit, 13 % services, 16 % biens**, plus **1 % archipels hors îles de la Société daté au 1/7/2026** (`valid_from`). Le taux par défaut d'une nouvelle société est **13 %**, le taux des prestations de service.
+- Identifiants : **numéro TAHITI**, **RIDET** et **NIF** sur la société et sur les tiers (champs distincts, jamais obligatoires).
+- Mentions de facture : les identifiants des deux parties (TAHITI / RIDET / NIF quand ils existent), le **prix HT**, le **taux**, le **montant de TVA** et les totaux **en XPF**.
+
+**Code touché** : `shared/domain.ts` (pays, devise, fuseau, locale, plan de taxes, taux par défaut 13), `server/routes/setup.ts` (installation, plan complet y compris la ligne 0 et la date du 1 %), `server/db/index.ts` (migration 49 : `company.ridet`, `company.nif`, `clients.nif`, `tax_rates.valid_from`), `server/routes/clients.ts` et `server/routes/settings.ts` (identifiants éditables), `server/services/pdf.ts` (mentions des deux parties), écrans d'installation, de client et de paramètres.
+
+**Preuve** : `tests/polynesia-bootstrap.test.ts` installe réellement une base vierge (schéma + route `/api/setup/install`), vérifie la société (pays, XPF, Pacific/Tahiti, fr-PF, taux par défaut 13), les **cinq lignes de taxe** avec la date du 1 %, puis qu'une prestation à 13 % donne **100 000 HT → 13 000 de TVA → 113 000 TTC en XPF** et que les identifiants des deux parties sont rendus.
+
+**Sources** : DICP — [taux de TVA](https://www.service-public.pf/dicp/faq-items/quels-sont-les-principaux-taux-de-tva/) (5/13/16 %, 1 % archipels au 1/7/2026) ; IEOM — [1 000 XPF = 8,38 EUR](https://www.ieom.fr/). Les valeurs restent des réglages : aucune n'est figée dans une règle.
+
+**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → **79 fichiers, 671 tests verts** ; `npm run build` → **OK**.

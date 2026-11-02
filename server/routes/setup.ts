@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { DEFAULT_CURRENCY, DEFAULT_LOCALE, DEFAULT_TAX_RATE, DEFAULT_TIMEZONE, TVA_RATES } from '../../shared/domain';
+import { DEFAULT_COUNTRY, DEFAULT_CURRENCY, DEFAULT_LOCALE, DEFAULT_TAX_RATE, DEFAULT_TIMEZONE, TVA_RATES } from '../../shared/domain';
 import { DEFAULT_INVOICE_FOOTER, DEFAULT_INVOICE_TERMS, FRANCHISE_LEGAL_NOTE } from '../../shared/company-defaults';
 import {
   CLIENT_PAYMENT_METHODS,
@@ -46,12 +46,18 @@ const setupSchema = z.object({
       pk_landmark: z.string().trim().max(80).optional().default(''),
       street_building_zone: z.string().trim().max(160).optional().default(''),
       delivery_instructions: z.string().trim().max(500).optional().default(''),
+      // Legal identifiers are optional: a fresh workspace can be installed
+      // before the RIDET or the NIF is known, and every one stays editable.
       tax_id: z
         .string()
         .trim()
         .max(20)
-        .regex(/^([A-Za-z]\d{5}|\d{7})$/, 'invalid_tahiti_number')
+        .optional()
+        .default('')
+        .refine((value) => value === '' || /^([A-Za-z]\d{5}|\d{7})$/.test(value), 'invalid_tahiti_number')
         .transform((value) => value.toUpperCase()),
+      ridet: z.string().trim().max(40).optional().default(''),
+      nif: z.string().trim().max(30).optional().default(''),
       rcs: z.string().trim().max(40).optional().default(''),
       numero_tps: z.string().trim().max(40).optional().default(''),
       share_capital: z.string().trim().max(40).optional().default(''),
@@ -135,12 +141,14 @@ setupRoutes.post('/install', async (c) => {
     pk_landmark: body.company.pk_landmark || null,
     street_building_zone: body.company.street_building_zone || null,
     delivery_instructions: body.company.delivery_instructions || null,
-    country: 'Polynésie française',
+    country: DEFAULT_COUNTRY,
     timezone: DEFAULT_TIMEZONE,
     currency,
     locale: DEFAULT_LOCALE,
-    tax_id: body.company.tax_id,
+    tax_id: body.company.tax_id || null,
     rcs: body.company.rcs || null,
+    ridet: body.company.ridet || null,
+    nif: body.company.nif || null,
     share_capital: body.company.share_capital || null,
     vat_regime: legacyVatRegimeFor(body.company.vat_regime_detail),
     vat_regime_detail: body.company.vat_regime_detail,
@@ -175,14 +183,18 @@ setupRoutes.post('/install', async (c) => {
 
   await c.env.DB.batch([companyStatement, userStatement]);
 
-  const taxStatements = TVA_RATES.filter((rate) => rate.rate > 0).map((rate) =>
+  // The whole local plan, including the exempt line and the 1 % archipelago
+  // rate with the date it starts to apply.
+  const taxStatements = TVA_RATES.map((rate) =>
     c.env.DB.prepare(
-      `INSERT INTO tax_rates (id, name, rate, is_default, created_at) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO tax_rates (id, name, rate, is_default, valid_from, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     ).bind(
       crypto.randomUUID(),
       rate.label,
       rate.rate,
       rate.rate === body.company.default_tax_rate ? 1 : 0,
+      rate.valid_from,
       now,
     ),
   );

@@ -388,7 +388,7 @@ export function SettingsPage() {
         name: form.name, legal_name: form.legal_name, email: form.email, phone: form.phone,
         address1: form.address1, address2: form.address2, city: form.city, postal_code: form.postal_code,
         country: form.country, timezone: form.timezone, currency: form.currency, locale: form.locale,
-        tax_id: form.tax_id, rcs: form.rcs, share_capital: form.share_capital, vat_regime: form.vat_regime,
+        tax_id: form.tax_id, rcs: form.rcs, ridet: form.ridet, nif: form.nif, share_capital: form.share_capital, vat_regime: form.vat_regime,
         vat_regime_detail: form.vat_regime_detail, entity_category: form.entity_category,
         legal_form: form.legal_form, numero_tps: form.numero_tps, contact_role: form.contact_role,
         po_box_number: form.po_box_number, po_box_municipality: form.po_box_municipality,
@@ -464,6 +464,8 @@ export function SettingsPage() {
                 </Field>
                 <Field label={t('settings.tahitiNumber')} htmlFor="tax_id"><Input id="tax_id" value={form.tax_id ?? ''} onChange={(event) => set('tax_id', event.target.value.toUpperCase())} disabled={readOnly} maxLength={6} /></Field>
                 <Field label={t('settings.rcs')} htmlFor="rcs"><Input id="rcs" value={form.rcs ?? ''} onChange={(event) => set('rcs', event.target.value)} disabled={readOnly} /></Field>
+                <Field label={t('settings.ridet')} htmlFor="ridet"><Input id="ridet" value={form.ridet ?? ''} onChange={(event) => set('ridet', event.target.value)} disabled={readOnly} /></Field>
+                <Field label={t('settings.nif')} htmlFor="nif"><Input id="nif" value={form.nif ?? ''} onChange={(event) => set('nif', event.target.value)} disabled={readOnly} /></Field>
                 <Field label={t('settings.shareCapital')} htmlFor="capital"><Input id="capital" value={form.share_capital ?? ''} onChange={(event) => set('share_capital', event.target.value)} disabled={readOnly} /></Field>
                 <Field label={t('settings.timezone')} htmlFor="timezone">
                   <Select id="timezone" value={form.timezone} onChange={(event) => set('timezone', event.target.value)} disabled={readOnly}>
@@ -583,7 +585,12 @@ export function SettingsPage() {
                   <tbody>
                     {settings.data!.tax_rates.map((rate) => (
                       <tr key={rate.id}>
-                        <td className="font-medium">{rate.name}</td>
+                        <td className="font-medium">
+                          {rate.name}
+                          {'valid_from' in rate && rate.valid_from ? (
+                            <span className="block text-xs text-muted">{t('settings.taxValidFrom')} {String(rate.valid_from)}</span>
+                          ) : null}
+                        </td>
                         <td className="text-right tabular-nums">{rate.rate} %</td>
                         <td className="text-right">
                           {can('settings.write') ? (

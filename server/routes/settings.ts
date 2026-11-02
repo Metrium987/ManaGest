@@ -50,6 +50,8 @@ const companySchema = z.object({
   locale: z.string().trim().max(10),
   tax_id: optionalText(20),
   rcs: optionalText(40),
+  ridet: optionalText(40),
+  nif: optionalText(30),
   share_capital: optionalText(40),
   vat_regime: z.enum(['standard', 'franchise']).optional(),
   vat_regime_detail: z.enum(CLIENT_VAT_REGIMES).nullish().transform((value) => value ?? null),
@@ -91,7 +93,7 @@ const companySchema = z.object({
 /** Company fields worth recording as before/after values in the journal. */
 const COMPANY_DIFF_KEYS = [
   'name', 'legal_name', 'email', 'phone', 'address1', 'address2', 'city', 'postal_code',
-  'country', 'timezone', 'currency', 'locale', 'tax_id', 'rcs', 'share_capital', 'vat_regime',
+  'country', 'timezone', 'currency', 'locale', 'tax_id', 'rcs', 'ridet', 'nif', 'share_capital', 'vat_regime',
   'vat_regime_detail', 'entity_category', 'legal_form', 'numero_tps', 'contact_role',
   'po_box_number', 'po_box_municipality', 'island', 'physical_municipality', 'district',
   'pk_landmark', 'street_building_zone', 'delivery_instructions', 'payment_method',
@@ -412,6 +414,8 @@ settingsRoutes.patch('/', requirePermission('settings.write'), async (c) => {
     locale: body.locale,
     tax_id: body.tax_id,
     rcs: body.rcs,
+    ridet: body.ridet,
+    nif: body.nif,
     share_capital: body.share_capital,
     vat_regime: vatLegacy,
     vat_regime_detail: vatDetail,

@@ -416,6 +416,8 @@ export const en: Record<string, unknown> = {
     companyName: 'Trading name',
     legalName: 'Registered name',
     tahitiNumber: 'TAHITI number',
+    ridet: 'RIDET (business register)',
+    nif: 'NIF (tax number)',
     tahitiHint: 'One letter followed by five digits, for example T12345.',
     rcs: 'Trade register (Papeete)',
     shareCapital: 'Share capital',
@@ -1247,6 +1249,9 @@ export const en: Record<string, unknown> = {
     revenueHint: 'Turnover invoiced per month, split taxable / exempt, and the cash received that month.',
   },
   settings: {
+    ridet: 'RIDET (business register)',
+    nif: 'NIF (tax number)',
+    taxValidFrom: 'Effective from',
     title: 'Settings',
     subtitle: 'Configure your company, your invoicing and your access.',
     company: 'Company',

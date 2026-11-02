@@ -296,6 +296,7 @@ export function validateClientProfile(input: {
   legal_name?: string | null;
   legal_form?: string | null;
   tax_id?: string | null;
+  nif?: string | null;
   vat_regime?: string | null;
   first_name?: string | null;
   last_name?: string | null;
@@ -324,7 +325,8 @@ export function validateClientProfile(input: {
     if (!present(input.legal_name)) errors.legal_name = 'required';
     if (!present(input.legal_form)) errors.legal_form = 'required';
     if (!present(input.vat_regime)) errors.vat_regime = 'required';
-    if (!present(input.tax_id)) errors.tax_id = 'required';
+    // The Tahiti number, the RIDET and the NIF are optional identifiers: an
+    // invoice can be issued before they are known, and they stay editable.
     if (!present(input.po_box_number)) errors.po_box_number = 'required';
   }
   if (present(input.tax_id) && !tahitiPattern.test(String(input.tax_id).toUpperCase())) {

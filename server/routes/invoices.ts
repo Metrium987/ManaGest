@@ -152,7 +152,7 @@ invoiceRoutes.get('/:id', requirePermission('invoices.read'), async (c) => {
   const invoice = await c.env.DB.prepare(
     `SELECT i.*, c.display_name AS client_name, c.email AS client_email, c.address1 AS client_address1,
             c.city AS client_city, c.postal_code AS client_postal_code, c.country AS client_country,
-            c.tax_id AS client_tax_id
+            c.tax_id AS client_tax_id, c.numero_rcs AS client_ridet, c.nif AS client_nif
      FROM invoices i JOIN clients c ON c.id = i.client_id
      WHERE i.id = ? AND i.deleted_at IS NULL`,
   )
