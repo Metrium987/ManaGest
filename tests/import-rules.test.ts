@@ -23,9 +23,12 @@ describe('import rules agreed with the owner (H4)', () => {
     const parsed = parseCsv(`\uFEFF${header}\n${row('PREST-1', 'Conseil', '8')}\n${row('PREST-2', 'Support', '5')}\n`);
     const result = validateImport('products', parsed);
     expect(result.rows[0].valid).toBe(false);
-    expect(result.rows[0].issues).toEqual([
-      { row: 2, field: 'tva', code: 'unknown_tax_rate' },
-    ]);
+    expect(result.rows[0].issues).toEqual([{
+      row: 2,
+      field: 'tva',
+      code: 'unknown_tax_rate',
+      message: 'taux de TVA absent des taux locaux (0, 1, 5, 13, 16)',
+    }]);
     // The valid row beside it is untouched: the refusal is per line, not per file.
     expect(result.rows[1].valid).toBe(true);
     expect(result.invalidCount).toBe(1);

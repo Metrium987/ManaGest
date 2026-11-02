@@ -51,8 +51,8 @@ describe('invoices import (T-102c)', () => {
     expect(result.groups[0].issues[0].code).toBe('number_exists');
   });
 
-  it('GIVEN a non ISO date WHEN previewed THEN the date is refused', () => {
-    const csv = head + 'FAC-6;compta@manava.pf;01/03/2026;;Conseil;1;1000;16;taxable;\n';
+  it('GIVEN an impossible date WHEN previewed THEN the date is refused', () => {
+    const csv = head + 'FAC-6;compta@manava.pf;2026-13-40;;Conseil;1;1000;16;taxable;\n';
     const result = validateInvoiceImport(parseCsv(csv), clients, new Set());
     expect(result.errors.some((issue) => issue.code === 'invalid_date')).toBe(true);
   });

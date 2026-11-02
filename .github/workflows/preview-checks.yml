@@ -1,0 +1,35 @@
+name: Hosted preview checks
+
+# H5: the checks that validated every wave run against a dedicated preview.
+# They are triggered by hand, or by a deploy hook (`repository_dispatch`), and a
+# red run is reported without blocking the deployment itself. The account and
+# password come from repository secrets, never from the repository.
+on:
+  workflow_dispatch:
+  repository_dispatch:
+    types: [preview-deployed]
+
+jobs:
+  preview-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check the hosted checks are configured
+        env:
+          PREVIEW_URL: ${{ secrets.PREVIEW_URL }}
+          PREVIEW_EMAIL: ${{ secrets.PREVIEW_EMAIL }}
+          PREVIEW_PASSWORD: ${{ secrets.PREVIEW_PASSWORD }}
+        run: node scripts/check-preview-config.mjs
+
+      - name: Run the hosted checks
+        env:
+          PREVIEW_URL: ${{ secrets.PREVIEW_URL }}
+          PREVIEW_EMAIL: ${{ secrets.PREVIEW_EMAIL }}
+          PREVIEW_PASSWORD: ${{ secrets.PREVIEW_PASSWORD }}
+        run: npm run check:preview:hosted

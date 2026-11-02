@@ -18,7 +18,14 @@ const PASSWORD = process.env.SCREENSHOT_PASSWORD ?? EMAIL;
 
 fs.mkdirSync('artifacts', { recursive: true });
 
-const browser = await chromium.launch({ channel: process.env.PW_CHANNEL ?? undefined });
+const browser = await chromium.launch({
+  channel: process.env.PW_CHANNEL ?? undefined,
+  executablePath: process.env.PW_CHROME_PATH ?? undefined,
+  // Containers without user namespaces need this; a desktop run keeps the sandbox.
+  args: process.env.PW_NO_SANDBOX === '1'
+    ? ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu']
+    : [],
+});
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-FR' });
 const page = await context.newPage();
 page.on('pageerror', (error) => console.log('page error:', String(error).slice(0, 160)));

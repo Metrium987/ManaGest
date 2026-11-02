@@ -1803,6 +1803,11 @@ export const fr = {
     restart: 'Importer un autre fichier',
     permissionDenied: 'Vous n’avez pas le droit d’importer ce type de données.',
     help: 'Les noms de colonnes doivent être ceux du modèle : un fichier exporté depuis ManaGest se réimporte tel quel.',
+    mapping: 'Correspondance des colonnes',
+    mappingHint: 'Laissez « détection automatique » pour reconnaître les libellés du modèle et les alias français ou anglais (accents et ponctuation ignorés).',
+    mappingAuto: 'Détection automatique',
+    detectedMapping: 'Colonnes reconnues :',
+    unknownColumns: 'Colonnes ignorées :',
     issue: {
       required: 'champ obligatoire',
       expected_boolean: 'valeur attendue : 0 ou 1',

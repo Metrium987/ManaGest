@@ -35,6 +35,8 @@ const bodySchema = z.object({
   text: z.string().min(1).max(4_000_000),
   /** Explicit user choice: rows still in error are excluded, never silently dropped. */
   skip_invalid: z.coerce.boolean().default(false),
+  /** Operator-chosen columns: import field key -> header found in the file. */
+  mapping: z.record(z.string(), z.string()).optional(),
 });
 
 function permissionFor(entity: Entity) {
@@ -96,13 +98,15 @@ importRoutes.post('/preview/:entity', requireAuth, entityGuard, async (c) => {
   const parsed = parseCsv(body.text);
 
   if (entity === 'invoices') {
-    const result = validateInvoiceImport(parsed, await clientIndex(c.env.DB), await existingKeys(c.env.DB, 'invoices'));
+    const result = validateInvoiceImport(parsed, await clientIndex(c.env.DB), await existingKeys(c.env.DB, 'invoices'), { mapping: body.mapping });
     if (result.missingColumns.length > 0) {
-      return fail(422, 'IMPORT_COLUMNS_MISSING', { columns: result.missingColumns.join(', ') });
+      return fail(422, 'IMPORT_COLUMNS_MISSING', { columns: result.missingColumns.join(', '), headers: parsed.header.join(' | ') });
     }
     return c.json({
       delimiter: parsed.delimiter,
       missing_columns: [],
+      mapping: result.mapping,
+      unknown_columns: result.unknownColumns,
       valid_count: result.validCount,
       invalid_count: result.invalidCount,
       documents: result.groups.map((group) => ({
@@ -123,14 +127,16 @@ importRoutes.post('/preview/:entity', requireAuth, entityGuard, async (c) => {
     });
   }
 
-  const result = validateImport(entity, parsed);
+  const result = validateImport(entity, parsed, { mapping: body.mapping });
   if (result.missingColumns.length > 0) {
-    return fail(422, 'IMPORT_COLUMNS_MISSING', { columns: result.missingColumns.join(', ') });
+    return fail(422, 'IMPORT_COLUMNS_MISSING', { columns: result.missingColumns.join(', '), headers: parsed.header.join(' | ') });
   }
   const existing = await existingKeys(c.env.DB, entity);
   return c.json({
     delimiter: parsed.delimiter,
     missing_columns: [],
+    mapping: result.mapping,
+    unknown_columns: result.unknownColumns,
     valid_count: result.validCount,
     invalid_count: result.invalidCount,
     rows: result.rows.map((row) => {
@@ -159,9 +165,9 @@ importRoutes.post('/commit/:entity', requireAuth, entityGuard, async (c) => {
   const today = new Date(now).toISOString().slice(0, 10);
 
   if (entity === 'invoices') {
-    const result = validateInvoiceImport(parsed, await clientIndex(c.env.DB), await existingKeys(c.env.DB, 'invoices'));
+    const result = validateInvoiceImport(parsed, await clientIndex(c.env.DB), await existingKeys(c.env.DB, 'invoices'), { mapping: body.mapping });
     if (result.missingColumns.length > 0) {
-      return fail(422, 'IMPORT_COLUMNS_MISSING', { columns: result.missingColumns.join(', ') });
+      return fail(422, 'IMPORT_COLUMNS_MISSING', { columns: result.missingColumns.join(', '), headers: parsed.header.join(' | ') });
     }
     const invalidGroups = result.groups.filter((group) => !group.valid);
     if (result.rows.length === 0) return fail(422, 'IMPORT_EMPTY');
@@ -229,9 +235,9 @@ importRoutes.post('/commit/:entity', requireAuth, entityGuard, async (c) => {
     }, 201);
   }
 
-  const result = validateImport(entity, parsed);
+  const result = validateImport(entity, parsed, { mapping: body.mapping });
   if (result.missingColumns.length > 0) {
-    return fail(422, 'IMPORT_COLUMNS_MISSING', { columns: result.missingColumns.join(', ') });
+    return fail(422, 'IMPORT_COLUMNS_MISSING', { columns: result.missingColumns.join(', '), headers: parsed.header.join(' | ') });
   }
   if (result.invalidCount > 0 && !body.skip_invalid) {
     return fail(409, 'IMPORT_ROWS_INVALID', { rows: String(result.invalidCount) });

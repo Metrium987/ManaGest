@@ -1,3 +1,4 @@
+import os
 """Vérifie sur la preview que le droit d'ajuster le stock est séparé de l'écriture
 de la fiche article (H1) : le vendeur est refusé, l'administrateur passe, et le
 drapeau est bien distribué aux rôles qui pouvaient déjà le faire."""
@@ -5,7 +6,7 @@ import json
 import urllib.error
 import urllib.request
 
-BASE = 'https://site-c578992b6feb4d56ac337293d766de8a.freebuff.page'
+BASE = (os.environ.get('PREVIEW_URL') or 'https://site-c578992b6feb4d56ac337293d766de8a.freebuff.page').rstrip('/')
 OK = FAIL = 0
 
 
@@ -43,10 +44,10 @@ def raw(method, path, body=None, headers=None):
         return error.code, loads(error.read().decode())
 
 
-def login(email):
+def login(email, password=None):
     req = urllib.request.Request(
         BASE + '/api/auth/login',
-        data=json.dumps({'email': email, 'password': email}).encode(),
+        data=json.dumps({'email': email, 'password': password or email}).encode(),
         method='POST',
     )
     req.add_header('Content-Type', 'application/json')
@@ -62,7 +63,7 @@ def login(email):
     }
 
 
-admin = login('admin@managest.pf')
+admin = login(os.environ.get('PREVIEW_EMAIL', 'admin@managest.pf'), os.environ.get('PREVIEW_PASSWORD'))
 print('--- H1 : stock.adjust séparé de products.write ---')
 
 status, me = raw('GET', '/api/auth/me', headers=admin)

@@ -1800,6 +1800,11 @@ export const en: Record<string, unknown> = {
     restart: 'Import another file',
     permissionDenied: 'You are not allowed to import this type of data.',
     help: 'Column names must match the template: a file exported from ManaGest can be imported back unchanged.',
+    mapping: 'Column mapping',
+    mappingHint: 'Leave automatic detection on to recognise template labels and French or English aliases (accents and punctuation ignored).',
+    mappingAuto: 'Automatic detection',
+    detectedMapping: 'Recognised columns:',
+    unknownColumns: 'Ignored columns:',
     issue: {
       required: 'required field',
       expected_boolean: 'expected value: 0 or 1',

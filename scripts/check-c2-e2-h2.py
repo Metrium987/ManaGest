@@ -1,3 +1,4 @@
+import os
 """Vérifie sur la preview déployée les trois écrans fermés ce tour :
 C2 (historique des prix fournisseur), E2 (révision de contrat), H2 (masquage
 du journal pour un compte sans `products.cost.read`)."""
@@ -6,7 +7,7 @@ import urllib.error
 import urllib.request
 from datetime import date
 
-BASE = 'https://site-c578992b6feb4d56ac337293d766de8a.freebuff.page'
+BASE = (os.environ.get('PREVIEW_URL') or 'https://site-c578992b6feb4d56ac337293d766de8a.freebuff.page').rstrip('/')
 OK = FAIL = 0
 
 
@@ -44,10 +45,10 @@ def raw(method, path, body=None, headers=None):
         return error.code, loads(error.read().decode())
 
 
-def login(email):
+def login(email, password=None):
     req = urllib.request.Request(
         BASE + '/api/auth/login',
-        data=json.dumps({'email': email, 'password': email}).encode(),
+        data=json.dumps({'email': email, 'password': password or email}).encode(),
         method='POST',
     )
     req.add_header('Content-Type', 'application/json')
@@ -63,7 +64,7 @@ def login(email):
     }
 
 
-admin = login('admin@managest.pf')
+admin = login(os.environ.get('PREVIEW_EMAIL', 'admin@managest.pf'), os.environ.get('PREVIEW_PASSWORD'))
 today = date.today().isoformat()
 
 # --- C2 : historique des prix fournisseur -----------------------------------

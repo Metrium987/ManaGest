@@ -1,7 +1,8 @@
+import os
 import json, time, urllib.request, urllib.error
 from datetime import date, timedelta
 
-BASE = 'https://site-c578992b6feb4d56ac337293d766de8a.freebuff.page'
+BASE = (os.environ.get('PREVIEW_URL') or 'https://site-c578992b6feb4d56ac337293d766de8a.freebuff.page').rstrip('/')
 ok = fail = 0
 sfx = str(int(time.time()))[-5:]
 today = date.today().isoformat()
@@ -25,15 +26,15 @@ def raw(method, path, body=None, headers=None):
         with urllib.request.urlopen(req) as r: return r.status, loads(r.read().decode())
     except urllib.error.HTTPError as e: return e.code, loads(e.read().decode())
 
-def login(email):
-    req = urllib.request.Request(BASE + '/api/auth/login', data=json.dumps({'email': email, 'password': email}).encode(), method='POST')
+def login(email, password=None):
+    req = urllib.request.Request(BASE + '/api/auth/login', data=json.dumps({'email': email, 'password': password or email}).encode(), method='POST')
     req.add_header('Content-Type', 'application/json'); req.add_header('Origin', BASE); req.add_header('User-Agent', 'curl/8.5.0')
     with urllib.request.urlopen(req) as r:
         r.read(); cookies = r.headers.get_all('Set-Cookie') or []
     vals = {c.split(';')[0].split('=', 1)[0]: c.split(';')[0].split('=', 1)[1] for c in cookies}
     return {'Cookie': f"mg_session={vals.get('mg_session','')}; mg_csrf={vals.get('mg_csrf','')}", 'x-csrf-token': vals.get('mg_csrf','')}
 
-admin = login('admin@managest.pf')
+admin = login(os.environ.get('PREVIEW_EMAIL', 'admin@managest.pf'), os.environ.get('PREVIEW_PASSWORD'))
 code = 'CHK' + sfx
 status, clients = raw('GET', '/api/clients?per_page=1', headers=admin)
 client = (clients.get('data') or [{}])[0]

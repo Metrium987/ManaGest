@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, Download, Upload } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -28,11 +28,29 @@ export function ImportPage() {
   const [skipInvalid, setSkipInvalid] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [columns, setColumns] = useState<ImportColumn[]>([]);
 
   const allowed = entity === 'clients'
     ? can('clients.write')
     : entity === 'products' ? can('products.write') : can('invoices.write');
-  const columns = useMemo<ImportColumn[]>(() => [], []);
+
+  // The screen must know the accepted fields to offer a mapping, and the mapping
+  // is per file: changing the entity starts from automatic detection again.
+  useEffect(() => {
+    let alive = true;
+    setMapping({});
+    api.get<{ columns: ImportColumn[] }>(`/import/columns/${entity}`)
+      .then((data) => { if (alive) setColumns(data.columns); })
+      .catch(() => { if (alive) setColumns([]); });
+    return () => { alive = false; };
+  }, [entity]);
+
+  const headers = useMemo(() => {
+    const first = text.replace(/^\uFEFF/, '').split(/\r?\n/, 1)[0] ?? '';
+    const delimiter = (first.match(/;/g) ?? []).length >= (first.match(/,/g) ?? []).length ? ';' : ',';
+    return first.split(delimiter).map((header) => header.trim()).filter(Boolean);
+  }, [text]);
 
   const readFile = async (file: File | undefined) => {
     if (!file) return;
@@ -47,7 +65,7 @@ export function ImportPage() {
   const runPreview = async () => {
     setBusy(true);
     try {
-      const data = await api.post<ImportPreview>(`/import/preview/${entity}`, { text });
+      const data = await api.post<ImportPreview>(`/import/preview/${entity}`, { text, mapping });
       setPreview(data);
       setSkipInvalid(false);
       setStep(3);
@@ -61,7 +79,7 @@ export function ImportPage() {
   const runCommit = async () => {
     setBusy(true);
     try {
-      const data = await api.post<ImportResult>(`/import/commit/${entity}`, { text, skip_invalid: skipInvalid });
+      const data = await api.post<ImportResult>(`/import/commit/${entity}`, { text, skip_invalid: skipInvalid, mapping });
       setResult(data);
       setStep(4);
     } catch (error) {
@@ -145,6 +163,35 @@ export function ImportPage() {
                 placeholder="nom;courriel;commune"
               />
             </Field>
+            {step === 2 && columns.length > 0 && headers.length > 0 ? (
+              <div className="space-y-2 rounded-lg border border-line bg-surface-50 p-3">
+                <p className="text-sm font-medium">{t('import.mapping')}</p>
+                <p className="text-xs text-muted">{t('import.mappingHint')}</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {columns.map((column) => (
+                    <Field
+                      key={column.key}
+                      label={`${column.label}${column.required ? ' *' : ''}`}
+                      htmlFor={`import-map-${column.key}`}
+                    >
+                      <Select
+                        id={`import-map-${column.key}`}
+                        value={mapping[column.key] ?? ''}
+                        onChange={(event) => setMapping((previous) => {
+                          const next = { ...previous };
+                          if (event.target.value) next[column.key] = event.target.value;
+                          else delete next[column.key];
+                          return next;
+                        })}
+                      >
+                        <option value="">{t('import.mappingAuto')}</option>
+                        {headers.map((header) => <option key={header} value={header}>{header}</option>)}
+                      </Select>
+                    </Field>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {step === 2 ? (
               <Button onClick={runPreview} loading={busy} disabled={!text.trim()} icon={<Upload className="h-4 w-4" aria-hidden="true" />}>
                 {t('import.preview')}
@@ -189,6 +236,18 @@ export function ImportPage() {
                 </tbody>
               </table>
             </div>
+
+            {preview.mapping && Object.keys(preview.mapping).length > 0 ? (
+              <p className="mt-3 text-xs text-muted">
+                {t('import.detectedMapping')} {Object.entries(preview.mapping)
+                  .map(([field, header]) => `${field} ← ${header}`).join(' · ')}
+              </p>
+            ) : null}
+            {preview.unknown_columns && preview.unknown_columns.length > 0 ? (
+              <p className="mt-1 text-xs text-warning-700">
+                {t('import.unknownColumns')} {preview.unknown_columns.join(' · ')}
+              </p>
+            ) : null}
 
             {step === 3 ? (
               <div className="mt-4 space-y-3">

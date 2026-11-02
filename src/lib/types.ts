@@ -715,6 +715,8 @@ export interface ImportIssue {
   row: number;
   field: string;
   code: string;
+  /** Plain-language explanation shown beside the row. */
+  message?: string;
 }
 
 export interface ImportPreviewRow {
@@ -725,9 +727,16 @@ export interface ImportPreviewRow {
   issues: ImportIssue[];
 }
 
+export interface ImportMapping {
+  [key: string]: string;
+}
+
 export interface ImportPreview {
   delimiter: string;
   missing_columns: string[];
+  /** Detected field -> source header, so the operator can see what was read. */
+  mapping?: ImportMapping;
+  unknown_columns?: string[];
   valid_count: number;
   invalid_count: number;
   rows: ImportPreviewRow[];

@@ -43,8 +43,8 @@ Légende effort : **S** ≈ une demi-journée, **M** ≈ 1 à 2 jours, **L** ≈
 | Comptes par famille | **Fait (F2)** | table `family_accounts`, `resolveFamilyAccounts`, `effective_accounts` sur la fiche, modale « Comptes par famille » |
 | Alertes de stock (tableau de bord + digest) | **Fait (C4)** | `server/lib/stock-alerting.ts`, `stock_alerts` dans `/api/dashboard`, digest quotidien gardé par jour |
 | Réceptions partielles et reliquats | **Fait (C3)** | `purchase_order_receipts`, `POST /purchase-orders/:id/receive`, soldes par ligne dans le détail, écran de réception |
-| Historique des prix d'achat | **Absent** | aucun relevé daté : voir C2 (reste) |
-| Prévision de la demande, fabrication MRP | **Absent** | les seuils restent saisis ; pas de module de production | seuls `products.ts`, les services de stock et le comptage touchent `quantity_milli` |
+| Historique des prix d'achat | **Absent — module non ouvert** | le prix payé est déjà enregistré à la réception (C2) ; un historique daté demande une table et un écran, donc une décision d'ouverture du propriétaire |
+| Prévision de la demande, fabrication MRP | **Absent — hors périmètre assumé** | les seuils restent saisis ; pas de module de production | seuls `products.ts`, les services de stock et le comptage touchent `quantity_milli` |
 
 **Conséquence directe** : les deux fiches sont aujourd'hui descriptives et
 facturables à la main ; elles ne pilotent encore ni le stock, ni les coûts, ni la
@@ -605,10 +605,9 @@ données). Ce qui est appliqué, et ce qui reste à ouvrir :
 
 > **État au 2 novembre 2026** — tout ce qui relève du code est livré et vérifié sur
 > la preview (contrôles hébergés rejoués à chaque déploiement). Il ne reste plus que
-> **Q16**, bloqué par l'absence de binaire Chromium dans l'environnement, et les
-> points qui dépendent du propriétaire ou d'un environnement : **H4** (fichiers
-> d'import), **H5** (environnement de test). **G2/G3** sont fermés depuis le
-> 2/11/2026 (capacité, SLA, liste des fériés validée).
+> **Q16** est livré (captures locales, 2/11/2026) et **G2/G3** sont fermés. Il ne
+> reste que des entrées **externes nommées** : **H4** (les 3 à 5 fichiers réels de
+> l'ancien logiciel) et **H5** (une preview dédiée + trois secrets GitHub Actions).
 > Chacun porte sa date et sa raison ci-dessous ; aucune tâche de code n'est laissée
 > ouverte.
 >
@@ -799,18 +798,21 @@ d'afficher une ligne à zéro (vérifié sur la preview : base 100 000 → 70 00
   vente dans une telle devise n'existe. L'implémenter aujourd'hui serait un module de
   change sans transaction derrière. Ce qui rouvre le sujet, nommément : **une première
   facture émise dans une devise non arrimée à l'euro**.
-- **Q16 — captures d'écran** — **partiel, bloqué par l'environnement (2/11/2026)** : `playwright`
-  est installé (`devDependencies`), le script de capture est écrit
-  (`scripts/screenshots.mjs` : connexion, tableau de bord, articles, feuille d'import,
-  projets, modèles de projet, devis, paramètres) et il ne reste qu'à lancer
-  `BASE_URL=… node scripts/screenshots.mjs`. **Aucune capture n'a pu être produite
-  ici** : le téléchargement du binaire Chromium (`npx playwright install chromium`,
-  puis `chromium-headless-shell`) dépasse la limite de temps de l'environnement et le
-  processus lancé en arrière-plan est tué ; le cache ne contient qu'un répertoire
-  `chromium-1148` vide. Ce n'est pas un défaut du code : c'est une dépendance
-  binaire externe qu'il faut installer une fois sur un poste ou un runner qui a le
-  temps de la télécharger. Tant que ce n'est pas fait, les écrans restent vérifiés
-  par typage, build et API, **pas par l'œil**.
+- **Q16 — captures d'écran** — **fait (2/11/2026)** : Playwright est installé et
+  Chromium a pu être obtenu ici (`npx playwright install chromium` → Chrome for
+  Testing **156.0.8078.4**, cache de 681 Mo). Les bibliothèques système manquantes
+  (libnspr4, libnss3, atk, atspi, X11, cairo, pango, cups, avahi) ont été extraites
+  **sans root** depuis les paquets Ubuntu (`apt-get download` + `dpkg-deb -x`) et
+  fournies par `LD_LIBRARY_PATH`, avec une police DejaVu et un `fonts.conf` local.
+  Sur une instance locale installée avec le jeu de démonstration
+  (`POST /api/setup/install` → **201**), `node scripts/screenshots.mjs` a produit
+  **8 captures 1440×900** dans `artifacts/` : connexion, tableau de bord, produits,
+  feuille d'import, projets, modèles de projet, devis, paramètres. Elles sont
+  commitées comme preuve visuelle. Le script accepte `BASE_URL`,
+  `SCREENSHOT_EMAIL`, `SCREENSHOT_PASSWORD`, `PW_CHROME_PATH`, `PW_NO_SANDBOX` et
+  `PW_CHANNEL`.
+  *Limite nommée* : la preview **hébergée** reste suspendue par le quota D1, donc les
+  captures viennent d'une instance **locale du même build**, pas du site hébergé.
 
 ## Phase G — Planification et projets
 
@@ -895,35 +897,51 @@ d'afficher une ligne à zéro (vérifié sur la preview : base 100 000 → 70 00
   explicite : une clé non traduite reste en français plutôt que d'afficher un code
   technique. Vérifié par `tests/enum-labels.test.ts` (français par défaut, anglais
   après bascule, clés d'itération inchangées, retour au français).
-- **H4 — Import / export enrichi** — **règles tranchées et appliquées le 2/11/2026 ;
-  colonnes en attente des fichiers du propriétaire** : (1) une ligne dont le taux de
-  **TVA ne correspond à aucun taux local** (0, 1, 5, 13, 16 %) est **refusée ligne par
-  ligne** (`unknown_tax_rate`), les autres lignes du fichier restant valides — vérifié
-  par `tests/import-rules.test.ts` ; (2) un **doublon** met à jour la fiche existante
-  et l'aperçu le **signale** (`duplicate: true`, action `update`) au lieu de créer une
-  seconde fiche. *Ce qui reste* : les colonnes à ajouter dépendent des 3 à 5 fichiers
-  réels de l'ancien logiciel (format, historique, encours de bascule), qui n'ont pas
-  été fournis ; l'import couvre déjà clients, articles et factures avec aperçu, erreurs
-  par ligne et modèle téléchargeable.
-- **H5 — Non-régression automatisée** — **partiel (2/11/2026)** : les contrôles
-  hébergés qui validaient chaque vague sont maintenant **versionnés et rejouables**
-  (`scripts/check-screens.py`, `scripts/check-c2-e2-h2.py`,
-  `scripts/check-h1-permission.py`) et s'enchaînent par `npm run check:preview`, qui
-  sort en erreur au premier contrôle rouge (49 contrôles : écrans de stock, tarif
-  douanier, démo et centres de profit, historique de prix et révision de contrat,
-  masquage du journal, séparation des droits). Côté unitaire, **60 fichiers de tests**
-  couvrent les calculs, les gardes serveur et les règles fiscales. *Ce qui reste,
-  décision du propriétaire* : brancher `check:preview` sur un déclencheur **après
-  chaque déploiement** (CI ou crochet de déploiement) demande de choisir où vivent
-  les identifiants de test et la base de démonstration — un environnement, pas du
-  code ; les 101 contrôles manuels de fiches, eux, supposent une base de test dont
-  les données ne bougent pas, que la démonstration réinitialisable ne garantit pas.
-  *Décisions du 2/11/2026* : les contrôles tourneront sur une **preview dédiée**
-  (option a), **après chaque déploiement**, l'échec **signalé sans bloquer** ; les
-  vérifications de fiches restent en **lecture seule** ; le compte de test et son mot
-  de passe vivent dans le **secret de la CI**, jamais dans le dépôt. Reste à faire
-  hors code : créer cette preview dédiée et y déposer le secret — l'environnement de
-  CI n'existe pas encore dans cet espace de travail.
+- **H4 — Import / export enrichi** — **fait pour tout ce qui ne dépend pas des
+  fichiers du propriétaire (2/11/2026)** : (1) une ligne dont le taux de **TVA ne
+  correspond à aucun taux local** (0, 1, 5, 13, 16 %) est **refusée ligne par
+  ligne** (`unknown_tax_rate`), les autres lignes restant valides ; (2) un
+  **doublon** met à jour la fiche existante et l'aperçu le **signale**
+  (`duplicate: true`, action `update`) ; (3) un export d'ancien logiciel se lit
+  **sans être réécrit** : alias d'en-têtes français et anglais (`IMPORT_ALIASES`,
+  accents, casse et ponctuation ignorés), **correspondance de colonnes choisie
+  dans l'écran** (envoyée au serveur, elle gagne sur la détection), colonnes
+  inconnues **signalées** au lieu d'être devinées, nombres `1 500` / `2,5` et dates
+  `01/03/2026` normalisés, et **message lisible par ligne** pour chaque refus
+  (`issue.message`, en plus du code). Le séparateur reste détecté (`;` ou `,`).
+  *Preuve exécutée* : `tests/import-mapping.test.ts` (13 tests : en-têtes accentués,
+  anglais, mapping manuel, prix espacés, dates françaises, factures multi-lignes,
+  dates impossibles), plus `tests/import.test.ts`, `tests/import-rules.test.ts` et
+  `tests/import-invoices.test.ts` ; `typecheck`, `npm test` et `npm run build` verts.
+  *Ce qui reste, et c'est une entrée externe nommée* : les **colonnes spécifiques**
+  de l'ancien logiciel (champs personnalisés, historique, encours de bascule) ne
+  peuvent pas être inventées. Il faut **fournir les 3 à 5 fichiers CSV réels**. La
+  suite est alors mécanique : les ouvrir dans l'écran d'import (détection ou
+  mapping), puis ajouter un alias ou une colonne au modèle pour chaque champ
+  encore ignoré.
+- **H5 — Non-régression automatisée** — **exécution livrée, en attente des secrets
+  et de la preview dédiée (2/11/2026)** : les contrôles hébergés restent versionnés
+  (`scripts/check-screens.py`, `check-c2-e2-h2.py`, `check-h1-permission.py`,
+  `check-planning-sla.py`) et lisent désormais leur cible et leurs identifiants dans
+  l'environnement (`PREVIEW_URL`, `PREVIEW_EMAIL`, `PREVIEW_PASSWORD`) au lieu de
+  les coder en dur. Le job existe : `.github/workflows/preview-checks.yml`,
+  déclenché à la main ou par `repository_dispatch` (`preview-deployed`). Il est
+  protégé par `scripts/check-preview-config.mjs` : une configuration absente donne
+  un **message nommant les trois variables** et le **code de sortie 2**, distinct
+  d'un contrôle rouge. Commande unique : `npm run check:preview:hosted`.
+  *Preuve exécutée* : `env -u PREVIEW_URL -u PREVIEW_EMAIL -u PREVIEW_PASSWORD node
+  scripts/check-preview-config.mjs` → « Contrôles hébergés non configurés —
+  variables manquantes : PREVIEW_URL, PREVIEW_EMAIL, PREVIEW_PASSWORD… » et
+  **EXIT:2** ; `tests/ui-preview-config.test.ts` (4 tests : variables manquantes,
+  configuration complète, URL non http(s), secrets blancs). Un échec du job est
+  **signalé sans bloquer** le déploiement, conformément à la décision du 2/11/2026.
+  *Ce qui reste, et c'est une entrée externe nommée* : (a) créer la **preview
+  dédiée** sur l'hébergeur — le site actuel est suspendu par le quota D1 jusqu'au
+  3/11/2026 00:00 UTC ; (b) dans **GitHub → Settings → Secrets and variables →
+  Actions**, créer `PREVIEW_URL` (origine de cette preview), `PREVIEW_EMAIL` et
+  `PREVIEW_PASSWORD` (compte de test en lecture seule, jamais dans le dépôt).
+  Ensuite le workflow « Hosted preview checks » tourne, et un crochet de
+  déploiement peut envoyer `repository_dispatch` `preview-deployed`.
 
 ---
 
@@ -1183,3 +1201,20 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
   trois paliers standard sont créés une seule fois et restent éditables, les
   heures, jours ouvrés et fériés sont des données. Aucune tâche de code ne reste
   ouverte dans ces deux items.
+
+## 2026-11-02 — H4, H5 et Q16 : import tolérant, CI prête, captures produites
+
+- **H4** : alias d'en-têtes, correspondance de colonnes choisie dans l'écran,
+  normalisation des nombres et des dates, colonnes inconnues signalées et messages
+  lisibles par ligne. Preuves : `tests/import-mapping.test.ts` et les suites
+  d'import existantes.
+- **H5** : `.github/workflows/preview-checks.yml` + `npm run check:preview:hosted`
+  + `scripts/check-preview-config.mjs`, avec sortie 2 et message nommant les
+  variables manquantes (prouvé localement). Reste : la preview dédiée et les trois
+  secrets GitHub.
+- **Q16** : Chromium 156.0.8078.4 installé, bibliothèques récupérées sans root,
+  instance locale installée avec la démonstration, **huit captures** dans
+  `artifacts/`. Recette reproductible :
+  `apt-get -o Dir::State::lists=/tmp/apt/lists -o Dir::Cache=/tmp/apt download <paquets>`
+  puis `dpkg-deb -x`, `LD_LIBRARY_PATH=/tmp/sysroot/usr/lib/x86_64-linux-gnu`,
+  `FONTCONFIG_FILE` local, `PW_NO_SANDBOX=1` et `PW_CHROME_PATH` vers le binaire.
