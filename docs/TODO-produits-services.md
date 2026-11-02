@@ -1128,16 +1128,21 @@ route.
 
 ### Trace du journal par module
 
-Trois modules ont un écran de détail : facture, devis, fiche client. Chacun
-affiche désormais `<ActivityTrail>` (qui, quand, quoi), alimenté par
-`GET /activity?entity_type=…&entity_id=…`, et **rien** n'est rendu ni demandé
-pour un compte sans `activity.read`.
+La trace est exposée dans le détail de **seize modules** : facture, devis et
+fiche client (panneaux dédiés), inventaire (panneau du comptage ouvert), puis —
+via le tiroir de détail partagé `RecordDetailBody` — produits, utilisateurs,
+bons de commande, dépenses, paiements, tâches, fournisseurs, projets,
+transactions bancaires, contrats récurrents, avoirs et approbations (dont la
+trace est celle du document concerné).
 
-Les autres modules n'ont **aucune surface de trace par fiche** : produits,
-inventaire, dépenses, fournisseurs, bons de commande, projets, tâches, contrats
-récurrents, avoirs, paiements, banque, comptabilité, approbations, import,
-utilisateurs. Leur historique reste consultable uniquement dans le journal
-global (`/journal`), qui n'est ni listé ni navigable pour vente et lecture seule.
+Chaque panneau lit `GET /activity?entity_type=…&entity_id=…` derrière
+`activity.read` ; sans la permission, ni section, ni titre, ni requête : le
+composant rend `null` et l'appel est monté avec `enabled: false`.
+
+Modules sans surface de trace par fiche, avec la raison : comptabilité (écran de
+balance et de journaux, pas de fiche d'écriture à ouvrir), import (une exécution
+d'import n'a pas d'écran de détail), tableau de bord et rapports (agrégats). Leur
+historique reste dans le journal global, réservé à `activity.read`.
 
 ### Valeurs métier côté client
 

@@ -1,3 +1,4 @@
+import { showRecord } from '@/components/ui/RecordDrawer';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Pause, Play, Plus, RefreshCw, TrendingUp } from 'lucide-react';
@@ -164,7 +165,27 @@ export function RecurringPage() {
             <tbody>
               {recurring.data.data.map((item) => (
                 <tr key={item.id}>
-                  <td className="font-medium">{item.client_name}</td>
+                  <td className="font-medium">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-left hover:text-brand-700"
+                      aria-label={`${t('records.view')} ${item.client_name ?? ''}`}
+                      onClick={() => showRecord({
+                        trace: { entityType: 'recurring', entityId: item.id },
+                        title: item.client_name ?? t('recurring.title'),
+                        status: item.status,
+                        fields: [
+                          { label: t('recurring.frequency'), value: t(`frequencies.${item.frequency}`) },
+                          { label: t('recurring.interval'), value: item.interval_count },
+                          { label: t('recurring.nextRun'), value: formatDate(item.next_run_date) },
+                          { label: t('recurring.remainingCycles'), value: item.remaining_cycles ?? t('recurring.unlimited') },
+                          { label: t('common.status'), value: <StatusBadge status={item.status} /> },
+                        ],
+                      })}
+                    >
+                      {t('records.view')}
+                    </button>
+                  </td>
                   <td className="text-muted">
                     {t(`frequencies.${item.frequency}`)} · {t('recurring.interval')} {item.interval_count}
                   </td>

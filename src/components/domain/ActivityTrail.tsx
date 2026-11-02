@@ -27,7 +27,7 @@ export function ActivityTrail({ entityType, entityId }: { entityType: string; en
     enabled: allowed && Boolean(entityId),
   });
 
-  if (!allowed) return null;
+  if (!allowed || !entityId) return null;
   const rows = trail.data?.data ?? [];
 
   return (

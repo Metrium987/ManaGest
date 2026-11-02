@@ -110,6 +110,7 @@ export function VendorsPage() {
                       className="inline-flex items-center gap-1 text-left hover:text-brand-700"
                       aria-label={`${t('records.view')} ${vendor.name}`}
                       onClick={() => showRecord({
+                        trace: { entityType: 'vendor', entityId: vendor.id },
                         title: vendor.name,
                         subtitle: vendor.number ?? undefined,
                         fields: [

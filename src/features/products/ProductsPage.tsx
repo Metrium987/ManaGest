@@ -1630,6 +1630,7 @@ export function ProductsPage() {
                         className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-ink-900"
                         aria-label={`${t('records.view')} ${product.name}`}
                         onClick={() => showRecord({
+                        trace: { entityType: 'product', entityId: product.id },
                           title: product.name,
                           subtitle: [product.product_key, product.family, product.subfamily].filter(Boolean).join(' · ') || undefined,
                           fields: product.item_type === 'service'

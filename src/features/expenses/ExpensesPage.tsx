@@ -131,6 +131,7 @@ export function ExpensesPage() {
                       className="inline-flex items-center gap-1 text-muted hover:text-brand-700"
                       aria-label={`${t('records.view')} ${expense.reference ?? categoryLabel(expense.category)}`}
                       onClick={() => showRecord({
+                        trace: { entityType: 'expense', entityId: expense.id },
                         title: categoryLabel(expense.category),
                         subtitle: expense.vendor_name ?? expense.client_name ?? undefined,
                         fields: [

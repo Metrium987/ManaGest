@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CLIENT_ROUTES, PUBLIC_ROUTES } from '@/lib/access';
@@ -52,6 +52,52 @@ describe('client surface inventory', () => {
   it('renders the menu through the permission filter, never the raw list', () => {
     expect(shell).toContain('visibleSections(can)');
     expect(shell).not.toContain('NAV.map(');
+  });
+
+  it('gives every detail drawer the record it is about', () => {
+    const root = join(process.cwd(), 'src/features');
+    const files = (readdirSync(root, { recursive: true }) as string[])
+      .filter((file) => file.endsWith('.tsx'))
+      .map((file) => join(root, file));
+    const drawers = files.filter((file) => readFileSync(file, 'utf8').includes('showRecord({'));
+    expect(drawers.length).toBeGreaterThan(8);
+    for (const file of drawers) {
+      const text = readFileSync(file, 'utf8');
+      const calls = (text.match(/showRecord\(\{/g) ?? []).length;
+      const traces = (text.match(/trace: \{/g) ?? []).length;
+      expect(traces, `${file}: ${calls} drawer(s) without a traced record`).toBeGreaterThanOrEqual(calls);
+    }
+  });
+
+  it('gives every detail page the activity trail', () => {
+    const root = join(process.cwd(), 'src/features');
+    const pages = (readdirSync(root, { recursive: true }) as string[])
+      .filter((file) => /DetailPage\.tsx$/.test(file))
+      .map((file) => join(root, file));
+    expect(pages.length).toBeGreaterThan(2);
+    for (const file of pages) {
+      expect(readFileSync(file, 'utf8'), `${file} has no ActivityTrail`).toContain('<ActivityTrail');
+    }
+  });
+
+  it('only traces entity types the server journals', () => {
+    const serverTypes = new Set<string>();
+    for (const directory of ['server/routes', 'server/services']) {
+      const root = join(process.cwd(), directory);
+      for (const file of (readdirSync(root, { recursive: true }) as string[]).filter((n) => n.endsWith('.ts'))) {
+        const text = readFileSync(join(root, file), 'utf8');
+        for (const match of text.matchAll(/entityType: '([a-z_]+)'/g)) serverTypes.add(match[1]);
+      }
+    }
+    const clientTypes = new Set<string>();
+    const root = join(process.cwd(), 'src/features');
+    for (const file of (readdirSync(root, { recursive: true }) as string[]).filter((n) => n.endsWith('.tsx'))) {
+      const text = readFileSync(join(root, file), 'utf8');
+      for (const match of text.matchAll(/trace: \{ entityType: '([a-z_]+)'/g)) clientTypes.add(match[1]);
+      for (const match of text.matchAll(/<ActivityTrail entityType="([a-z_]+)"/g)) clientTypes.add(match[1]);
+    }
+    expect(clientTypes.size).toBeGreaterThan(10);
+    for (const type of clientTypes) expect(serverTypes, `unknown entity type ${type}`).toContain(type);
   });
 
   it('gates the settings entry of the account menu as well', () => {

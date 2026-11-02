@@ -116,6 +116,7 @@ export function UsersPage() {
                       className="inline-flex items-center gap-1 hover:text-brand-700"
                       aria-label={`${t('records.view')} ${user.email}`}
                       onClick={() => showRecord({
+                        trace: { entityType: 'user', entityId: user.id },
                         title: `${user.first_name} ${user.last_name}`,
                         subtitle: user.email,
                         fields: [

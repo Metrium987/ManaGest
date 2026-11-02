@@ -1,3 +1,4 @@
+import { showRecord } from '@/components/ui/RecordDrawer';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ClipboardCheck, X } from 'lucide-react';
@@ -95,7 +96,29 @@ export function ApprovalsPage() {
             <tbody>
               {rows.map((row) => (
                 <tr key={row.id}>
-                  <td className="font-medium">{t(`approvals.entities.${row.entity_type}`)}</td>
+                  <td className="font-medium">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-left hover:text-brand-700"
+                      aria-label={`${t('records.view')} ${t(`approvals.entities.${row.entity_type}`)}`}
+                      onClick={() => showRecord({
+                        trace: { entityType: row.entity_type, entityId: row.entity_id },
+                        title: t(`approvals.entities.${row.entity_type}`),
+                        subtitle: `${t(`approvals.rules.${row.rule}`)} · ${formatMoney(row.amount, currency)}`,
+                        status: row.status,
+                        fields: [
+                          { label: t('approvals.rule'), value: t(`approvals.rules.${row.rule}`) },
+                          { label: t('common.amount'), value: formatMoney(row.amount, currency) },
+                          { label: t('approvals.requestedBy'), value: row.requested_email },
+                          { label: t('common.status'), value: <StatusBadge status={row.status} /> },
+                          { label: t('common.date'), value: formatDateTime(row.created_at) },
+                          { label: t('approvals.decidedBy'), value: row.decided_email },
+                        ],
+                      })}
+                    >
+                      {t(`approvals.entities.${row.entity_type}`)}
+                    </button>
+                  </td>
                   <td className="text-muted">{t(`approvals.rules.${row.rule}`)}</td>
                   <td className="text-right tabular-nums">{formatMoney(row.amount, currency)}</td>
                   <td className="text-muted">

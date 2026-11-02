@@ -1,3 +1,4 @@
+import { showRecord } from '@/components/ui/RecordDrawer';
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CreditCard, Plus } from 'lucide-react';
@@ -132,7 +133,28 @@ export function CreditsPage() {
             <tbody>
               {credits.data.data.map((credit) => (
                 <tr key={credit.id}>
-                  <td className="font-medium">{credit.number}</td>
+                  <td className="font-medium">
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 text-left hover:text-brand-700"
+                      aria-label={`${t('records.view')} ${credit.number ?? ''}`}
+                      onClick={() => showRecord({
+                        trace: { entityType: 'credit', entityId: credit.id },
+                        title: credit.number ?? t('credits.title'),
+                        subtitle: credit.client_name ?? undefined,
+                        status: credit.status,
+                        fields: [
+                          { label: t('invoices.client'), value: credit.client_name },
+                          { label: t('common.date'), value: formatDate(credit.date) },
+                          { label: t('common.total'), value: formatMoney(credit.total, currency) },
+                          { label: t('credits.remaining'), value: formatMoney(credit.balance, currency) },
+                          { label: t('common.status'), value: <StatusBadge status={credit.status} /> },
+                        ],
+                      })}
+                    >
+                      {credit.number}
+                    </button>
+                  </td>
                   <td>{credit.client_name}</td>
                   <td className="text-muted">{formatDate(credit.date)}</td>
                   <td className="text-right tabular-nums">{formatMoney(credit.total, currency)}</td>

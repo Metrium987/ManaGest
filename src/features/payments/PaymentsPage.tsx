@@ -146,6 +146,7 @@ export function PaymentsPage() {
                       className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-ink"
                       aria-label={`${t('records.view')} ${payment.number}`}
                       onClick={() => showRecord({
+                        trace: { entityType: 'payment', entityId: payment.id },
                         title: payment.number ?? t('payments.title'),
                         subtitle: payment.client_name,
                         status: payment.status,

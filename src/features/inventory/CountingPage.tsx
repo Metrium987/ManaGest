@@ -1,3 +1,4 @@
+import { ActivityTrail } from '@/components/domain/ActivityTrail';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Plus } from 'lucide-react';
@@ -258,7 +259,8 @@ export function CountingPage() {
               >
                 {t('counts.validate')}
               </Button>
-            </>
+              <ActivityTrail entityType="stock_count" entityId={openId ?? ''} />
+    </>
           ) : (
             <Button variant="secondary" onClick={() => setOpenId(null)}>{t('common.close')}</Button>
           )

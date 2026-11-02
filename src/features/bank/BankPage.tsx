@@ -228,6 +228,7 @@ export function BankPage() {
                         type="button"
                         className="text-left font-medium hover:text-brand-700"
                         onClick={() => showRecord({
+                        trace: { entityType: 'bank_transaction', entityId: tx.id },
                           title: tx.label,
                           subtitle: tx.reference ?? undefined,
                           status: tx.status,
@@ -256,6 +257,7 @@ export function BankPage() {
                       {tx.status === 'unmatched' && can('bank.write') ? (
                         <div className="flex justify-end gap-1">
                           <button type="button" className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-ink" aria-label={`${t('records.view')} ${tx.label}`} onClick={() => showRecord({
+                        trace: { entityType: 'bank_transaction', entityId: tx.id },
                             title: tx.label,
                             subtitle: tx.reference ?? undefined,
                             status: tx.status,

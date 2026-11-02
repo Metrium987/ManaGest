@@ -204,6 +204,7 @@ export function PurchaseOrdersPage() {
                       className="inline-flex items-center gap-1 text-left hover:text-brand-700"
                       aria-label={`${t('records.view')} ${order.number}`}
                       onClick={() => showRecord({
+                        trace: { entityType: 'purchase_order', entityId: order.id },
                         title: order.number ?? t('purchaseOrders.title'),
                         subtitle: order.vendor_name,
                         status: order.status,

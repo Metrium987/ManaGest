@@ -3,6 +3,7 @@ import { t } from '@/lib/i18n';
 import { Modal } from './Modal';
 import { StatusBadge } from './Layout';
 import { Button } from './Button';
+import { ActivityTrail } from '@/components/domain/ActivityTrail';
 
 /**
  * Read-only record detail (T-201a/b/c). The same drawer serves every list: a
@@ -29,6 +30,8 @@ export interface RecordDetail {
   status?: string;
   fields: RecordField[];
   sections?: RecordSection[];
+  /** The journalled record this detail is about, when there is one. */
+  trace?: { entityType: string; entityId: string };
 }
 
 type Listener = (detail: RecordDetail | null) => void;
@@ -65,6 +68,30 @@ function FieldList({ fields }: { fields: RecordField[] }) {
   );
 }
 
+/**
+ * The detail content on its own, so the trail is part of every drawer rather
+ * than something each list has to remember to add. Exported for the render test
+ * that proves the journal section appears only for accounts holding
+ * `activity.read`.
+ */
+export function RecordDetailBody({ detail }: { detail: RecordDetail }) {
+  return (
+    <div className="space-y-5">
+      {detail.status ? <StatusBadge status={detail.status} /> : null}
+      <FieldList fields={detail.fields} />
+      {(detail.sections ?? []).map((section) => (
+        <section key={section.title} className="rounded-xl border border-line p-4">
+          <h3 className="mb-3 text-sm font-semibold text-ink-900">{section.title}</h3>
+          <FieldList fields={section.fields} />
+        </section>
+      ))}
+      {detail.trace ? (
+        <ActivityTrail entityType={detail.trace.entityType} entityId={detail.trace.entityId} />
+      ) : null}
+    </div>
+  );
+}
+
 export function RecordDrawerHost() {
   const [detail, setDetail] = useState<RecordDetail | null>(current);
 
@@ -89,18 +116,7 @@ export function RecordDrawerHost() {
         </>
       }
     >
-      {detail ? (
-        <div className="space-y-5">
-          {detail.status ? <StatusBadge status={detail.status} /> : null}
-          <FieldList fields={detail.fields} />
-          {(detail.sections ?? []).map((section) => (
-            <section key={section.title} className="rounded-xl border border-line p-4">
-              <h3 className="mb-3 text-sm font-semibold text-ink-900">{section.title}</h3>
-              <FieldList fields={section.fields} />
-            </section>
-          ))}
-        </div>
-      ) : null}
+      {detail ? <RecordDetailBody detail={detail} /> : null}
     </Modal>
   );
 }

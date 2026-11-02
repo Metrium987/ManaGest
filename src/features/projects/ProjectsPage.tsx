@@ -232,6 +232,7 @@ export function ProjectsPage() {
                     type="button"
                     className="mt-1 inline-flex items-center gap-1 text-[11px] font-medium text-brand-700 hover:underline"
                     onClick={() => showRecord({
+                        trace: { entityType: 'project', entityId: project.id },
                       title: project.name,
                       subtitle: project.client_name ?? undefined,
                       status: project.status,

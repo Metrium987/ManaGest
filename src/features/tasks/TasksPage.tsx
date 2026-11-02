@@ -114,6 +114,7 @@ export function TasksPage() {
 
   const detail = (task: Task) =>
     showRecord({
+                        trace: { entityType: 'task', entityId: task.id },
       title: task.title,
       subtitle: task.project_name ?? task.client_name ?? undefined,
       status: task.status,
