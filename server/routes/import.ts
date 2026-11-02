@@ -210,13 +210,14 @@ importRoutes.post('/commit/:entity', requireAuth, entityGuard, async (c) => {
     }
 
     if (statements.length > 0) await c.env.DB.batch(statements);
+    const importId = crypto.randomUUID();
     await logActivity(c.env.DB, {
       userId: user.id,
       action: 'imported',
-      entityType: 'invoices',
-      entityId: null,
+      entityType: 'import_run',
+      entityId: importId,
       summary: 'activity.data_imported',
-      meta: { entity, created: created.length, updated: 0, skipped: result.invalidCount + invalidGroups.length },
+      meta: { entity, import_id: importId, created: created.length, updated: 0, skipped: result.invalidCount + invalidGroups.length },
     });
     return c.json({
       created: created.length,
@@ -224,6 +225,7 @@ importRoutes.post('/commit/:entity', requireAuth, entityGuard, async (c) => {
       skipped: result.invalidCount + invalidGroups.length,
       invalid_count: result.invalidCount + invalidGroups.length,
       identifiers: created,
+      import_id: importId,
     }, 201);
   }
 
@@ -340,13 +342,14 @@ importRoutes.post('/commit/:entity', requireAuth, entityGuard, async (c) => {
     await c.env.DB.batch(statements);
   }
 
+  const importId = crypto.randomUUID();
   await logActivity(c.env.DB, {
     userId: user.id,
     action: 'imported',
-    entityType: entity,
-    entityId: null,
+    entityType: 'import_run',
+    entityId: importId,
     summary: 'activity.data_imported',
-    meta: { entity, created: created.length, updated: updated.length, skipped: result.invalidCount },
+    meta: { entity, import_id: importId, created: created.length, updated: updated.length, skipped: result.invalidCount },
   });
 
   return c.json({
@@ -355,6 +358,7 @@ importRoutes.post('/commit/:entity', requireAuth, entityGuard, async (c) => {
     skipped: result.invalidCount,
     invalid_count: result.invalidCount,
     identifiers: [...created, ...updated],
+    import_id: importId,
     csv: toCsv([{ key: 'identifier', label: 'identifiant' }], [...created, ...updated].map((identifier) => ({ identifier }))),
   }, 201);
 });

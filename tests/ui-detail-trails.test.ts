@@ -58,6 +58,7 @@ const ENTITIES = [
   'credit',
   'accounting',
   'revenue_schedule',
+  'import_run',
 ];
 
 const AUTHORITY: Role[] = ['owner', 'admin', 'accountant'];

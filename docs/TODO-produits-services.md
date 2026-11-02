@@ -1148,9 +1148,14 @@ séparément, et c'est volontaire : le journal comptable est dérivé et idempot
 (clé unique `source_type/source_id/event`), donc l'action traçable est celle du
 document, pas la recopie comptable.
 
-Modules sans surface de trace par fiche, avec la raison : import (une exécution
-d'import n'a pas d'écran de détail), tableau de bord et rapports (agrégats). Leur
-historique reste dans le journal global, réservé à `activity.read`.
+**Import** : chaque exécution reçoit un identifiant stable (`import_run`) écrit
+dans le journal avec le fichier et le bilan (créés, mis à jour, ignorés), et
+l'écran de résultat affiche la trace de cette exécution. L'identité est créée au
+commit, donc un import annulé ou rejeté ne laisse aucune ligne.
+
+Seuls le tableau de bord et les rapports n'ont pas de trace par fiche, et c'est
+structurel : ce sont des agrégats sans entité propre. Leur matière reste dans le
+journal global, réservé à `activity.read`.
 
 ### Valeurs métier côté client
 

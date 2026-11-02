@@ -10,6 +10,7 @@ import { PageHeader, SectionCard } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, Input, Select } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
+import { ActivityTrail } from '@/components/domain/ActivityTrail';
 
 /**
  * Five-step import wizard (T-102b / OQ-015): pick the entity and download the
@@ -229,6 +230,7 @@ export function ImportPage() {
             {result.identifiers.length > 0 ? (
               <p className="text-xs text-muted">{result.identifiers.join(' · ')}</p>
             ) : null}
+            <ActivityTrail entityType="import_run" entityId={result.import_id} />
             <div className="flex flex-wrap gap-2">
               <Link to={entity === 'clients' ? '/clients' : entity === 'products' ? '/produits' : '/factures'} className="btn btn-primary">
                 {entity === 'clients' ? t('import.seeClients') : entity === 'products' ? t('import.seeProducts') : t('import.seeInvoices')}

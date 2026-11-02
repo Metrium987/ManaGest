@@ -739,6 +739,8 @@ export interface ImportResult {
   skipped: number;
   invalid_count: number;
   identifiers: string[];
+  /** Stable id of this run, used to show the activity trail of the import. */
+  import_id: string;
 }
 
 // Cycle counting (B1)
