@@ -27,7 +27,7 @@ interface NavSection {
   items: NavItem[];
 }
 
-const NAV: NavSection[] = [
+export const NAV: NavSection[] = [
   {
     title: 'nav.main',
     items: [
@@ -77,6 +77,16 @@ const NAV: NavSection[] = [
     ],
   },
 ];
+
+/**
+ * The menu a set of permissions actually sees. The router uses the same
+ * permission on each screen, so a hidden entry and a refused page agree.
+ */
+export function visibleSections(can: (permission: Permission) => boolean): NavSection[] {
+  return NAV
+    .map((section) => ({ ...section, items: section.items.filter((item) => can(item.permission)) }))
+    .filter((section) => section.items.length > 0);
+}
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
@@ -277,14 +287,7 @@ export function AppShell() {
     setMenuOpen(false);
   }, [location.pathname]);
 
-  const sections = useMemo(
-    () =>
-      NAV.map((section) => ({
-        ...section,
-        items: section.items.filter((item) => can(item.permission)),
-      })).filter((section) => section.items.length > 0),
-    [can],
-  );
+  const sections = useMemo(() => visibleSections(can), [can]);
 
   const sidebar = (
     <div className="flex h-full flex-col bg-ink-950">
@@ -392,9 +395,11 @@ export function AppShell() {
                 <Link to="/profil" className="block px-3 py-2 text-sm hover:bg-surface" role="menuitem">
                   {t('nav.profile')}
                 </Link>
-                <Link to="/parametres" className="block px-3 py-2 text-sm hover:bg-surface" role="menuitem">
-                  {t('nav.settings')}
-                </Link>
+                {can('settings.read') ? (
+                  <Link to="/parametres" className="block px-3 py-2 text-sm hover:bg-surface" role="menuitem">
+                    {t('nav.settings')}
+                  </Link>
+                ) : null}
                 <button
                   type="button"
                   onClick={logout}

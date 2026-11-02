@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "ManaGest — ERP de gestion pour la Polynésie française",
+  "description": "ManaGest \u2014 ERP de gestion pour la Polyn\u00e9sie fran\u00e7aise",
   "engines": {
     "node": ">=20.19"
   },
@@ -12,7 +12,7 @@
     "dev:api": "wrangler dev --port 8787 --local",
     "build": "npm run typecheck && vite build && npm run build:worker",
     "build:worker": "esbuild server/worker.ts --bundle --format=esm --platform=browser --main-fields=module,main --target=es2022 --outfile=dist/worker/index.js --external:node:* --external:cloudflare:*",
-    "typecheck": "tsc -p tsconfig.app.json --noEmit --pretty false && tsc -p tsconfig.server.json --noEmit --pretty false",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit --pretty false && tsc -p tsconfig.server.json --noEmit --pretty false && tsc -p tsconfig.ui-tests.json --noEmit --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
     "check:preview": "python3 scripts/check-screens.py && python3 scripts/check-c2-e2-h2.py && python3 scripts/check-h1-permission.py && python3 scripts/check-planning-sla.py",

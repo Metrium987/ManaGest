@@ -1749,6 +1749,10 @@ export const en: Record<string, unknown> = {
     permissionDenied: 'You are not allowed to manage period closures.',
   },
   journal: {
+    trailTitle: 'Activity trail',
+    trailHint: 'Who, when and what — shown to accounts allowed to read the journal.',
+    trailEmpty: 'No action recorded for this record.',
+    systemActor: 'System',
     changes: 'Changes',
     before: 'Before',
     after: 'After',

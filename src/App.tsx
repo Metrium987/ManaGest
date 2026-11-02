@@ -1,8 +1,10 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import type { Permission } from '@shared/domain';
+import type { ReactNode } from 'react';
+import { CLIENT_ROUTES } from '@/lib/access';
 import { useSession } from '@/lib/session';
 import { t } from '@/lib/i18n';
 import { AppShell } from '@/components/layout/AppShell';
+import { RequirePermission } from '@/components/layout/RouteGuard';
 import { Spinner } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/Layout';
 import { LoginPage } from '@/features/auth/LoginPage';
@@ -54,7 +56,7 @@ function ProtectedShell() {
   return <AppShell />;
 }
 
-function PublicOnly({ children }: { children: React.ReactNode }) {
+function PublicOnly({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useSession();
   if (isLoading) {
     return (
@@ -68,28 +70,43 @@ function PublicOnly({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Hides the authority screens from an account that cannot use them. The server
- * already answers 403 on their endpoints; this only avoids opening an empty,
- * confusing page when the address is typed directly.
+ * One element per screen. Keys are exactly the paths declared in
+ * `CLIENT_ROUTES`; the access test fails when the two lists drift apart, so a
+ * new page cannot be routed without also declaring its permission.
  */
-function RequirePermission({ permission, children }: { permission: Permission; children: React.ReactNode }) {
-  const { can, isLoading } = useSession();
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Spinner />
-      </div>
-    );
-  }
-  if (!can(permission)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center p-6">
-        <EmptyState title={t('settings.permissionDenied')} description={t('errors.FORBIDDEN')} />
-      </div>
-    );
-  }
-  return <>{children}</>;
-}
+const PAGE_ELEMENTS: Record<string, ReactNode> = {
+  '': <DashboardPage />,
+  'clients': <ClientsPage />,
+  'clients/:id': <ClientDetailPage />,
+  'factures': <InvoicesPage />,
+  'factures/nouvelle': <InvoiceFormPage />,
+  'factures/:id': <InvoiceDetailPage />,
+  'factures/:id/modifier': <InvoiceFormPage />,
+  'devis': <QuotesPage />,
+  'devis/nouveau': <QuoteFormPage />,
+  'devis/:id': <QuoteDetailPage />,
+  'devis/:id/modifier': <QuoteFormPage />,
+  'paiements': <PaymentsPage />,
+  'avoirs': <CreditsPage />,
+  'factures-recurrentes': <RecurringPage />,
+  'produits': <ProductsPage />,
+  'inventaire': <CountingPage />,
+  'depenses': <ExpensesPage />,
+  'fournisseurs': <VendorsPage />,
+  'bons-de-commande': <PurchaseOrdersPage />,
+  'projets': <ProjectsPage />,
+  'planification': <PlanningPage />,
+  'taches': <TasksPage />,
+  'banque': <BankPage />,
+  'rapports': <ReportsPage />,
+  'comptabilite': <AccountingPage />,
+  'approbations': <ApprovalsPage />,
+  'parametres': <SettingsPage />,
+  'parametres/utilisateurs': <UsersPage />,
+  'importer': <ImportPage />,
+  'journal': <ActivityPage />,
+  'profil': <ProfilePage />,
+};
 
 export default function App() {
   return (
@@ -100,37 +117,15 @@ export default function App() {
       <Route path="/p/:token" element={<PublicDocumentPage />} />
 
       <Route element={<ProtectedShell />}>
-        <Route index element={<DashboardPage />} />
-        <Route path="clients" element={<ClientsPage />} />
-        <Route path="clients/:id" element={<ClientDetailPage />} />
-        <Route path="factures" element={<InvoicesPage />} />
-        <Route path="factures/nouvelle" element={<InvoiceFormPage />} />
-        <Route path="factures/:id" element={<InvoiceDetailPage />} />
-        <Route path="factures/:id/modifier" element={<InvoiceFormPage />} />
-        <Route path="devis" element={<QuotesPage />} />
-        <Route path="devis/nouveau" element={<QuoteFormPage />} />
-        <Route path="devis/:id" element={<QuoteDetailPage />} />
-        <Route path="devis/:id/modifier" element={<QuoteFormPage />} />
-        <Route path="paiements" element={<PaymentsPage />} />
-        <Route path="avoirs" element={<CreditsPage />} />
-        <Route path="factures-recurrentes" element={<RecurringPage />} />
-        <Route path="produits" element={<ProductsPage />} />
-        <Route path="inventaire" element={<CountingPage />} />
-        <Route path="depenses" element={<ExpensesPage />} />
-        <Route path="fournisseurs" element={<VendorsPage />} />
-        <Route path="bons-de-commande" element={<PurchaseOrdersPage />} />
-        <Route path="projets" element={<ProjectsPage />} />
-        <Route path="planification" element={<PlanningPage />} />
-        <Route path="taches" element={<TasksPage />} />
-        <Route path="banque" element={<BankPage />} />
-        <Route path="rapports" element={<ReportsPage />} />
-        <Route path="comptabilite" element={<AccountingPage />} />
-        <Route path="approbations" element={<ApprovalsPage />} />
-        <Route path="parametres" element={<RequirePermission permission="settings.read"><SettingsPage /></RequirePermission>} />
-        <Route path="parametres/utilisateurs" element={<RequirePermission permission="users.read"><UsersPage /></RequirePermission>} />
-        <Route path="importer" element={<ImportPage />} />
-        <Route path="journal" element={<RequirePermission permission="activity.read"><ActivityPage /></RequirePermission>} />
-        <Route path="profil" element={<ProfilePage />} />
+        {CLIENT_ROUTES.map((route) => {
+          const page = PAGE_ELEMENTS[route.path];
+          const element = route.permission
+            ? <RequirePermission permission={route.permission}>{page}</RequirePermission>
+            : page;
+          return route.path === ''
+            ? <Route key="index" index element={element} />
+            : <Route key={route.path} path={route.path} element={element} />;
+        })}
       </Route>
 
       <Route

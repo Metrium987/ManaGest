@@ -1086,3 +1086,65 @@ Toutes sont désormais journalisées, avec le libellé de la ligne concernée
 hors journal : `POST /import/preview` (lecture seule déguisée en POST) et
 `POST /runs/daily` (passe planifiée par jeton, sans utilisateur). Les approbations
 sont journalisées dans `server/services/approvals.ts`, pas dans la route.
+
+---
+
+## 2026-11-02 — Parcours de la couche client (pages, menu, trace)
+
+### Inventaire des écrans et de leur permission
+
+Le routeur ne déclare plus ses écrans à la main : `src/lib/access.ts` liste les
+31 écrans authentifiés avec la permission qui les ouvre, `App.tsx` génère une
+route gardée par `RequirePermission` pour chacun, et le menu lit la même
+permission via `visibleSections`. Les écrans publics restent déclarés en clair
+(`/connexion`, `/installation`, `/p/:token`, `*`).
+
+| Écran | Route | Permission | Propriétaire / Admin | Comptable | Vente | Lecture seule |
+|---|---|---|---|---|---|---|
+| Tableau de bord | `/` | `reports.read` | oui | oui | oui | oui |
+| Rapports | `/rapports` | `reports.read` | oui | oui | oui | oui |
+| Clients, fiche client | `/clients`, `/clients/:id` | `clients.read` | oui | oui | oui | oui |
+| Devis, formulaire, fiche | `/devis*` | `quotes.read` / `quotes.write` | oui | oui | oui | lecture seule : liste et fiche |
+| Factures, formulaire, fiche | `/factures*` | `invoices.read` / `invoices.write` | oui | oui | oui | lecture seule : liste et fiche |
+| Paiements, avoirs, récurrentes | `/paiements`, `/avoirs`, `/factures-recurrentes` | `payments.read`, `credits.read`, `recurring.read` | oui | oui | oui | oui |
+| Produits, inventaire | `/produits`, `/inventaire` | `products.read` | oui | oui | oui | oui |
+| Dépenses, fournisseurs, bons de commande | `/depenses`, `/fournisseurs`, `/bons-de-commande` | `expenses.read`, `vendors.read`, `purchase_orders.read` | oui | oui | non | oui (lecture seule) |
+| Projets, planification, tâches | `/projets`, `/planification`, `/taches` | `projects.read`, `tasks.read` | oui | oui | oui (lecture) | oui |
+| Banque | `/banque` | `bank.read` | oui | oui | non | oui (lecture seule) |
+| Comptabilité, approbations | `/comptabilite`, `/approbations` | `accounting.read`, `approvals.read` | oui | oui | non | non |
+| **Paramètres** | `/parametres` | `settings.read` | oui | oui (lecture) | **non** | **non** |
+| **Utilisateurs** | `/parametres/utilisateurs` | `users.read` | oui | non | non | non |
+| **Journal d'activité** | `/journal` | `activity.read` | oui | oui | **non** | **non** |
+| Import | `/importer` | `clients.write` | oui | non | oui | non |
+| Profil | `/profil` | session seule | oui | oui | oui | oui |
+
+Preuves : `tests/client-access.test.ts` rend réellement `RequirePermission`
+(`react-dom/server`, aucun DOM requis) pour les cinq rôles et vérifie que
+Paramètres, Utilisateurs et Journal refusent vente et lecture seule ; il vérifie
+aussi la matrice route par route et la liste de menu. `tests/client-surface.test.ts`
+échoue si une page importée n'est pas routée, si une route littérale apparaît
+hors liste publique, ou si une entrée de menu n'a pas la même permission que sa
+route.
+
+### Trace du journal par module
+
+Trois modules ont un écran de détail : facture, devis, fiche client. Chacun
+affiche désormais `<ActivityTrail>` (qui, quand, quoi), alimenté par
+`GET /activity?entity_type=…&entity_id=…`, et **rien** n'est rendu ni demandé
+pour un compte sans `activity.read`.
+
+Les autres modules n'ont **aucune surface de trace par fiche** : produits,
+inventaire, dépenses, fournisseurs, bons de commande, projets, tâches, contrats
+récurrents, avoirs, paiements, banque, comptabilité, approbations, import,
+utilisateurs. Leur historique reste consultable uniquement dans le journal
+global (`/journal`), qui n'est ni listé ni navigable pour vente et lecture seule.
+
+### Valeurs métier côté client
+
+Corrigé : le graphique du tableau de bord écrivait `XPF` en dur dans son
+infobulle ; il lit désormais la devise de la société. Littéraux restants,
+justifiés : `formatMoney` garde `XPF` comme devise par défaut partagée ; les
+calculs de coût rendu et les totaux d'import sont libellés en XPF parce que la
+règle de change du module est exprimée en francs Pacifique (`XPF_PER_EUR`) ; les
+placeholders `98713`, `123456`, `611000` sont des exemples de saisie, pas des
+valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18n.

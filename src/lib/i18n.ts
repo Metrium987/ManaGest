@@ -1752,6 +1752,10 @@ export const fr = {
     permissionDenied: 'Vous n’avez pas le droit de gérer les clôtures.',
   },
   journal: {
+    trailTitle: 'Trace des actions',
+    trailHint: 'Qui, quand, quoi — visible pour les comptes autorisés à lire le journal.',
+    trailEmpty: 'Aucune action enregistrée pour cette fiche.',
+    systemActor: 'Système',
     changes: 'Modifications',
     before: 'Avant',
     after: 'Après',

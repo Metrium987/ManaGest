@@ -792,12 +792,22 @@ function redactCosts(json: unknown): unknown {
 }
 
 activityRoutes.get('/', requirePermission('activity.read'), async (c) => {
-  const { page, per_page } = parseInput(z.object(paginationSchema), c.req.query());
-  const count = await c.env.DB.prepare(`SELECT COUNT(*) AS count FROM activities`).first<{ count: number }>();
+  const query = parseInput(z.object({
+    ...paginationSchema,
+    entity_type: z.string().trim().max(60).optional(),
+    entity_id: z.string().trim().max(60).optional(),
+  }), c.req.query());
+  const { page, per_page } = query;
+  const where = [query.entity_type ? 'a.entity_type = ?' : '', query.entity_id ? 'a.entity_id = ?' : '']
+    .filter(Boolean).join(' AND ');
+  const bindings = [query.entity_type, query.entity_id].filter((value): value is string => Boolean(value));
+  const whereSql = where ? `WHERE ${where}` : '';
+  const count = await c.env.DB.prepare(`SELECT COUNT(*) AS count FROM activities a ${whereSql}`)
+    .bind(...bindings).first<{ count: number }>();
   const rows = await c.env.DB.prepare(
     `SELECT a.*, u.first_name, u.last_name FROM activities a LEFT JOIN users u ON u.id = a.user_id
-     ORDER BY a.created_at DESC LIMIT ? OFFSET ?`,
-  ).bind(per_page, offsetOf(page, per_page)).all<Record<string, unknown>>();
+     ${whereSql} ORDER BY a.created_at DESC LIMIT ? OFFSET ?`,
+  ).bind(...bindings, per_page, offsetOf(page, per_page)).all<Record<string, unknown>>();
   const total = count?.count ?? 0;
   const canReadCosts = c.get('user')!.permissions.includes('products.cost.read');
   const data = (rows.results ?? []).map((row) => canReadCosts

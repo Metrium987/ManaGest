@@ -1,3 +1,4 @@
+import { ActivityTrail } from '@/components/domain/ActivityTrail';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -539,6 +540,7 @@ export function InvoiceDetailPage() {
           </p>
         </div>
       </Modal>
+      <ActivityTrail entityType="invoice" entityId={data.id} />
     </>
   );
 }

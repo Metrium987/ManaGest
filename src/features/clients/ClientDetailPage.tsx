@@ -1,3 +1,4 @@
+import { ActivityTrail } from '@/components/domain/ActivityTrail';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
@@ -273,6 +274,7 @@ export function ClientDetailPage() {
           </div>
         ) : null}
       </Modal>
+      <ActivityTrail entityType="client" entityId={data.id} />
     </>
   );
 }

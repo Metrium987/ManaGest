@@ -1,5 +1,6 @@
 import { useId } from 'react';
 import { t } from '@/lib/i18n';
+import { useSession } from '@/lib/session';
 
 interface ChartPoint {
   key: string;
@@ -16,6 +17,8 @@ export function monthLabel(key: string): string {
 
 export function RevenueChart({ data, height = 240 }: { data: ChartPoint[]; height?: number }) {
   const gradientId = useId().replace(/:/g, '');
+  const { company } = useSession();
+  const currency = company?.currency ?? 'XPF';
   const width = 720;
   const padding = { top: 18, right: 16, bottom: 28, left: 48 };
   const chartWidth = width - padding.left - padding.right;
@@ -78,7 +81,7 @@ export function RevenueChart({ data, height = 240 }: { data: ChartPoint[]; heigh
         {data.map((point, index) => (
           <g key={point.key}>
             <circle cx={padding.left + index * step} cy={yFor(point.invoiced)} r="6" fill="transparent">
-              <title>{`${monthLabel(point.key)} — ${t('dashboard.invoiced')} : ${point.invoiced} XPF`}</title>
+              <title>{`${monthLabel(point.key)} — ${t('dashboard.invoiced')} : ${point.invoiced} ${currency}`}</title>
             </circle>
             <circle cx={padding.left + index * step} cy={yFor(point.invoiced)} r="3" fill="#fff" stroke="#0E7C86" strokeWidth="2" />
             <circle cx={padding.left + index * step} cy={yFor(point.collected)} r="2.5" fill="#E29A2A" />

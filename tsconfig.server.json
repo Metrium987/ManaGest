@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "skipLibCheck": true,
@@ -15,9 +17,22 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "paths": {
-      "@shared/*": ["./shared/*"]
+      "@shared/*": [
+        "./shared/*"
+      ]
     },
-    "types": ["@cloudflare/workers-types", "node"]
+    "types": [
+      "@cloudflare/workers-types",
+      "node"
+    ]
   },
-  "include": ["server", "tests", "shared"]
+  "include": [
+    "server",
+    "tests",
+    "shared"
+  ],
+  "exclude": [
+    "tests/client-*.test.ts",
+    "tests/ui-*.test.ts"
+  ]
 }

@@ -1,3 +1,4 @@
+import { ActivityTrail } from '@/components/domain/ActivityTrail';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, FileCheck2, Pencil, Send, Trash2, XCircle } from 'lucide-react';
@@ -189,6 +190,7 @@ export function QuoteDetailPage() {
           ) : null}
         </div>
       </div>
+      <ActivityTrail entityType="quote" entityId={data.id} />
     </>
   );
 }
