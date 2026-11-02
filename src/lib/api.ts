@@ -70,11 +70,15 @@ export const api = {
 export async function downloadFile(path: string, filename: string): Promise<void> {
   const response = await fetch(`/api${path}`, { credentials: 'same-origin' });
   if (!response.ok) throw new ApiError(response.status, 'DOWNLOAD_FAILED');
+  // The server names the file; its header wins over the caller's fallback so a
+  // dated export keeps the name the API chose.
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const named = /filename="([^"]+)"/.exec(disposition)?.[1];
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = filename;
+  anchor.download = named ?? filename;
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();

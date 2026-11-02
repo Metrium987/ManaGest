@@ -525,9 +525,9 @@ purchaseOrderRoutes.post('/:id/receive', requirePermission('purchase_orders.writ
   );
 
   const po = await c.env.DB
-    .prepare(`SELECT id, number, status, line_items FROM purchase_orders WHERE id = ? AND deleted_at IS NULL`)
+    .prepare(`SELECT id, number, status, vendor_id, line_items FROM purchase_orders WHERE id = ? AND deleted_at IS NULL`)
     .bind(id)
-    .first<{ id: string; number: string | null; status: string; line_items: string | null }>();
+    .first<{ id: string; number: string | null; status: string; vendor_id: string | null; line_items: string | null }>();
   if (!po) return fail(404, 'NOT_FOUND');
   if (po.status === 'cancelled') return fail(409, 'INVALID_TRANSITION');
 
@@ -596,10 +596,10 @@ purchaseOrderRoutes.post('/:id/status', requirePermission('purchase_orders.write
     await c.req.json().catch(() => ({})),
   );
   const po = await c.env.DB.prepare(
-    `SELECT id, number, status, line_items FROM purchase_orders WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT id, number, status, vendor_id, line_items FROM purchase_orders WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(id)
-    .first<{ id: string; number: string | null; status: string; line_items: string }>();
+    .first<{ id: string; number: string | null; status: string; vendor_id: string | null; line_items: string }>();
   if (!po) return fail(404, 'NOT_FOUND');
   // A reception is final: receiving twice would double the stock. Going back to
   // another status is allowed (correction), receiving again is refused loudly

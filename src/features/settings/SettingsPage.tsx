@@ -16,7 +16,7 @@ import {
   LEGAL_FORM_LABELS,
 } from '@shared/client-profile';
 import { api, toQuery } from '@/lib/api';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage, fieldErrors } from '@/lib/errors';
 import { LANGUAGES, setLanguage, t } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { formatDate } from '@/lib/format';
@@ -186,8 +186,24 @@ export function SettingsPage() {
     onSuccess: () => {
       toast.success(t('settings.saved'));
       queryClient.invalidateQueries({ queryKey: ['settings-extras'] });
+      // The product sheet caches its price history for the session's stale window;
+      // without this, reopening the vendors panel would still show the old
+      // retention and alert threshold after they were just changed.
+      queryClient.invalidateQueries({ queryKey: ['product-price-history'] });
     },
-    onError: (error) => toast.error(errorMessage(error)),
+    // A refused threshold must say *which* field was refused: "some fields are
+    // invalid" leaves the reader scanning three inputs for the culprit.
+    onError: (error) => {
+      const labels: Record<string, string> = {
+        price_history_months: t('settings.priceHistoryMonths'),
+        price_alert_percent: t('settings.priceAlertPercent'),
+        price_alert_days: t('settings.priceAlertDays'),
+      };
+      const named = Object.keys(fieldErrors(error))
+        .map((field) => `${labels[field] ?? field} : ${t('settings.priceInvalid')}`)
+        .join(' · ');
+      toast.error(named || errorMessage(error));
+    },
   });
 
   const saveAccounts = useMutation({

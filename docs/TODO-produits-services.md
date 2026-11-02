@@ -1356,5 +1356,56 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
   **422** `VALIDATION_ERROR` ; `pragma_table_info` montre bien `source` et
   `source_ref` ; l'INSERT de réception exécuté sur la base locale donne
   `source = receipt`, `source_ref = PO-PROBE`, devise héritée `XPF` — puis la sonde
-  est supprimée. *Limite de cette preuve* : l'écran (fiche article, paramètres,
-  import) est compilé et typé, mais n'a pas été rouvert dans un navigateur ce tour-ci.
+  est supprimée. *Limite de cette preuve* : elle portait sur l'API ; les trois
+  écrans ont depuis été ouverts et exercés dans un navigateur (section du 2/11/2026).
+
+## 2026-11-02 — Vérification navigateur des trois écrans, et défauts corrigés
+
+Instance locale complète, **base déjà ouverte** (migration incluse), Chromium piloté
+par Playwright (`scripts/verify-ui-local.mjs`, `BASE_URL=http://127.0.0.1:8787`),
+captures dans `artifacts/ui-verification/`. **27 contrôles, 27 verts.**
+
+**Ce qui a été observé**
+- **Import** : le modèle téléchargé et l'export des données actuelles portent des
+  en-têtes **identiques dans le même ordre** ; le fichier exporté, réimporté par
+  l'assistant, passe avec **0 ligne en erreur** ; un fichier portant une colonne
+  `code_interne` s'importe quand même, la colonne est listée sous « Colonnes
+  ignorées » et l'import aboutit.
+- **Fiche article** : le panneau affiche les événements datés (fournisseur, prix,
+  source), `payé sur réception BC-0004`, la moyenne « Prix moyen sur 90 jours :
+  12 333 XPF » et le badge « Hausse de 25.0 % (seuil 10 %) ». L'état vide dit
+  « Aucun prix enregistré sur la période. », sans `NaN`. Après passage des seuils à
+  24/30/60 depuis Paramètres → Taxes, la fiche réouverte affiche « Conservation 24
+  mois · référence sur 60 jours » et **plus de badge** à 25 % < 30 %.
+- **Paramètres → Taxes** : 36/10/90 par défaut, enregistrés puis **relus après
+  rechargement** (24/30/60) ; une valeur `5000` est refusée avec le message
+  « Seuil d'alerte de hausse (%) : valeur invalide », et l'ancienne valeur reste en
+  base.
+
+**Défauts trouvés et corrigés**
+1. **Aucun téléchargement CSV ne fonctionnait dans un navigateur.** Un lien vers
+   `/api/...` est une *navigation* : le routeur d'assets répondait l'application
+   elle-même (`Sec-Fetch-Mode: navigate` → `not_found_handling`), donc ni le modèle
+   ni l'export ne se téléchargeaient — l'API seule répondait correctement, d'où la
+   lacune. `ImportPage` et `ExportCsvButton` passent par `downloadFile` (fetch +
+   blob), qui lit en plus le nom de fichier du `Content-Disposition`.
+2. **Le prix payé n'entrait jamais dans le registre.** Les deux routes qui
+   reçoivent un bon de commande sélectionnaient `id, number, status, line_items`
+   sans `vendor_id` : `receivePurchaseOrder` recevait `null` et n'écrivait aucune
+   ligne `receipt`. Colonne ajoutée aux deux `SELECT`.
+3. **Les seuils restaient périmés sur la fiche.** La requête d'historique est
+   mémorisée 20 s ; enregistrer les réglages n'invalidait pas cette clé. L'écran
+   des paramètres invalide désormais `['product-price-history']`.
+4. **L'onglet Taxes affichait des clés brutes.** 71 libellés destinés à `settings`
+   (`fiscalDefaults`, `chartOfAccounts`, `purchasing`, `retentionYears`…) avaient
+   été écrits dans l'objet `setup` : tout l'onglet affichait
+   `settings.fiscalDefaults` au lieu du texte. Bloc déplacé vers `settings` en
+   français et en anglais.
+5. **Le refus d'une valeur hors bornes ne nommait pas le champ.** Le message dit
+   maintenant lequel des trois réglages est refusé, au lieu de « certains champs
+   sont invalides ».
+
+**Contrôles finaux** : `npm run typecheck` → **0 erreur** ; `npm test` → **76
+fichiers, 654 tests verts** ; `npm run build` → **OK**. Commit unique sur
+`freebuff/a6f86ced7cc9d3ad744d42ee`, arbre propre, rien poussé, aucun déploiement,
+aucun secret écrit.

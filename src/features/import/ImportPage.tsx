@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, CheckCircle2, Download, Upload } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, downloadFile } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { t } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
@@ -51,6 +51,16 @@ export function ImportPage() {
     const delimiter = (first.match(/;/g) ?? []).length >= (first.match(/,/g) ?? []).length ? ';' : ',';
     return first.split(delimiter).map((header) => header.trim()).filter(Boolean);
   }, [text]);
+
+  /** Both downloads go through the fetch/blob helper: a plain link is a
+   * navigation, and the SPA fallback would answer it with the app itself. */
+  const download = async (path: string, filename: string) => {
+    try {
+      await downloadFile(path, filename);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    }
+  };
 
   const readFile = async (file: File | undefined) => {
     if (!file) return;
@@ -122,13 +132,14 @@ export function ImportPage() {
               </Select>
             </Field>
             <Field label={t('import.template')} htmlFor="import-template">
-              <a
+              <button
                 id="import-template"
-                href={`/api/import/template/${entity}`}
+                type="button"
                 className="btn btn-secondary inline-flex w-full justify-center gap-2"
+                onClick={() => void download(`/import/template/${entity}`, `modele-${entity}.csv`)}
               >
                 <Download className="h-4 w-4" aria-hidden="true" /> {t('import.downloadTemplate')}
-              </a>
+              </button>
             </Field>
           </div>
           {!allowed ? <p className="text-sm text-danger-600">{t('import.permissionDenied')}</p> : null}
@@ -145,12 +156,14 @@ export function ImportPage() {
             application re-enters with the same headers. */}
         <SectionCard title={t('import.genericTitle')} bodyClassName="space-y-3 p-5">
           <p className="text-sm text-muted">{t('import.genericHint')}</p>
-          <a
-            href={`/api/export/${entity}`}
+          <button
+            id="import-export"
+            type="button"
             className="btn btn-secondary inline-flex w-fit items-center gap-2"
+            onClick={() => void download(`/export/${entity}`, `${entity}.csv`)}
           >
             <Download className="h-4 w-4" aria-hidden="true" /> {t('import.exportCurrent')}
-          </a>
+          </button>
           <p className="text-xs text-muted">{t('import.exportHint')}</p>
           <p className="text-xs text-muted">{t('import.templateNote')}</p>
         </SectionCard>
