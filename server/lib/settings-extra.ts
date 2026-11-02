@@ -35,11 +35,12 @@ export const EXTRA_DEFAULTS: Record<ExtraKey, string> = {
   // are ordinary settings, editable without redeploying.
   api_token_lifetime_days: '365',
   api_token_max_per_user: '10',
-  // T-302: approval thresholds. `0` disables a rule, so these defaults only
-  // block the operations they are meant to block, and every one is editable.
-  approval_credit_amount: '100000',
-  approval_expense_amount: '250000',
-  approval_discount_percent: '20',
+  // T-302: approval thresholds. `0` disables a rule, and all three ship off:
+  // the owner settles these cases case by case (decision 2026-11-02), so a
+  // fresh workspace never refuses a credit note, an expense or a discount.
+  approval_credit_amount: '0',
+  approval_expense_amount: '0',
+  approval_discount_percent: '0',
   // Separation of duties stays off until a workspace has more than one person:
   // enabling it for a single-owner business would stop them collecting anything.
   separation_of_duties: '0',

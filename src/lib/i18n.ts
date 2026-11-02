@@ -1433,6 +1433,7 @@ export const fr = {
     unreadable: 'Ce fichier n’a pas pu être lu.',
     tooLarge: 'Fichier trop volumineux (maximum {size}).',
     maxSize: 'PDF ou photo (JPEG, PNG, WebP), {size} maximum.',
+    platformCeiling: 'Plafond de la plateforme d’hébergement : 100 Mo par requête ; le réglage de l’espace reste la limite appliquée.',
     uploadedBy: 'ajouté par {name}',
   },
   email: {
@@ -1803,7 +1804,7 @@ export const fr = {
     exportHint: 'Le fichier exporté porte exactement les en-têtes du modèle : il se réimporte tel quel après modification.',
     templateNote: 'Le modèle contient une ligne d’explication et une ligne d’exemple : remplacez l’exemple par vos données, ou supprimez-le.',
     file: 'Fichier CSV',
-    csvOnly: 'Format accepté : CSV (UTF-8, séparateur « ; » ou « , »).',
+    csvOnly: 'Formats acceptés : CSV (UTF-8, séparateur « ; » ou « , ») ou Excel .xlsx.',
     loaded: 'fichier chargé',
     orPaste: 'ou collez le contenu ci-dessous',
     paste: 'Contenu du fichier',

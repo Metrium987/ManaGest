@@ -1430,6 +1430,7 @@ export const en: Record<string, unknown> = {
     unreadable: 'This file could not be read.',
     tooLarge: 'File too large (maximum {size}).',
     maxSize: 'PDF or photo (JPEG, PNG, WebP), {size} maximum.',
+    platformCeiling: 'Hosting platform ceiling: 100 MB per request; the workspace setting remains the applied limit.',
     uploadedBy: 'added by {name}',
   },
   email: {
@@ -1800,7 +1801,7 @@ export const en: Record<string, unknown> = {
     exportHint: 'The exported file carries exactly the template headers, so it imports back unchanged once edited.',
     templateNote: 'The template holds an explanation row and an example row: replace the example with your data, or delete it.',
     file: 'CSV file',
-    csvOnly: 'Accepted format: CSV (UTF-8, “;” or “,” separator).',
+    csvOnly: 'Accepted formats: CSV (UTF-8, “;” or “,” separator) or Excel .xlsx.',
     loaded: 'file loaded',
     orPaste: 'or paste the content below',
     paste: 'File content',

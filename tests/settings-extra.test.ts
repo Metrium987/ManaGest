@@ -26,6 +26,12 @@ describe('settings extras validation', () => {
     expect(isValidExtraValue('approval_discount_percent', '101')).toBe(false);
   });
 
+  it('ships the approval thresholds off, so a new workspace blocks nothing', () => {
+    expect(EXTRA_DEFAULTS.approval_credit_amount).toBe('0');
+    expect(EXTRA_DEFAULTS.approval_expense_amount).toBe('0');
+    expect(EXTRA_DEFAULTS.approval_discount_percent).toBe('0');
+  });
+
   it('only accepts a boolean for separation of duties', () => {
     expect(isValidExtraValue('separation_of_duties', '1')).toBe(true);
     expect(isValidExtraValue('separation_of_duties', 'true')).toBe(true);

@@ -23,6 +23,8 @@ export function ImportPage() {
   const [entity, setEntity] = useState<'clients' | 'products' | 'invoices'>('clients');
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [text, setText] = useState('');
+  /** P-05: an .xlsx workbook is sent as-is; the server converts it to CSV. */
+  const [fileBase64, setFileBase64] = useState('');
   const [fileName, setFileName] = useState('');
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [skipInvalid, setSkipInvalid] = useState(false);
@@ -64,18 +66,38 @@ export function ImportPage() {
 
   const readFile = async (file: File | undefined) => {
     if (!file) return;
+    if (/\.xlsx$/i.test(file.name)) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error(t('import.csvOnly'));
+        return;
+      }
+      setFileName(file.name);
+      setText('');
+      setFileBase64(await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(file);
+      }).catch(() => ''));
+      return;
+    }
     if (!/\.csv$/i.test(file.name)) {
       toast.error(t('import.csvOnly'));
       return;
     }
     setFileName(file.name);
+    setFileBase64('');
     setText(await file.text());
   };
 
   const runPreview = async () => {
     setBusy(true);
     try {
-      const data = await api.post<ImportPreview>(`/import/preview/${entity}`, { text, mapping });
+      const data = await api.post<ImportPreview>(`/import/preview/${entity}`, {
+        text,
+        file_base64: fileBase64 || undefined,
+        mapping,
+      });
       setPreview(data);
       setSkipInvalid(false);
       setStep(3);
@@ -89,7 +111,12 @@ export function ImportPage() {
   const runCommit = async () => {
     setBusy(true);
     try {
-      const data = await api.post<ImportResult>(`/import/commit/${entity}`, { text, skip_invalid: skipInvalid, mapping });
+      const data = await api.post<ImportResult>(`/import/commit/${entity}`, {
+        text,
+        file_base64: fileBase64 || undefined,
+        skip_invalid: skipInvalid,
+        mapping,
+      });
       setResult(data);
       setStep(4);
     } catch (error) {
@@ -102,6 +129,7 @@ export function ImportPage() {
   const restart = () => {
     setStep(1);
     setText('');
+    setFileBase64('');
     setFileName('');
     setPreview(null);
     setResult(null);
@@ -175,7 +203,7 @@ export function ImportPage() {
                 <Input
                   id="import-file"
                   type="file"
-                  accept=".csv,text/csv"
+                  accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                   onChange={(event) => void readFile(event.target.files?.[0])}
                   disabled={step !== 2}
                 />
@@ -224,7 +252,7 @@ export function ImportPage() {
               </div>
             ) : null}
             {step === 2 ? (
-              <Button onClick={runPreview} loading={busy} disabled={!text.trim()} icon={<Upload className="h-4 w-4" aria-hidden="true" />}>
+              <Button onClick={runPreview} loading={busy} disabled={!text.trim() && !fileBase64} icon={<Upload className="h-4 w-4" aria-hidden="true" />}>
                 {t('import.preview')}
               </Button>
             ) : null}

@@ -6,6 +6,7 @@ import { computeTotals } from '../lib/tax';
 import { csvResponse, toCsv } from '../lib/csv';
 import { fail } from '../lib/errors';
 import { parseCsv, templateCsv, toBoolean, validateImport, type ImportEntity } from '../lib/import';
+import { XlsxError, xlsxToCsv } from '../lib/xlsx';
 import {
   INVOICE_COLUMNS,
   invoiceTemplateCsv,
@@ -32,12 +33,25 @@ type Entity = ImportEntity | 'invoices';
 const ENTITIES: Entity[] = ['clients', 'products', 'invoices'];
 
 const bodySchema = z.object({
-  text: z.string().min(1).max(4_000_000),
+  text: z.string().max(4_000_000).default(''),
+  /** P-05: an .xlsx workbook, sent as base64 and converted server-side. */
+  file_base64: z.string().max(14_000_000).optional(),
   /** Explicit user choice: rows still in error are excluded, never silently dropped. */
   skip_invalid: z.coerce.boolean().default(false),
   /** Operator-chosen columns: import field key -> header found in the file. */
   mapping: z.record(z.string(), z.string()).optional(),
 });
+
+/** Text to import: pasted CSV, or an .xlsx workbook converted to CSV. */
+async function readableText(body: { text: string; file_base64?: string }): Promise<string> {
+  if (!body.file_base64) return body.text;
+  try {
+    return await xlsxToCsv(body.file_base64);
+  } catch (error) {
+    if (error instanceof XlsxError) return fail(422, error.code);
+    throw error;
+  }
+}
 
 function permissionFor(entity: Entity) {
   if (entity === 'clients') return 'clients.write';
@@ -95,7 +109,9 @@ importRoutes.get('/columns/:entity', requireAuth, entityGuard, async (c) => {
 importRoutes.post('/preview/:entity', requireAuth, entityGuard, async (c) => {
   const entity = assertEntity(c.req.param('entity'));
   const body = parseInput(bodySchema, await c.req.json().catch(() => ({})));
-  const parsed = parseCsv(body.text);
+  const text = await readableText(body);
+  if (!text.trim()) return fail(422, 'IMPORT_EMPTY');
+  const parsed = parseCsv(text);
 
   if (entity === 'invoices') {
     const result = validateInvoiceImport(parsed, await clientIndex(c.env.DB), await existingKeys(c.env.DB, 'invoices'), { mapping: body.mapping });
@@ -160,7 +176,9 @@ importRoutes.post('/commit/:entity', requireAuth, entityGuard, async (c) => {
   const company = c.get('company')!;
   const user = c.get('user')!;
   const body = parseInput(bodySchema, await c.req.json().catch(() => ({})));
-  const parsed = parseCsv(body.text);
+  const text = await readableText(body);
+  if (!text.trim()) return fail(422, 'IMPORT_EMPTY');
+  const parsed = parseCsv(text);
   const now = nowISO();
   const today = new Date(now).toISOString().slice(0, 10);
 

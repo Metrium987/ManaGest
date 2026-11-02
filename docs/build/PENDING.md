@@ -15,6 +15,7 @@ est livré (c'est [`../AUDIT.md`](../AUDIT.md) §10).
 | **NON PLANIFIÉ** | Identifié par l'audit, jamais mis au plan. |
 | **LIMITE** | Comportement assumé du code livré, écrit pour ne pas le découvrir en production. |
 | **NON VÉRIFIÉ** | Existe, mais n'a jamais été éprouvé dans les conditions réelles. |
+| **RÉGLÉ** | Tranché par le propriétaire ; la décision est appliquée dans le code ou dans les réglages, plus rien n'attend. |
 
 ---
 
@@ -22,20 +23,20 @@ est livré (c'est [`../AUDIT.md`](../AUDIT.md) §10).
 
 | # | Sujet | Statut | Pourquoi c'est en suspens | Où c'est écrit |
 |---|---|---|---|---|
-| D-01 | **Soldes de reprise** (balance d'ouverture) | DÉCISION | L'outil est livré et prouvé (T-304) : il attend **vos chiffres**. Tant qu'ils ne sont pas saisis, le bilan reste vide, et ce n'est pas un défaut du calcul. | `TODO.md` T-304, Comptabilité → Reprise de balance |
-| D-02 | **Valeurs fiscales par défaut** : rétention 10 ans, franchise 10 000 000 XPF, mentions de régime | DÉCISION | Adoptées le 29/10 **faute de comptable disponible**, exposées comme paramètres. Elles ne sont certifiées par personne et doivent être revues (OQ-004/005/006/019). | `settings_extra`, [`../CONFORMITE.md`](../CONFORMITE.md) |
-| D-03 | **Seuils d'approbation** : avoir 100 000, dépense 250 000, remise 20 %, séparation des devoirs désactivée | DÉCISION | Valeurs standard choisies pour ne pas bloquer un espace à une seule personne. Elles décrivent votre contrôle interne : à ajuster à votre fonctionnement réel. | `settings_extra`, Paramètres → Sécurité, `PATCH /api/settings/extras` |
-| D-04 | **Déclencheur du passage quotidien** | DÉCISION + PLATEFORME | L'endpoint `POST /api/runs/daily` existe et est protégé ; **l'appelant externe (cron) n'existe pas**. L'hébergement n'attache aucun planificateur. | `TODO.md` T-104a, PQ-1, [`../SECURITE.md`](../SECURITE.md) §11 |
+| D-01 | **Soldes de reprise** (balance d'ouverture) | **RÉGLÉ** (2/11/2026) | Aucun chiffre communiqué : la reprise reste **à zéro**, sans valeur inventée. Le bilan reste vide tant que rien n'est saisi, et la saisie reste ouverte à tout moment (Comptabilité → Reprise de balance). | T-304 |
+| D-02 | **Valeurs fiscales par défaut** | **RÉGLÉ** (2/11/2026) | Conservées telles quelles : ce sont des réglages ordinaires, modifiables sans code (rétention, franchise, régime). Décision du propriétaire : on n'y revient plus. | `settings_extra`, Paramètres → Société / Taxes |
+| D-03 | **Seuils d'approbation** | **RÉGLÉ** (2/11/2026) | Les trois seuils sont livrés **à 0**, c'est-à-dire règle désactivée : un avoir, une dépense ou une remise passe sans blocage par défaut. L'approbation reste **optionnelle** et paramétrable (Paramètres → Sécurité), pour les cas où vous la voulez. | `server/lib/settings-extra.ts`, Paramètres → Sécurité |
+| D-04 | **Déclencheur du passage quotidien** | DÉCISION + PLATEFORME (reporté par le propriétaire) | L'endpoint `POST /api/runs/daily` existe et est protégé ; l'appelant externe (cron) sera branché plus tard. **Aucun jeton GitHub n'est nécessaire** : il faut un **jeton d'API ManaGest** (Paramètres → Sécurité, créé par vous) et un planificateur qui appelle l'endpoint avec ce jeton. | T-104a, [`../SECURITE.md`](../SECURITE.md) §11 |
 
 ## 2. Ce qui dépend de la plateforme ou d'un service externe
 
 | # | Sujet | Statut | État exact | Déblocage |
 |---|---|---|---|---|
-| P-01 | **Envoi réel des e-mails** | PLATEFORME (déprioritisé par vous) | Le code est complet (mode manuel par défaut, Resend, Brevo, SMTP explicite), les identifiants sont chiffrés au repos. **Aucun message n'a jamais été délivré depuis cet hôte** : pas de fournisseur configuré. Un 502 prouve un échec, pas une réception. | Une clé de fournisseur (PQ-2) |
+| P-01 | **Envoi réel des e-mails** | PLATEFORME (prêt à recevoir la clé) | Le code est complet (Resend, Brevo, SMTP, mode manuel) et les identifiants sont chiffrés au repos. **L'écran existe** : Paramètres → onglet « Livraison des e-mails » → choisir Resend → coller la clé API → Enregistrer, puis « Envoyer un test ». Il ne manque que la clé dans cet écran. | PQ-2 |
 | P-02 | **Réinitialisation de mot de passe en libre-service** | PLATEFORME | Inexistante : elle dépend entièrement de P-01. Seule la réinitialisation par un administrateur existe. | P-01 |
 | P-03 | **Sauvegarde, export complet et restauration** | **PROUVÉ EN LOCAL** (sauvegarde hébergée restante) | Export complet JSON versionné (toutes les tables, empreinte SHA-256, version de schéma) et restauration vers une base neuve (`server/lib/backup.ts`). **Aller-retour prouvé** par `tests/backup-restore.test.ts` (8 cas) sur SQLite réel : mêmes lignes dans les 78 tables, identifiants / montants / dates identiques, liens entre entités vérifiés, empreinte re-exportée à l'identique ; refus prouvés d'un schéma plus récent, d'une empreinte fausse, d'une table inconnue et d'un écrasement non confirmé. En service : `GET /api/backup`, `POST /api/backup/restore` (propriétaire seul, `confirm: "RESTORE"`). **Reste hors de portée sans hébergement** : la sauvegarde automatique D1 (PQ-4), à activer dans le tableau de bord Cloudflare. | Pour la restauration, rien ; PQ-4 pour la sauvegarde automatique |
-| P-04 | **Plafond d'hébergement des pièces jointes** | PLATEFORME (cosmétique) | Le plafond local (10 Mo, paramétrable 1–25) fonctionne ; seul l'affichage du plafond **de l'hébergeur** manque (PQ-3). | Réponse plateforme |
-| P-05 | **Import XLSX** | PLATEFORME (non tranché) | Seul le CSV est importé, et il est prouvé. Le XLSX n'a jamais été validé (PQ-5). | Décision ou bibliothèque validée |
+| P-04 | **Plafond d'hébergement des pièces jointes** | **RÉGLÉ** (2/11/2026) | Le plafond de la plateforme est affiché sous le composant de pièces jointes (« 100 Mo par requête ») ; le réglage de l'espace (1–25 Mo) reste la limite appliquée. | `src/components/domain/AttachmentsPanel.tsx` |
+| P-05 | **Import XLSX** | **RÉGLÉ** (2/11/2026) | L'écran d'import accepte **.xlsx** en plus du CSV : le classeur est converti côté serveur (ZIP + XML, sans dépendance), les dates Excel deviennent `AAAA-MM-JJ`, puis le fichier passe par **exactement** le même pipeline (détection d'en-têtes, alias, aperçu, validation, commit). Prouvé par `tests/xlsx.test.ts`. | `server/lib/xlsx.ts`, `tests/xlsx.test.ts` |
 
 ## 3. Spécifié et volontairement non construit (décision R4)
 
@@ -61,7 +62,7 @@ Passerelles de paiement, Peppol et Factur-X restent également **hors périmètr
 | N-03 | **Application installable (PWA) et lecture hors ligne** | NON PLANIFIÉ | Confort terrain ; aucun impact comptable. |
 | N-04 | **Préparation de la déclaration de TVA (formulaire 1010)** | NON PLANIFIÉ | Le récapitulatif de TVA existe (T-207) mais le formulaire, lui, se remplit à la main. Inclut le taux réduit de **1 %** applicable aux archipels hors Société à compter du 1er juillet 2026. |
 | N-05 | **Export CST-S (formulaire 4010) et échéances DICP/CPS** | NON PLANIFIÉ | Obligations déclaratives locales ; rien n'est produit aujourd'hui. |
-| N-06 | **Chorus Pro** (facturation aux entités publiques) | NON PLANIFIÉ | Nécessaire seulement si vous facturez le secteur public. |
+| N-06 | **Chorus Pro** | NON PLANIFIÉ (précision 2/11/2026) | **Aucune obligation en B2B** : Chorus Pro ne concerne en Polynésie que les **marchés publics** (loi du pays n° 2025-22 du 15/07/2025, dématérialisation progressive des demandes de paiement, ordre de grandeur 1/1/2027 pour les marchés ≥ 500 000 XPF). À rouvrir seulement si vous facturez des acheteurs publics. | [Chorus Pro — Polynésie](https://portail.chorus-pro.gouv.fr/aife_documentation?id=kb_article_view&sysparm_article=KB0012182) |
 | N-07 | **Modèles PDF paramétrables** (logo, couleurs, mentions par modèle) | NON PLANIFIÉ | Deux mises en page existent (`classic`, `compact`) et les mentions sont celles de la société ; pas de modèle par document. |
 | N-08 | **Devis récurrents et dépenses récurrentes** | NON PLANIFIÉ | Seules les factures sont récurrentes (T-104b). |
 | N-09 | **Étiquettes et champs personnalisés** | NON PLANIFIÉ | Aucun champ libre par entité au-delà des notes. |

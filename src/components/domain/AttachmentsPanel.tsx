@@ -150,6 +150,7 @@ export function AttachmentsPanel({
             {t('attachments.add')}
           </Button>
           <p className="text-xs text-muted">{t('attachments.maxSize', { size: `${limits.data?.max_mb ?? 10} Mo` })}</p>
+          <p className="text-xs text-muted">{t('attachments.platformCeiling')}</p>
         </div>
       ) : null}
 

@@ -625,8 +625,8 @@ données). Ce qui est appliqué, et ce qui reste à ouvrir :
 > atteint (10 042 / 10 000), ce qui met les sites en pause ; les autres quotas sont
 > loin (requêtes 1 892 / 100 000, CPU 27 s / 5 000 s, stockage 1,9 Mo / 100 Mo) et les
 > **données sont conservées**. Remise à zéro le **3 novembre 2026 à 00:00 UTC** ; la
-> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **77 fichiers
-> de tests (662 cas)**, build OK) ; la **vérification hébergée** de ces deux points reste **bloquée par ce quota** :
+> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **78 fichiers
+> de tests (667 cas)**, build OK) ; la **vérification hébergée** de ces deux points reste **bloquée par ce quota** :
 > à faire dès la remise à zéro (3/11/2026 00:00 UTC) — construire, publier, puis
 > `npm run check:preview:hosted` (quatre contrôles : écrans de stock, tarif, démo et
 > centres ; historique de prix et révision ; séparation des droits ;
@@ -1293,7 +1293,7 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
   avec une URL non http(s) → **EXIT:2** ; avec une configuration complète →
   **EXIT:0**. Le code 2 distingue donc une configuration absente d'un contrôle rouge.
 - **Build sur l'arbre commité** : `npm run typecheck` → **0 erreur** ;
-  `npm test` → **77 fichiers, 662 tests verts** ; `npm run build` → **OK**.
+  `npm test` → **78 fichiers, 667 tests verts** ; `npm run build` → **OK**.
 - **Cases à cocher** : les `- [ ]` de `docs/build/VERIFICATION-GATES.md` sont le
   **modèle de porte** (chaque ligne porte déjà son ✓), pas des tâches ouvertes.
 - **Ce qui reste, avec son blocage** :
@@ -1404,7 +1404,7 @@ captures dans `artifacts/ui-verification/`. **27 contrôles, 27 verts.**
    sont invalides ».
 
 **Contrôles finaux** : `npm run typecheck` → **0 erreur** ; `npm test` → **77
-fichiers, 662 tests verts** ; `npm run build` → **OK**. Commit unique sur
+fichiers, 667 tests verts** ; `npm run build` → **OK**. Commit unique sur
 `freebuff/a6f86ced7cc9d3ad744d42ee`, arbre propre, rien poussé, aucun déploiement,
 aucun secret écrit.
 
@@ -1437,4 +1437,29 @@ aucun secret écrit.
 
 **Reste hors de portée sans hébergement** : la sauvegarde automatique D1 côté Cloudflare (PQ-4) s'active dans le tableau de bord ; elle ne peut être ni activée ni vérifiée depuis cet hôte. La restauration, elle, n'attend plus rien.
 
-**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → 77 fichiers, 662 tests verts ; `npm run build` → OK.
+**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → 78 fichiers, 667 tests verts ; `npm run build` → OK.
+
+## Décisions du propriétaire, P-04, P-05 et alignement Odoo (2/11/2026)
+
+**Décisions tranchées**
+- **D-01 (soldes de reprise)** : aucun chiffre fourni → reprise **à zéro**, aucune valeur inventée ; la saisie reste ouverte (Comptabilité → Reprise de balance).
+- **D-02 (valeurs fiscales)** : conservées, ce sont des **réglages** modifiables (rétention, franchise, régime) ; point clos.
+- **D-03 (seuils d'approbation)** : les trois seuils passent **à 0 = règle désactivée**. Un avoir, une dépense ou une remise ne déclenche plus d'approbation par défaut ; l'approbation reste disponible et paramétrable. Le test `tests/settings-extra.test.ts` fige ces trois défauts.
+- **D-04 (cron)** : reporté par le propriétaire. **Aucun jeton GitHub n'est nécessaire** : il faut un **jeton d'API ManaGest** (Paramètres → Sécurité) et un planificateur externe qui appelle `POST /api/runs/daily`.
+
+**P-01 (Resend)** : l'écran existe — **Paramètres → onglet « Livraison des e-mails »** → fournisseur **Resend** → coller la clé API → Enregistrer → « Envoyer un test ». La clé n'est jamais réaffichée après enregistrement (elle est chiffrée au repos).
+
+**P-04 (plafond hébergeur)** : affiché sous le composant de pièces jointes — « 100 Mo par requête » (limite de la plateforme Cloudflare) ; le réglage de l'espace (1–25 Mo) reste la limite appliquée. Coût : une ligne de texte et une clé de traduction.
+
+**P-05 (import Excel)** : l'écran d'import accepte désormais **.xlsx**. `server/lib/xlsx.ts` lit le classeur sans dépendance (ZIP via `DecompressionStream`, `sharedStrings`, styles de date, références de cellules), convertit la première feuille en CSV et la fait passer par **le même pipeline** que le CSV : en-têtes détectés ou mappés, alias, aperçu ligne à ligne, validation, commit tout-ou-rien. `tests/xlsx.test.ts` prouve la conversion (chaînes partagées, échappement, dates Excel, fichier non-ZIP).
+
+**Sources consultées (2/11/2026)**
+- Odoo, règles d'approbation : <https://www.odoo.com/documentation/20.0/applications/studio/approval_rules.html> — une approbation **route** la demande, ne bloque pas ; seuil de double validation des achats dans `res_company.py` (défaut 5 000, désactivable).
+- Odoo, import/export : <https://www.odoo.com/documentation/20.0/applications/essentials/export_import_data.html> et `addons/base_import/models/base_import.py` — .xlsx lu nativement (openpyxl), mapping par en-têtes, commit atomique.
+- Odoo, sauvegarde : <https://www.odoo.com/documentation/20.0/administration/odoo_sh/getting_started/branches.html> — archive base + fichiers + journaux, restauration par import.
+- Odoo, multi-devises : <https://www.odoo.com/documentation/20.0/applications/finance/accounting/get_started/multi_currency.html> — devise principale, taux datés, écarts de conversion automatiques (confirme le plan Q15).
+- DICP, taux de TVA : <https://www.service-public.pf/dicp/faq-items/quels-sont-les-principaux-taux-de-tva/> — **5 % réduit, 13 % services, 16 % biens** ; un taux **1 %** pour les archipels hors Société est annoncé au 1/7/2026. Les taux locaux du code (`LOCAL_TAX_RATES` = 0, 1, 5, 13, 16) sont donc exacts ; le taux par défaut de la société reste **paramétrable** (16 = taux normal, à passer à 13 pour une activité de services).
+- IEOM : <https://www.ieom.fr/> — **1 000 XPF = 8,38 EUR**, parité fixe.
+- Chorus Pro, Polynésie : <https://portail.chorus-pro.gouv.fr/aife_documentation?id=kb_article_view&sysparm_article=KB0012182> — obligation **uniquement pour les marchés publics** (loi du pays 2025-22), pas en B2B.
+
+**Ce que cela change dans le produit** : seuils d'approbation off par défaut, import Excel accepté, plafond plateforme visible, et trois décisions closes dans `PENDING.md` (D-01, D-02, D-03) plus P-04 et P-05.
