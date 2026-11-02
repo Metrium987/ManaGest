@@ -626,7 +626,7 @@ données). Ce qui est appliqué, et ce qui reste à ouvrir :
 > loin (requêtes 1 892 / 100 000, CPU 27 s / 5 000 s, stockage 1,9 Mo / 100 Mo) et les
 > **données sont conservées**. Remise à zéro le **3 novembre 2026 à 00:00 UTC** ; la
 > preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **76 fichiers
-> de tests (654 cas)**, build OK) ; la **vérification hébergée** de ces deux points reste **bloquée par ce quota** :
+> de tests (662 cas)**, build OK) ; la **vérification hébergée** de ces deux points reste **bloquée par ce quota** :
 > à faire dès la remise à zéro (3/11/2026 00:00 UTC) — construire, publier, puis
 > `npm run check:preview:hosted` (quatre contrôles : écrans de stock, tarif, démo et
 > centres ; historique de prix et révision ; séparation des droits ;
@@ -1293,7 +1293,7 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
   avec une URL non http(s) → **EXIT:2** ; avec une configuration complète →
   **EXIT:0**. Le code 2 distingue donc une configuration absente d'un contrôle rouge.
 - **Build sur l'arbre commité** : `npm run typecheck` → **0 erreur** ;
-  `npm test` → **76 fichiers, 654 tests verts** ; `npm run build` → **OK**.
+  `npm test` → **76 fichiers, 662 tests verts** ; `npm run build` → **OK**.
 - **Cases à cocher** : les `- [ ]` de `docs/build/VERIFICATION-GATES.md` sont le
   **modèle de porte** (chaque ligne porte déjà son ✓), pas des tâches ouvertes.
 - **Ce qui reste, avec son blocage** :
@@ -1404,6 +1404,37 @@ captures dans `artifacts/ui-verification/`. **27 contrôles, 27 verts.**
    sont invalides ».
 
 **Contrôles finaux** : `npm run typecheck` → **0 erreur** ; `npm test` → **76
-fichiers, 654 tests verts** ; `npm run build` → **OK**. Commit unique sur
+fichiers, 662 tests verts** ; `npm run build` → **OK**. Commit unique sur
 `freebuff/a6f86ced7cc9d3ad744d42ee`, arbre propre, rien poussé, aucun déploiement,
 aucun secret écrit.
+
+## P-03 — Sauvegarde et restauration prouvées (2/11/2026)
+
+**Ce qui manquait** : aucun export complet restaurable, aucune restauration jamais exercée ; la sauvegarde dépendait entièrement de l'hébergeur.
+
+**Ce qui est livré**
+- `server/lib/backup.ts` : export JSON versionné (`format: managest-backup`, version de format 1, `schema_version`), toutes les tables du schéma dans l'ordre de création, empreinte SHA-256 canonique ; restauration qui refuse un schéma plus récent, une empreinte fausse, une table inconnue ou un nom de table non conforme, et qui réécrit `app_meta.schema_version` à la version du code.
+- `server/routes/backup.ts` : `GET /api/backup` (téléchargement JSON, propriétaire uniquement) et `POST /api/backup/restore` (`confirm: "RESTORE"`, `allow_overwrite` explicite si l'espace contient déjà des données) ; les deux sont journalisés.
+- `tests/backup-restore.test.ts` : 8 cas sur SQLite réel (`node:sqlite`), avec le schéma et le jeu de démonstration de l'application.
+
+**Ce que le test prouve**
+1. l'export contient les 78 tables, la version de schéma et une empreinte de 64 caractères ;
+2. une base **neuve** reçoit le dump et chaque table a le **même nombre de lignes** ;
+3. les enregistrements clés sont identiques ligne à ligne (factures et leurs lignes JSON, paiements, affectations, clients, produits, devis, journal d'audit et son chaînage) ; les liens tiennent (client de chaque facture, affectation → paiement et facture, `payés + solde = total`) ;
+4. le ré-export de la base restaurée donne **la même empreinte** ;
+5. un dump d'un schéma **plus récent** est refusé ; un dump plus ancien est accepté et la base est estampillée à la version courante ;
+6. l'écrasement d'un espace non vide est refusé sans `allow_overwrite`, et ne duplique aucune ligne quand il est autorisé ;
+7. une empreinte fausse et une table inconnue (ou un nom hostile) sont refusés.
+
+**Commandes**
+
+    npx vitest run tests/backup-restore.test.ts
+
+    curl -b cookies -H "x-csrf-token: …" https://…/api/backup -o managest.json
+    curl -b cookies -H "x-csrf-token: …" -H 'content-type: application/json' \
+      -d '{"dump": <contenu>, "confirm": "RESTORE", "allow_overwrite": true}' \
+      https://…/api/backup/restore
+
+**Reste hors de portée sans hébergement** : la sauvegarde automatique D1 côté Cloudflare (PQ-4) s'active dans le tableau de bord ; elle ne peut être ni activée ni vérifiée depuis cet hôte. La restauration, elle, n'attend plus rien.
+
+**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → 76 fichiers, 662 tests verts ; `npm run build` → OK.

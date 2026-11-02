@@ -33,6 +33,7 @@ import { stockCountRoutes } from './routes/stock-counts';import { quoteRoutes } 
 import { recurringRoutes } from './routes/recurring';
 import { activityRoutes, settingsRoutes, taxRateRoutes, userRoutes } from './routes/settings';
 import { publicDocumentRoutes, publicLinkRoutes } from './routes/public-links';
+import { backupRoutes } from './routes/backup';
 import { setupRoutes } from './routes/setup';
 import type { AppEnv } from './types';
 
@@ -101,6 +102,7 @@ app.route('/api/revenue', revenueRoutes);
 app.route('/api/api-tokens', apiTokenRoutes);
 app.route('/api/approvals', approvalRoutes);
 app.route('/api/public/documents', publicDocumentRoutes);
+app.route('/api/backup', backupRoutes);
 
 app.all('/api/*', (c) => c.json({ error: { code: 'NOT_FOUND' } }, 404));
 

@@ -33,7 +33,7 @@ est livré (c'est [`../AUDIT.md`](../AUDIT.md) §10).
 |---|---|---|---|---|
 | P-01 | **Envoi réel des e-mails** | PLATEFORME (déprioritisé par vous) | Le code est complet (mode manuel par défaut, Resend, Brevo, SMTP explicite), les identifiants sont chiffrés au repos. **Aucun message n'a jamais été délivré depuis cet hôte** : pas de fournisseur configuré. Un 502 prouve un échec, pas une réception. | Une clé de fournisseur (PQ-2) |
 | P-02 | **Réinitialisation de mot de passe en libre-service** | PLATEFORME | Inexistante : elle dépend entièrement de P-01. Seule la réinitialisation par un administrateur existe. | P-01 |
-| P-03 | **Sauvegarde, export complet et restauration** | PLATEFORME | Export complet `PLATFORM-DEPENDENT` (PQ-4). **Aucune restauration n'a jamais été testée** : c'est le trou le plus sérieux qui reste. | Réponse de l'hébergeur + un test de restauration |
+| P-03 | **Sauvegarde, export complet et restauration** | **PROUVÉ EN LOCAL** (sauvegarde hébergée restante) | Export complet JSON versionné (toutes les tables, empreinte SHA-256, version de schéma) et restauration vers une base neuve (`server/lib/backup.ts`). **Aller-retour prouvé** par `tests/backup-restore.test.ts` (8 cas) sur SQLite réel : mêmes lignes dans les 78 tables, identifiants / montants / dates identiques, liens entre entités vérifiés, empreinte re-exportée à l'identique ; refus prouvés d'un schéma plus récent, d'une empreinte fausse, d'une table inconnue et d'un écrasement non confirmé. En service : `GET /api/backup`, `POST /api/backup/restore` (propriétaire seul, `confirm: "RESTORE"`). **Reste hors de portée sans hébergement** : la sauvegarde automatique D1 (PQ-4), à activer dans le tableau de bord Cloudflare. | Pour la restauration, rien ; PQ-4 pour la sauvegarde automatique |
 | P-04 | **Plafond d'hébergement des pièces jointes** | PLATEFORME (cosmétique) | Le plafond local (10 Mo, paramétrable 1–25) fonctionne ; seul l'affichage du plafond **de l'hébergeur** manque (PQ-3). | Réponse plateforme |
 | P-05 | **Import XLSX** | PLATEFORME (non tranché) | Seul le CSV est importé, et il est prouvé. Le XLSX n'a jamais été validé (PQ-5). | Décision ou bibliothèque validée |
 
@@ -99,7 +99,7 @@ Ce ne sont pas des bugs ouverts : ce sont des comportements assumés, écrits po
 | V-03 | **Concurrence** | Jamais éprouvée : deux utilisateurs modifiant le même document en même temps. |
 | V-04 | **Charge** | Jamais mesurée au-delà de quelques centaines de documents ; les limites D1 et le coût des rapports ne sont pas connus. |
 | V-05 | **Rendu PDF** | Jamais inspecté visuellement ; seule la validité du fichier (`%PDF`, type MIME) a été constatée. |
-| V-06 | **Restauration de sauvegarde** | Jamais testée (cf. P-03). |
+| V-06 | **Restauration de sauvegarde** | **Prouvée en local** : `tests/backup-restore.test.ts` (aller-retour vers une base neuve, intégrité ligne à ligne). Non rejouée sur D1 hébergé (quota) ; sauvegarde automatique de l'hébergeur à activer (P-03). |
 | V-07 | **Accessibilité formelle** | Règles implémentées (libellés, focus, contrastes, annonces) mais **aucun audit RGAA/WCAG**. |
 
 ## 7. Ce qui est terminé, pour éviter la confusion

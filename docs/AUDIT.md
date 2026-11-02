@@ -139,7 +139,7 @@ Manques, par ordre d'importance :
 4. **Pas de verrouillage de période** : une facture peut être modifiée ou annulée rétroactivement après clôture.
 5. **Pas d'approbation / séparation des tâches** : la même personne peut créer, envoyer, encaisser et annuler.
 6. **Pas de pièces jointes** : les justificatifs restent hors système.
-7. **Sauvegarde** : dépend de l'hébergeur ; aucun export complet restaurable ni test de restauration documenté.
+7. **Sauvegarde** : export complet restaurable et restauration prouvés en local (`tests/backup-restore.test.ts`) ; la sauvegarde automatique reste à activer chez l'hébergeur.
 
 ---
 
@@ -191,7 +191,7 @@ Le socle actuel est un **suite de facturation et de gestion commerciale solide**
 - **Concurrence** : pas de test de deux utilisateurs modifiant le même document simultanément.
 - **Charge** : aucun test au-delà de quelques centaines de documents ; les limites D1 et le coût du rapport de TVA en JavaScript restent à mesurer.
 - **E-mails et PDF visuel** : l'envoi est simulé (statut), le rendu PDF n'a pas été inspecté visuellement.
-- **Restauration de sauvegarde** : non testée.
+- **Restauration de sauvegarde** : prouvée en local (`tests/backup-restore.test.ts`, base neuve, intégrité ligne à ligne) ; non rejouée sur D1 hébergé, sauvegarde automatique de l'hébergeur à activer.
 
 ---
 
@@ -219,6 +219,6 @@ Cet audit reste la référence datée du 28 octobre. Les manques listés au §6 
 | Réinitialisation de mot de passe en libre-service | **Absent** — dépend de l'envoi d'e-mail (PQ-2) | dépendance |
 | Jetons d'API nommés et révocables | **Comblé** — jetons liés à un compte, portée limitée à ses permissions, expiration et nombre paramétrables, valeur affichée une fois, révocation immédiate et journalisée | T-303, marche réelle : `clients 200`, `invoices 403`, jeton révoqué `401` |
 | Multi-devises, PWA, portail client | **Absent / spécifié** — portail et paiements en attente spécifiés en R4, pas construits | R4 |
-| Sauvegarde et restauration testées | **Absent** — dépend de l'hébergeur | à planifier |
+| Sauvegarde et restauration testées | **Comblé en local** — export complet JSON versionné et restauration vers une base neuve, comparés ligne à ligne | `tests/backup-restore.test.ts`, `GET /api/backup` / `POST /api/backup/restore` ; sauvegarde automatique D1 : PQ-4 |
 
-**Ce que cela change à la conclusion du §9.** Le socle n'est plus seulement « facturation et gestion commerciale » : il tient la partie double, produit une balance, un résultat et désormais un **bilan** dès que la reprise de balance est importée, et il contrôle qui approuve quoi. Les cinq briques du §7 qui manquaient sont donc comblées, sauf deux qui ne relèvent pas du code : la **MFA** sur les comptes administrateurs et une **restauration de sauvegarde réellement éprouvée**.
+**Ce que cela change à la conclusion du §9.** Le socle n'est plus seulement « facturation et gestion commerciale » : il tient la partie double, produit une balance, un résultat et désormais un **bilan** dès que la reprise de balance est importée, et il contrôle qui approuve quoi. Les cinq briques du §7 qui manquaient sont donc comblées : la **MFA** sur les comptes administrateurs reste le seul manque, la **restauration de sauvegarde** étant désormais éprouvée en local.

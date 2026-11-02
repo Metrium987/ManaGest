@@ -1652,6 +1652,8 @@ export const fr = {
     'activity.recurring_generated': 'Facture {invoice} générée automatiquement',
     'activity.expense_created': 'Dépense enregistrée',
     'activity.vendor_created': 'Fournisseur créé : {name}',
+    'activity.backup_exported': 'Sauvegarde complète exportée ({tables} tables, {rows} lignes)',
+    'activity.backup_restored': 'Sauvegarde restaurée (schéma {source_schema_version} → {schema_version})',
     'activity.po_created': 'Bon de commande {number} créé',
     'activity.po_received': 'Bon de commande {number} réceptionné et stock mis à jour',
     'activity.customer_return': 'Retour marchandise sur la facture {number}',

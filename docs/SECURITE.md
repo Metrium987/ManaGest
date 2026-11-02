@@ -106,7 +106,7 @@ En HTTPS :
 | PBKDF2 plafonné à 100 000 | Surveiller l'évolution du runtime ; prévoir Argon2id |
 | Pas de 2FA dans cette version | Ajouter TOTP pour les rôles administrateurs |
 | Réinitialisation de mot de passe par l'administrateur uniquement | Ajouter un envoi d'e-mail signé avec expiration courte |
-| Sauvegardes | Activer les sauvegardes D1 et tester la restauration |
+| Sauvegardes | Activer les sauvegardes D1 (PQ-4) ; la restauration est prouvée en local par `tests/backup-restore.test.ts` |
 | Verrouillage de compte | La limitation est temporaire ; surveiller les journaux `login_attempts` |
 | CSP | Vérifier après ajout d'un domaine externe (polices, analytics) |
 

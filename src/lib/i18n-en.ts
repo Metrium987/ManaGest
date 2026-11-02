@@ -1649,6 +1649,8 @@ export const en: Record<string, unknown> = {
     'activity.recurring_generated': 'Invoice {invoice} generated automatically',
     'activity.expense_created': 'Expense recorded',
     'activity.vendor_created': 'Vendor created: {name}',
+    'activity.backup_exported': 'Full backup exported ({tables} tables, {rows} rows)',
+    'activity.backup_restored': 'Backup restored (schema {source_schema_version} → {schema_version})',
     'activity.po_created': 'Purchase order {number} created',
     'activity.po_received': 'Purchase order {number} received and stock updated',
     'activity.customer_return': 'Goods returned against invoice {number}',
