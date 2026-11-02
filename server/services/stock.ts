@@ -49,7 +49,13 @@ function parseJson<T>(value: unknown, fallback: T): T {
  */
 export async function receivePurchaseOrder(
   database: D1Database,
-  input: { reference: string | null; lines: LineItem[]; userId: string },
+  input: {
+    reference: string | null;
+    lines: LineItem[];
+    userId: string;
+    /** C2: the supplier of the order, so the price actually paid is recorded. */
+    vendor_id?: string | null;
+  },
 ): Promise<StockLine[]> {
   const ids = [...new Set(
     input.lines.map((line) => line.product_id).filter((id): id is string => Boolean(id)),
@@ -58,7 +64,8 @@ export async function receivePurchaseOrder(
 
   const rows = await database
     .prepare(
-      `SELECT id, item_type, warehouse_location, quantity_milli, cost, landed_cost FROM products
+      `SELECT id, item_type, warehouse_location, quantity_milli, cost, landed_cost, purchase_price
+       FROM products
        WHERE id IN (${placeholdersOf(ids)}) AND deleted_at IS NULL`,
     )
     .bind(...ids)
@@ -69,6 +76,7 @@ export async function receivePurchaseOrder(
       quantity_milli: number;
       cost: number;
       landed_cost: number;
+      purchase_price: number;
     }>();
 
   const byId = new Map((rows.results ?? []).map((row) => [row.id, row]));
@@ -112,6 +120,29 @@ export async function receivePurchaseOrder(
       quantity_milli: valued.quantity_after_milli,
       cost: valued.cost,
     });
+
+    // C2: what was paid is a price with a date and a source. Only a change enters
+    // the ledger — receiving the same price again must stay quiet — and the
+    // comparison uses the purchase price, not the weighted average, because those
+    // two answer different questions ("what did the supplier charge?" vs "what is
+    // my stock worth?").
+    const paidPrice = Math.round(Number(line.unit_price ?? 0));
+    if (input.vendor_id && paidPrice > 0 && paidPrice !== Number(product.purchase_price ?? 0)) {
+      statements.push(
+        database
+          .prepare(
+            `INSERT INTO product_vendor_prices
+               (id, product_id, vendor_id, price, currency, recorded_at, source, source_ref)
+             VALUES (?, ?, ?, ?,
+               COALESCE((SELECT currency FROM product_vendors WHERE product_id = ? AND vendor_id = ?), 'XPF'),
+               ?, 'receipt', ?)`,
+          )
+          .bind(
+            crypto.randomUUID(), product.id, input.vendor_id, paidPrice,
+            product.id, input.vendor_id, now, input.reference,
+          ),
+      );
+    }
 
     const movementId = crypto.randomUUID();
     statements.push(

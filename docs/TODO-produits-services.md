@@ -43,8 +43,8 @@ Légende effort : **S** ≈ une demi-journée, **M** ≈ 1 à 2 jours, **L** ≈
 | Comptes par famille | **Fait (F2)** | table `family_accounts`, `resolveFamilyAccounts`, `effective_accounts` sur la fiche, modale « Comptes par famille » |
 | Alertes de stock (tableau de bord + digest) | **Fait (C4)** | `server/lib/stock-alerting.ts`, `stock_alerts` dans `/api/dashboard`, digest quotidien gardé par jour |
 | Réceptions partielles et reliquats | **Fait (C3)** | `purchase_order_receipts`, `POST /purchase-orders/:id/receive`, soldes par ligne dans le détail, écran de réception |
-| Historique des prix d'achat | **Absent — décision propriétaire requise** | à fournir : les informations attendues (prix, fournisseur, date, document source) et l'accord d'ouvrir le module ; où : décision du propriétaire ; débloque : une table datée, un écran sur la fiche article et la reprise du prix payé à la réception (C2) |
-| Prévision de la demande, fabrication MRP | **Absent — hors périmètre assumé** | à fournir : rien à ce stade ; où : listé dans « À ne pas ouvrir maintenant » (GPAO, WMS, EDI) ; débloque : un module de production distinct, à ouvrir seulement sur demande explicite du propriétaire |
+| Historique des prix d'achat | **Fait (2/11/2026)** | table datée `product_vendor_prices` (prix, devise, fournisseur, **source**, document), prix **payé** enregistré à la réception, écran sur la fiche article (liste datée, prix moyen, alerte de hausse), conservation et seuils **paramétrables** ; `GET /api/products/:id/price-history`, `tests/price-history.test.ts` |
+| Prévision de la demande, fabrication MRP | **Absent — hors périmètre assumé** | explication complète en **H8** : un MRP daté exige une nomenclature de production, des gammes et des prévisions, qu'aucun écran ne produit aujourd'hui ; rouvrir seulement sur un besoin de fabrication nommé |
 
 **Conséquence directe** : les deux fiches sont aujourd'hui descriptives et
 facturables à la main ; elles ne pilotent encore ni le stock, ni les coûts, ni la
@@ -798,6 +798,21 @@ d'afficher une ligne à zéro (vérifié sur la preview : base 100 000 → 70 00
   vente dans une telle devise n'existe. L'implémenter aujourd'hui serait un module de
   change sans transaction derrière. Ce qui rouvre le sujet, nommément : **une première
   facture émise dans une devise non arrimée à l'euro**.
+  *Arbitrage du 2/11/2026 (demande : « si c'est facile, fais-le tout de suite »)* :
+  **ce n'est pas facile**, et le livrer à moitié serait pire que l'absence. Il ne
+  suffit pas d'ajouter un champ : chaque montant d'un document en devise tierce doit
+  être converti **au taux figé du jour** pour le journal, la balance, la TVA, les
+  règlements partiels, les avoirs, les rapports et les PDF, avec un compte d'écart
+  (666/766) et une réévaluation de clôture. Les totaux sont aujourd'hui sommairement
+  stockés dans l'unité du document et lus tels quels par la comptabilité : une facture
+  USD passée maintenant produirait un journal faux **silencieusement**. Le module
+  représente donc une phase à part entière (table de taux, taux figé par document,
+  montant en devise de tenue, écritures de change, réévaluation, écrans et tests).
+  Ce qui le rend mécanique le jour où une telle facture existe : (1) table `exchange_rates`
+  datée et saisie, (2) `exchange_rate` + `base_total` figés sur devis/facture/avoir,
+  (3) conversion à la source pour le journal et les rapports, le document restant
+  lisible dans sa devise. Tant qu'aucune facture hors XPF/EUR n'existe, ce travail
+  n'aurait aucune transaction à convertir.
 - **Q16 — captures d'écran** — **fait (2/11/2026)** : Playwright est installé et
   Chromium a pu être obtenu ici (`npx playwright install chromium` → Chrome for
   Testing **156.0.8078.4**, cache de 681 Mo). Les bibliothèques système manquantes
@@ -913,12 +928,20 @@ d'afficher une ligne à zéro (vérifié sur la preview : base 100 000 → 70 00
   anglais, mapping manuel, prix espacés, dates françaises, factures multi-lignes,
   dates impossibles), plus `tests/import.test.ts`, `tests/import-rules.test.ts` et
   `tests/import-invoices.test.ts` ; `typecheck`, `npm test` et `npm run build` verts.
-  *Ce qui reste, et c'est une entrée externe nommée* : les **colonnes spécifiques**
-  de l'ancien logiciel (champs personnalisés, historique, encours de bascule) ne
-  peuvent pas être inventées. Il faut **fournir les 3 à 5 fichiers CSV réels**. La
-  suite est alors mécanique : les ouvrir dans l'écran d'import (détection ou
-  mapping), puis ajouter un alias ou une colonne au modèle pour chaque champ
-  encore ignoré.
+  *Modèle ManaGest (décision du 2/11/2026)* : le fichier d'un logiciel précis
+  **n'est plus une condition**. Le modèle téléchargeable **est** la voie de
+  migration : il porte les en-têtes, une ligne d'explication et une ligne d'exemple ;
+  l'écran d'import propose désormais aussi l'**export des données actuelles**, dont
+  les en-têtes sont **exactement** ceux du modèle — ce qui sort se réimporte tel quel
+  après modification. Preuve exécutée : `tests/import-roundtrip.test.ts` (en-têtes de
+  l'export égaux, dans l'ordre, à ceux du modèle pour clients et produits ; le modèle
+  s'importe sans aucune erreur ; une colonne inconnue reste **signalée** et n'empêche
+  pas l'import). Un export d'ancien logiciel reste évidemment accepté : alias,
+  mapping manuel et colonnes ignorées sont déjà en place.
+  *Ce qui reste, et c'est une entrée externe facultative* : si un fichier de l'ancien
+  logiciel existe encore et porte des champs **propres** (historique, encours de
+  bascule), le fournir permet d'ajouter un alias ou une colonne par champ. Sans ce
+  fichier, la migration se fait par le modèle — rien ne bloque.
 - **H5 — Non-régression automatisée** — **exécution livrée, en attente des secrets
   et de la preview dédiée (2/11/2026)** : les contrôles hébergés restent versionnés
   (`scripts/check-screens.py`, `check-c2-e2-h2.py`, `check-h1-permission.py`,
@@ -942,6 +965,12 @@ d'afficher une ligne à zéro (vérifié sur la preview : base 100 000 → 70 00
   `PREVIEW_PASSWORD` (compte de test en lecture seule, jamais dans le dépôt).
   Ensuite le workflow « Hosted preview checks » tourne, et un crochet de
   déploiement peut envoyer `repository_dispatch` `preview-deployed`.
+  *Ce que je ne peux pas faire* : créer ces secrets. La connexion GitHub du projet
+  permet de lire, récupérer et pousser des commits, mais ne porte pas le droit
+  `secrets:write` ; `gh auth status` répond « not logged into any GitHub hosts » et
+  aucune variable `GH_TOKEN` / `GITHUB_TOKEN` n'existe ici. Les valeurs doivent donc
+  être saisies une fois par le propriétaire. Procédure exacte, effet de chaque
+  secret, commandes `gh` et variante locale : [`docs/build/H5-hosted-checks.md`](build/H5-hosted-checks.md).
 
 ---
 
@@ -1202,6 +1231,33 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
   heures, jours ouvrés et fériés sont des données. Aucune tâche de code ne reste
   ouverte dans ces deux items.
 
+- **H8 — Prévision de la demande et MRP : ce que ce serait, et pourquoi ce n'est pas là** — **explication (2/11/2026)**
+  Un MRP (planification des besoins matières) répond à une question datée : « pour
+  livrer ce que j'ai promis, que me faut-il, quand, et qu'est-ce que je dois lancer
+  en production ou commander ? » Il enchaîne quatre étapes : (1) calcul des **besoins
+  bruts** par article et par date (commandes fermes, prévisions, stock de sécurité) ;
+  (2) **éclatement** de ces besoins dans la nomenclature (BOM) sur plusieurs niveaux,
+  décalage par le **délai** de chaque niveau ; (3) **regroupement** en ordres proposés
+  (fabrication ou achat) avec une date de lancement et une date de besoin ;
+  (4) **lissage** selon la capacité et les lots d'achat. Un GPAO ajoute les gammes,
+  les postes de charge, les temps et les rebuts.
+  Pourquoi il n'est pas dans ManaGest aujourd'hui, nommément :
+  1. **Pas de nomenclature de production** : un kit est une liste de composants
+     vendue telle quelle, pas un article fabriqué avec ses niveaux, ses gammes et ses
+     postes de charge. Éclater un besoin dans un arbre qui n'existe pas produirait des
+     ordres faux.
+  2. **Pas de prévision de ventes ni d'historique de consommation** : C1 propose des
+     achats à partir des seuils min/max de la fiche et des ventes déjà conclues
+     (back-to-back), ce qui est un réapprovisionnement, pas une prévision.
+  3. **Pas d'ordres de fabrication** : les ordres calculés n'auraient aucun
+     destinataire, ni aucun état d'avancement à suivre.
+  Ce qui le rouvrirait, dans cet ordre : un besoin de **fabrication** explicite
+  (BOM multi-niveaux, gammes, postes) → des **prévisions validées** (saisies ou
+  historiques) → le calcul des besoins datés. Tant que ces trois entrées n'existent
+  pas, un « module MRP » ne serait qu'un écran de plus sur des données absentes.
+  Le réapprovisionnement livré (C1, C2, C3) reste la bonne réponse au problème réel :
+  ne pas être en rupture sur ce qui se vend.
+
 ## 2026-11-02 — H4, H5 et Q16 : import tolérant, CI prête, captures produites
 
 - **H4** : alias d'en-têtes, correspondance de colonnes choisie dans l'écran,
@@ -1241,14 +1297,64 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
 - **Cases à cocher** : les `- [ ]` de `docs/build/VERIFICATION-GATES.md` sont le
   **modèle de porte** (chaque ligne porte déjà son ✓), pas des tâches ouvertes.
 - **Ce qui reste, avec son blocage** :
-  1. **H4** — fournir les **3 à 5 fichiers CSV réels** de l'ancien logiciel ;
+  1. **H4** — plus rien de bloquant : le **modèle ManaGest** et l'**export** des données actuelles forment la voie de migration, avec des en-têtes identiques (preuve : `tests/import-roundtrip.test.ts`). Un ancien fichier reste utile seulement s'il contient des champs propres.
      débloque l'ajout des colonnes/alias propres à ces fichiers.
   2. **H5** — créer la **preview dédiée** puis, dans **GitHub → Settings → Secrets
      and variables → Actions**, `PREVIEW_URL`, `PREVIEW_EMAIL`, `PREVIEW_PASSWORD` ;
      débloque le workflow « Hosted preview checks ».
   3. **Vérification hébergée** — bloquée par le **quota D1** (10 042 / 10 000,
      remise à zéro le 3/11/2026 00:00 UTC) ; débloque `npm run check:preview:hosted`.
-  4. **Historique des prix d'achat** — décision du propriétaire sur le périmètre.
-  5. **MRP / GPAO** — hors périmètre assumé, listé dans « À ne pas ouvrir maintenant ».
-  6. **Q15 (multi-devises)** — non fait avec justification datée : aucune facture
+  4. **Historique des prix d'achat** — **fait** : ledgers datés avec source, prix payé à la réception, écran et seuils paramétrables (conservation 36 mois, alerte 10 %, fenêtre 90 jours).
+  5. **MRP / GPAO** — hors périmètre assumé ; le détail de ce qu'il faudrait est en **H8**, pas une tâche de code ouverte.
+  6. **Q15 (multi-devises)** — **reporté après arbitrage** : ce n'est pas une petite modification (taux figé par document, journal, TVA, règlements, avoirs, rapports, réévaluation). Plan en trois étapes et condition de réouverture dans la section Q15.
      dans une devise non arrimée à l'euro n'existe.
+
+## 2026-11-02 — Modèle ManaGest, historique des prix, MRP expliqué, multi-devises arbitré
+
+- **H4 — le modèle remplace l'attente des fichiers.** L'écran d'import expose
+  désormais l'**export des données actuelles** à côté du modèle, et les en-têtes de
+  l'export sont **exactement** ceux du modèle : ce qui sort se réimporte tel quel
+  après modification. Un export d'un ancien logiciel reste accepté (alias, mapping
+  manuel, colonnes inconnues signalées). Preuve exécutée :
+  `tests/import-roundtrip.test.ts` — égalité des en-têtes dans l'ordre pour clients
+  et produits, import du modèle sans aucune erreur, colonne inconnue signalée sans
+  bloquer. La demande de fichiers réels devient **facultative**, pas bloquante.
+- **Historique des prix d'achat — livré.** Chaque prix est un événement daté avec sa
+  **source** (`manual` quand il est saisi, `receipt` quand il est payé sur un bon de
+  commande) et son document. Le prix payé entre dans le registre à la réception, et
+  seulement s'il diffère du prix d'achat connu — réenregistrer le même prix n'invente
+  rien. Écran : liste datée, fournisseur, prix moyen, alerte de hausse, sur la fiche
+  article. **Valeurs standard, toutes paramétrables** : conservation 36 mois, alerte
+  à 10 %, fenêtre de moyenne 90 jours (`price_history_months`,
+  `price_alert_percent`, `price_alert_days`), `0` désactivant l'alerte. Preuve
+  exécutée : `tests/price-history.test.ts` (9 cas : variation en points de base, base
+  inutilisable, entrée ou non dans le registre, découpe de rétention, seuil, fenêtre,
+  prix unique, lignes sans prix).
+- **MRP / GPAO — expliqué, pas repoussé sans raison.** Voir **H8** : ce qu'un MRP
+  calcule, les trois entrées qui manquent (nomenclature de production, prévisions,
+  ordres de fabrication) et l'ordre dans lequel le rouvrir. C'est une décision de
+  périmètre, pas un oubli.
+- **Multi-devises — arbitrage explicite.** Ce n'est **pas** une petite modification :
+  convertir un document en devise tierce exige un taux figé par document et une
+  conversion à la source pour le journal, la TVA, les règlements partiels, les
+  avoirs, les rapports et la réévaluation, avec un compte d'écart. Le faire à moitié
+  produirait un journal faux silencieusement. Le plan en trois étapes et la condition
+  de réouverture (« une première facture dans une devise non arrimée à l'euro ») sont
+  écrits dans la section Q15.
+- **H5 — secrets GitHub : ce que je ne peux pas faire.** La connexion GitHub permet de
+  lire et de pousser des commits, mais pas d'écrire un secret (`secrets:write`
+  absent, `gh` non authentifié, aucune variable `GH_TOKEN`). Procédure complète,
+  effet de chaque secret et variante locale : `docs/build/H5-hosted-checks.md`.
+- **Défaut trouvé par la vérification locale, corrigé.** Les colonnes `source` et
+  `source_ref` ajoutées à `product_vendor_prices` n'étaient **pas** créées sur une
+  base déjà ouverte : `provision()` sort tôt quand `schema_version` est à jour.
+  `SCHEMA_VERSION` passe de **47 à 48**, ce qui rejoue les migrations de colonnes
+  (idempotentes). Preuves rejouées sur l'instance locale :
+  `GET /api/products/:id/price-history` → **200** avec
+  `{"months":36,"alert_percent":10,"window_days":90}` ; `PATCH /api/settings/extras`
+  avec `24/5/60` → **200**, et le GET suivant renvoie ces valeurs ; seuil `5000` →
+  **422** `VALIDATION_ERROR` ; `pragma_table_info` montre bien `source` et
+  `source_ref` ; l'INSERT de réception exécuté sur la base locale donne
+  `source = receipt`, `source_ref = PO-PROBE`, devise héritée `XPF` — puis la sonde
+  est supprimée. *Limite de cette preuve* : l'écran (fiche article, paramètres,
+  import) est compilé et typé, mais n'a pas été rouvert dans un navigateur ce tour-ci.

@@ -248,6 +248,11 @@ const COLUMN_MIGRATIONS: { table: string; column: string; definition: string }[]
   // A3 (schema 21): whether a shortage blocks an emission. Off by default keeps
   // every existing item on the strict rule rather than silently allowing it.
   { table: 'products', column: 'allow_negative_stock', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  // Purchase price history (owner decision 2026-11-02): a price in the ledger is
+  // either quoted by hand or paid on a receipt, and that source must stay
+  // readable — otherwise a reception looks like someone retyped the price.
+  { table: 'product_vendor_prices', column: 'source', definition: "TEXT NOT NULL DEFAULT 'manual'" },
+  { table: 'product_vendor_prices', column: 'source_ref', definition: 'TEXT' },
 ];
 
 async function applyColumnMigrations(database: D1Database): Promise<void> {

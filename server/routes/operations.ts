@@ -265,7 +265,7 @@ async function receiptRows(database: D1Database, purchaseOrderId: string) {
  */
 async function receiveAgainstBalance(
   database: D1Database,
-  po: { id: string; number: string | null; line_items: string | null },
+  po: { id: string; number: string | null; line_items: string | null; vendor_id?: string | null },
   requested: { line_id: string; quantity_milli: number }[],
   userId: string,
 ): Promise<
@@ -299,6 +299,7 @@ async function receiveAgainstBalance(
     reference: po.number,
     lines: wanted.map((row) => ({ ...byId.get(row.line_id)!, quantity: row.quantity_milli / 1000 })),
     userId,
+    vendor_id: po.vendor_id ?? null,
   });
 
   const now = nowISO();

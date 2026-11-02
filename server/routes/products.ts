@@ -33,7 +33,8 @@ import { lotBalancesFromMovements } from '../lib/lot-balances';
 import { attachProductLinks, groupProductLinks } from '../lib/product-links';
 import { DEFAULT_VAT_RATE_BP, PORT_FEE_RATE_BP, computeLandedCost } from '../../shared/landed-cost';
 import { importVatLines } from '../lib/import-vat';
-import { getAccountCodes } from '../lib/settings-extra';
+import { getAccountCodes, getExtra } from '../lib/settings-extra';
+import { priceCutoff, priceStats } from '../lib/price-history';
 import {
   IMPORT_TRANSPORTS, tariffDutyRate, type ImportTaxRule, type TariffRow,
 } from '../../shared/import-taxes';
@@ -1041,15 +1042,26 @@ productRoutes.get('/:id/vendors', requirePermission('products.read'), async (c) 
   // supplier quoted before without a second round trip.
   const history = await c.env.DB
     .prepare(
-      `SELECT vendor_id, price, currency, recorded_at FROM product_vendor_prices
+      `SELECT vendor_id, price, currency, recorded_at, source, source_ref FROM product_vendor_prices
        WHERE product_id = ? ORDER BY recorded_at DESC`,
     )
     .bind(id)
-    .all<{ vendor_id: string; price: number; currency: string; recorded_at: string }>();
-  const byVendor = new Map<string, { price: number; currency: string; recorded_at: string }[]>();
+    .all<{
+      vendor_id: string; price: number; currency: string; recorded_at: string;
+      source: string | null; source_ref: string | null;
+    }>();
+  const byVendor = new Map<string, {
+    price: number; currency: string; recorded_at: string;
+    source: string | null; source_ref: string | null;
+  }[]>();
   for (const row of history.results ?? []) {
     const list = byVendor.get(row.vendor_id) ?? [];
-    if (list.length < 6) list.push({ price: row.price, currency: row.currency, recorded_at: row.recorded_at });
+    if (list.length < 6) {
+      list.push({
+        price: row.price, currency: row.currency, recorded_at: row.recorded_at,
+        source: row.source, source_ref: row.source_ref,
+      });
+    }
     byVendor.set(row.vendor_id, list);
   }
   const data = (rows.results ?? []).map((row) => ({
@@ -1060,6 +1072,52 @@ productRoutes.get('/:id/vendors', requirePermission('products.read'), async (c) 
   }));
   const preferred = preferredLink(data as unknown as VendorLink[]);
   return c.json({ data, preferred_vendor_id: preferred?.vendor_id ?? null });
+});
+
+/**
+ * Purchase price history (owner decision 2026-11-02).
+ *
+ * The sheet used to show only "the price before"; this endpoint returns the
+ * dated ledger itself, with where each price came from, and the figures the
+ * screen needs to explain an increase. Thresholds are settings, never constants:
+ * a workspace that buys volatile commodities raises the alert, one that does not
+ * sets 0 and gets no badge.
+ */
+productRoutes.get('/:id/price-history', requirePermission('products.read'), async (c) => {
+  const id = c.req.param('id');
+  const asked = Number(c.req.query('limit') ?? 50);
+  const limit = Math.min(200, Math.max(1, Number.isFinite(asked) ? Math.round(asked) : 50));
+
+  const [months, alertPercent, alertDays] = await Promise.all([
+    getExtra(c.env.DB, 'price_history_months'),
+    getExtra(c.env.DB, 'price_alert_percent'),
+    getExtra(c.env.DB, 'price_alert_days'),
+  ]);
+  const settings = {
+    months: Number(months) || 0,
+    alert_percent: Number(alertPercent) || 0,
+    window_days: Number(alertDays) || 0,
+  };
+
+  const rows = await c.env.DB
+    .prepare(
+      `SELECT pvp.price, pvp.currency, pvp.recorded_at, pvp.source, pvp.source_ref,
+              v.name AS vendor_name
+       FROM product_vendor_prices pvp JOIN vendors v ON v.id = pvp.vendor_id
+       WHERE pvp.product_id = ? AND pvp.recorded_at >= ?
+       ORDER BY pvp.recorded_at DESC, v.name COLLATE NOCASE
+       LIMIT ?`,
+    )
+    .bind(id, priceCutoff(settings.months), limit)
+    .all<{
+      price: number; currency: string; recorded_at: string;
+      source: string | null; source_ref: string | null; vendor_name: string;
+    }>();
+
+  const data = rows.results ?? [];
+  // The screen reads newest first; the stats walk the series chronologically.
+  const stats = priceStats([...data].reverse(), settings);
+  return c.json({ data, stats, settings });
 });
 
 productRoutes.post('/:id/vendors', requirePermission('products.write'), async (c) => {

@@ -137,6 +137,24 @@ export function ImportPage() {
           ) : null}
         </SectionCard>
 
+        {/* H4 / owner decision 2026-11-02: ManaGest ships its own template and
+            does not chase a particular legacy application. Whoever has an export
+            from another tool loads it as-is — headers are detected or mapped by
+            hand, unknown columns are reported — and whoever has nothing starts
+            from the template. The export link closes the loop: what leaves the
+            application re-enters with the same headers. */}
+        <SectionCard title={t('import.genericTitle')} bodyClassName="space-y-3 p-5">
+          <p className="text-sm text-muted">{t('import.genericHint')}</p>
+          <a
+            href={`/api/export/${entity}`}
+            className="btn btn-secondary inline-flex w-fit items-center gap-2"
+          >
+            <Download className="h-4 w-4" aria-hidden="true" /> {t('import.exportCurrent')}
+          </a>
+          <p className="text-xs text-muted">{t('import.exportHint')}</p>
+          <p className="text-xs text-muted">{t('import.templateNote')}</p>
+        </SectionCard>
+
         {step >= 2 ? (
           <SectionCard title={t('import.step2')} bodyClassName="space-y-4 p-5">
             <div className="grid gap-4 sm:grid-cols-2">

@@ -22,7 +22,8 @@ interface EntitySpec {
   filename: string;
 }
 
-const SPECS: Record<string, EntitySpec> = {
+/** Exported for the round-trip test: a template and an export must agree. */
+export const EXPORT_SPECS: Record<string, EntitySpec> = {
   clients: {
     permission: 'clients.read',
     sql: {
@@ -216,7 +217,7 @@ exportRoutes.use('*', requireAuth);
 
 exportRoutes.get('/:entity', async (c) => {
   const entity = c.req.param('entity');
-  const spec = SPECS[entity];
+  const spec = EXPORT_SPECS[entity];
   if (!spec) return fail(404, 'NOT_FOUND');
   const user = c.get('user');
   if (!user) return fail(401, 'UNAUTHENTICATED');

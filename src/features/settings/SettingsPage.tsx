@@ -111,6 +111,9 @@ export function SettingsPage() {
     enabled: can('settings.read'),
   });
   const [fiscal, setFiscal] = useState<{ retention_years: string; franchise_threshold: string; item_accounts: string } | null>(null);
+  // Owner decision 2026-11-02: purchase price history thresholds are data, not
+  // constants — standard values ship, the workspace can change them.
+  const [purchasing, setPurchasing] = useState<{ price_history_months: string; price_alert_percent: string; price_alert_days: string } | null>(null);
   const [accounts, setAccounts] = useState<Record<string, string> | null>(null);
   useEffect(() => {
     if (extras.data && !fiscal) {
@@ -124,6 +127,11 @@ export function SettingsPage() {
       setTokenLimits({
         lifetime: read('api_token_lifetime_days'),
         max: read('api_token_max_per_user'),
+      });
+      setPurchasing({
+        price_history_months: read('price_history_months'),
+        price_alert_percent: read('price_alert_percent'),
+        price_alert_days: read('price_alert_days'),
       });
     }
   }, [extras.data, fiscal]);
@@ -172,6 +180,16 @@ export function SettingsPage() {
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
+  const savePurchasing = useMutation({
+    mutationFn: (input: { price_history_months: string; price_alert_percent: string; price_alert_days: string }) =>
+      api.patch('/settings/extras', input),
+    onSuccess: () => {
+      toast.success(t('settings.saved'));
+      queryClient.invalidateQueries({ queryKey: ['settings-extras'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const saveAccounts = useMutation({
     mutationFn: (input: Record<string, string>) => api.patch('/settings/extras', input),
     onSuccess: () => {
@@ -621,6 +639,55 @@ export function SettingsPage() {
                     <p className="rounded-lg bg-surface px-3 py-2 text-xs text-muted">{t('settings.defaultsNote')}</p>
                     {can('settings.write') ? (
                       <Button variant="secondary" loading={saveFiscal.isPending} onClick={() => saveFiscal.mutate(fiscal)} icon={<Save className="h-4 w-4" aria-hidden="true" />}>
+                        {t('common.save')}
+                      </Button>
+                    ) : null}
+                  </>
+                ) : (
+                  <Skeleton className="h-24" />
+                )}
+              </SectionCard>
+              <SectionCard title={t('settings.purchasing')} subtitle={t('settings.purchasingHint')} bodyClassName="space-y-4 p-5">
+                {purchasing ? (
+                  <>
+                    <FormGrid>
+                      <Field label={t('settings.priceHistoryMonths')} htmlFor="price_history_months" hint={t('settings.priceHistoryMonthsHint')}>
+                        <Input
+                          id="price_history_months"
+                          type="number"
+                          min="1"
+                          max="120"
+                          value={purchasing.price_history_months}
+                          onChange={(event) => setPurchasing({ ...purchasing, price_history_months: event.target.value })}
+                          disabled={readOnly}
+                        />
+                      </Field>
+                      <Field label={t('settings.priceAlertPercent')} htmlFor="price_alert_percent" hint={t('settings.priceAlertPercentHint')}>
+                        <Input
+                          id="price_alert_percent"
+                          type="number"
+                          min="0"
+                          max="1000"
+                          value={purchasing.price_alert_percent}
+                          onChange={(event) => setPurchasing({ ...purchasing, price_alert_percent: event.target.value })}
+                          disabled={readOnly}
+                        />
+                      </Field>
+                      <Field label={t('settings.priceAlertDays')} htmlFor="price_alert_days" hint={t('settings.priceAlertDaysHint')}>
+                        <Input
+                          id="price_alert_days"
+                          type="number"
+                          min="1"
+                          max="3650"
+                          value={purchasing.price_alert_days}
+                          onChange={(event) => setPurchasing({ ...purchasing, price_alert_days: event.target.value })}
+                          disabled={readOnly}
+                        />
+                      </Field>
+                    </FormGrid>
+                    <p className="rounded-lg bg-surface px-3 py-2 text-xs text-muted">{t('settings.defaultsNote')}</p>
+                    {can('settings.write') ? (
+                      <Button variant="secondary" loading={savePurchasing.isPending} onClick={() => savePurchasing.mutate(purchasing)} icon={<Save className="h-4 w-4" aria-hidden="true" />}>
                         {t('common.save')}
                       </Button>
                     ) : null}

@@ -10,7 +10,7 @@ import {
 } from '../../shared/company-defaults';
 import { SLA_DEFAULT_POLICIES } from '../../shared/planning';
 
-export const SCHEMA_VERSION = 47;
+export const SCHEMA_VERSION = 48;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (
@@ -1205,7 +1205,10 @@ export const SCHEMA_STATEMENTS: string[] = [
     vendor_id TEXT NOT NULL,
     price INTEGER NOT NULL DEFAULT 0,
     currency TEXT NOT NULL DEFAULT 'XPF',
-    recorded_at TEXT NOT NULL
+    recorded_at TEXT NOT NULL,
+    -- 'manual' when quoted on the sheet, 'receipt' when paid on a purchase order.
+    source TEXT NOT NULL DEFAULT 'manual',
+    source_ref TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_vendor_prices_link ON product_vendor_prices(product_id, vendor_id, recorded_at)`,
   // H1: before the split, any role able to write products could also change a

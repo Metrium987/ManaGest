@@ -369,7 +369,35 @@ type ProductVendorLink = {
   lead_time_days: number;
   vendor_ref: string | null;
   is_preferred: boolean;
-  history?: { price: number; currency: string; recorded_at: string }[];
+  history?: {
+    price: number; currency: string; recorded_at: string;
+    source: string | null; source_ref: string | null;
+  }[];
+};
+
+type PriceHistoryPoint = {
+  price: number;
+  currency: string;
+  recorded_at: string;
+  source: string | null;
+  source_ref: string | null;
+  vendor_name: string;
+};
+
+type PriceHistoryResponse = {
+  data: PriceHistoryPoint[];
+  stats: {
+    count: number;
+    last: PriceHistoryPoint | null;
+    previous: PriceHistoryPoint | null;
+    average: number | null;
+    change_bp: number;
+    alert: boolean;
+    months: number;
+    window_days: number;
+    alert_percent: number;
+  };
+  settings: { months: number; alert_percent: number; window_days: number };
 };
 
 /** C2: a price is only true for the supplier who quoted it, so each vendor keeps
@@ -384,6 +412,12 @@ function VendorsModal({ product, currency, onClose }: { product: Product; curren
     queryFn: () => api.get<{ data: ProductVendorLink[]; preferred_vendor_id: string | null }>(`/products/${product.id}/vendors`),
   });
   const vendors = useQuery({ queryKey: ['vendors', 'options'], queryFn: () => api.get<{ data: VendorOption[] }>('/vendors?per_page=100') });
+  // Owner decision 2026-11-02: the sheet shows the dated ledger, not only the
+  // previous price, so an increase can be argued with its source and its date.
+  const priceHistory = useQuery({
+    queryKey: ['product-price-history', product.id],
+    queryFn: () => api.get<PriceHistoryResponse>(`/products/${product.id}/price-history?limit=60`),
+  });
 
   const save = useMutation({
     mutationFn: () => api.post(`/products/${product.id}/vendors`, {
@@ -455,6 +489,14 @@ function VendorsModal({ product, currency, onClose }: { product: Product; curren
           </div>
         ) : <p className="text-xs text-muted">{t('products.noVendors')}</p>}
 
+        {priceHistory.data ? (
+          <PriceHistorySection
+            data={priceHistory.data.data}
+            stats={priceHistory.data.stats}
+            currency={currency}
+          />
+        ) : null}
+
         <fieldset className="space-y-3">
           <legend className="mb-2 text-sm font-semibold text-ink-950">{t('products.addVendor')}</legend>
           <FormGrid>
@@ -483,6 +525,78 @@ function VendorsModal({ product, currency, onClose }: { product: Product; curren
         </fieldset>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Purchase price history. Three facts the buyer needs before accepting an
+ * increase: when it happened, who charged it, and whether it was quoted or
+ * actually paid on a receipt.
+ */
+function PriceHistorySection({
+  data, stats, currency,
+}: {
+  data: PriceHistoryPoint[];
+  stats: PriceHistoryResponse['stats'];
+  currency: string;
+}) {
+  return (
+    <div className="space-y-2 rounded-lg border border-line bg-surface-50 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-ink-950">{t('products.priceHistory')}</p>
+        {stats.alert ? (
+          <span className="rounded-full bg-warning-50 px-2 py-0.5 text-xs font-medium text-warning-700">
+            {t('products.priceHistoryAlert', {
+              change: (stats.change_bp / 100).toFixed(1),
+              threshold: stats.alert_percent,
+            })}
+          </span>
+        ) : null}
+      </div>
+      <p className="text-xs text-muted">
+        {t('products.priceHistoryHint', { months: stats.months, window: stats.window_days })}
+      </p>
+      {data.length === 0 ? (
+        <p className="text-xs text-muted">{t('products.priceHistoryEmpty')}</p>
+      ) : (
+        <div className="table-wrap max-h-56 overflow-auto">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th scope="col">{t('common.date')}</th>
+                <th scope="col">{t('expenses.vendor')}</th>
+                <th scope="col" className="text-right">{t('products.vendorPrice')}</th>
+                <th scope="col">{t('products.priceSource')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.slice(0, 40).map((point, index) => (
+                <tr key={`${point.recorded_at}-${point.vendor_name}-${index}`}>
+                  <td className="tabular-nums">{formatDate(point.recorded_at)}</td>
+                  <td>{point.vendor_name}</td>
+                  <td className="text-right tabular-nums">
+                    {formatMoneyValue(point.price, point.currency || currency)}
+                  </td>
+                  <td className="text-xs text-muted">
+                    {point.source === 'receipt'
+                      ? t('products.priceSourceReceipt', { ref: point.source_ref ?? '—' })
+                      : t('products.priceSourceManual')}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {stats.average !== null ? (
+        <p className="text-xs text-muted">
+          {t('products.priceAverage', {
+            price: formatMoneyValue(stats.average, stats.last?.currency || currency),
+            window: stats.window_days,
+          })}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

@@ -57,7 +57,7 @@ Passerelles de paiement, Peppol et Factur-X restent également **hors périmètr
 | # | Sujet | Statut | Pourquoi ça compte |
 |---|---|---|---|
 | N-01 | **MFA (TOTP)** | NON PLANIFIÉ | **Le seul manque P0 de sécurité qui reste.** Un mot de passe administrateur volé suffit à tout modifier. Le schéma d'authentification le prévoyait ; il n'est pas branché. |
-| N-02 | **Multi-devises** avec taux de change et écarts de conversion | NON PLANIFIÉ | Une facture en devise étrangère n'a aujourd'hui aucun taux ni gain/perte de change. |
+| N-02 | **Multi-devises** avec taux de change et écarts de conversion | DIFFÉRÉ (arbitrage 2/11/2026) | Une facture en devise tierce exige un taux figé par document et une conversion à la source (journal, TVA, règlements, avoirs, rapports, réévaluation) : livré à moitié, il produirait un journal faux silencieusement. Plan et condition de réouverture dans `TODO-produits-services.md`, section Q15. |
 | N-03 | **Application installable (PWA) et lecture hors ligne** | NON PLANIFIÉ | Confort terrain ; aucun impact comptable. |
 | N-04 | **Préparation de la déclaration de TVA (formulaire 1010)** | NON PLANIFIÉ | Le récapitulatif de TVA existe (T-207) mais le formulaire, lui, se remplit à la main. Inclut le taux réduit de **1 %** applicable aux archipels hors Société à compter du 1er juillet 2026. |
 | N-05 | **Export CST-S (formulaire 4010) et échéances DICP/CPS** | NON PLANIFIÉ | Obligations déclaratives locales ; rien n'est produit aujourd'hui. |
