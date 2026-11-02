@@ -1,7 +1,8 @@
-import { createContext, useCallback, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Permission } from '@shared/domain';
 import { api, ApiError } from './api';
+import { setFormatLocale, setFormatTimezone } from './format';
 import type { Company, MeResponse, User } from './types';
 
 interface SessionContextValue {
@@ -27,6 +28,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
+
+  // The company row carries the rendering settings: apply them as soon as they
+  // load so every screen formats dates and amounts the way the business is set
+  // up, not the way the code was written.
+  const company = meQuery.data?.company ?? null;
+  useEffect(() => {
+    setFormatLocale(company?.locale);
+    setFormatTimezone(company?.timezone);
+  }, [company?.locale, company?.timezone]);
 
   const error = meQuery.error;
   const needsSetup = error instanceof ApiError && error.code === 'SETUP_REQUIRED';

@@ -1,10 +1,9 @@
 import type { MiddlewareHandler } from 'hono';
-import { getCookie } from 'hono/cookie';
 import { CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE, type Permission } from '../shared/domain';
 import { ensureSchema } from './db';
 import { constantTimeEqual } from './lib/crypto';
 import { ApiError, fail } from './lib/errors';
-import { loadSession } from './services/session';
+import { clearSessionCookies, cookieCandidates, loadSessionFromRequest } from './services/session';
 import { verifyApiToken } from './services/api-tokens';
 import type { AppEnv, CompanyRow } from './types';
 
@@ -76,15 +75,28 @@ export const csrfProtection: MiddlewareHandler<AppEnv> = async (c, next) => {
     if (originHost !== new URL(c.req.url).host) return fail(403, 'CSRF_ORIGIN');
   }
 
-  const token = getCookie(c, SESSION_COOKIE);
-  if (token) {
+  const tokens = cookieCandidates(c, SESSION_COOKIE);
+  if (tokens.length > 0) {
+    const loaded = await loadSessionFromRequest(c);
+    if (!loaded) {
+      // A stale session cookie must never lock the browser out: failing here
+      // answers 401 on POST /auth/login itself, so the user sees "your session
+      // expired" every time they try to sign in and can never clear it. Drop the
+      // dead cookies and let the request through — the routes that need a session
+      // still answer 401 through requireAuth, and the Origin check above keeps
+      // cross-site submissions out.
+      clearSessionCookies(c);
+      return next();
+    }
     const header = c.req.header(CSRF_HEADER);
-    const cookieToken = getCookie(c, CSRF_COOKIE);
-    if (!header || !cookieToken || !constantTimeEqual(header, cookieToken)) {
+    // The token cookie can be duplicated the same way; any copy matching the
+    // header is enough, the session secret below stays mandatory.
+    const cookieToken = cookieCandidates(c, CSRF_COOKIE).some((value) =>
+      constantTimeEqual(value, header ?? ''),
+    );
+    if (!header || !cookieToken) {
       return fail(403, 'CSRF_TOKEN');
     }
-    const loaded = await loadSession(c.env.DB, token);
-    if (!loaded) return fail(401, 'UNAUTHENTICATED');
     if (!constantTimeEqual(loaded.session.csrf_secret, header)) {
       return fail(403, 'CSRF_TOKEN');
     }
@@ -129,9 +141,7 @@ export const requireAuth: MiddlewareHandler<AppEnv> = async (c, next) => {
       return next();
     }
 
-    const cookie = getCookie(c, SESSION_COOKIE);
-    if (!cookie) return fail(401, 'UNAUTHENTICATED');
-    const loaded = await loadSession(c.env.DB, cookie);
+    const loaded = await loadSessionFromRequest(c);
     if (!loaded) return fail(401, 'UNAUTHENTICATED');
     c.set('session', loaded.session);
     c.set('user', loaded.session.user);

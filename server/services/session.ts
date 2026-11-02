@@ -1,16 +1,62 @@
 import type { Context } from 'hono';
-import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
+import { deleteCookie, setCookie } from 'hono/cookie';
 import { CSRF_COOKIE, SESSION_COOKIE } from '../../shared/domain';
+import { DEFAULT_SESSION_ABSOLUTE_HOURS, DEFAULT_SESSION_IDLE_MINUTES } from '../../shared/company-defaults';
 import { nowISO } from '../db';
+import { cookieValues } from '../lib/cookies';
 import { randomToken, sha256Hex } from '../lib/crypto';
 import { resolveUserPermissions } from './roles';
 import type { AppEnv, AppSession, AuthenticatedUser, CompanyRow, SessionRow, UserRow } from '../types';
 
 const IDLE_REFRESH_MS = 60_000;
 
-function isSecureRequest(c: Context<AppEnv>): boolean {
+interface CookieSecurity {
+  secure: boolean;
+  sameSite: 'None' | 'Lax';
+  partitioned: boolean;
+}
+
+/**
+ * Two contexts, two policies:
+ *
+ * - the preview panel embeds the app in a third-party frame reached over HTTPS
+ *   through a local proxy, so the Worker only sees plain HTTP. A `Lax` cookie is
+ *   never sent back there: login succeeds, then every authenticated call answers
+ *   401. That frame gets `None; Secure; Partitioned` (CHIPS).
+ * - a real deployment is visited first-party over HTTPS: it gets the ordinary
+ *   `Lax; Secure` cookie, which every browser accepts. Exotic attributes are
+ *   kept out of that path on purpose — a browser that drops them loses the
+ *   session immediately after login.
+ */
+function cookieSecurity(c: Context<AppEnv>): CookieSecurity {
   const url = new URL(c.req.url);
-  return url.protocol === 'https:';
+  const forwarded = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim().toLowerCase();
+  const host = (c.req.header('host') ?? '').toLowerCase();
+  const https = url.protocol === 'https:' || forwarded === 'https' || host.endsWith('.style.dev');
+  if (host.endsWith('.style.dev')) return { secure: true, sameSite: 'None', partitioned: true };
+  if (https) return { secure: true, sameSite: 'Lax', partitioned: false };
+  return { secure: false, sameSite: 'Lax', partitioned: false };
+}
+
+/** Every session token presented by this request, in header order. */
+export function cookieCandidates(c: Context<AppEnv>, name: string): string[] {
+  return cookieValues(c.req.header('cookie') ?? '', name);
+}
+
+/**
+ * Resolves the session behind the request by trying every token the browser
+ * sent. A user can hold a partitioned cookie from an earlier deployment next to
+ * the current one; stopping at the first (dead) candidate answered 401 right
+ * after a successful login.
+ */
+export async function loadSessionFromRequest(
+  c: Context<AppEnv>,
+): Promise<{ session: AppSession; user: UserRow } | null> {
+  for (const token of cookieCandidates(c, SESSION_COOKIE)) {
+    const loaded = await loadSession(c.env.DB, token);
+    if (loaded) return loaded;
+  }
+  return null;
 }
 
 export async function createSession(
@@ -22,8 +68,8 @@ export async function createSession(
   const csrf = randomToken(24);
   const id = crypto.randomUUID();
   const now = Date.now();
-  const idleMinutes = Math.max(5, company.session_idle_minutes || 30);
-  const absoluteHours = Math.max(1, company.session_absolute_hours || 12);
+  const idleMinutes = Math.max(5, company.session_idle_minutes || DEFAULT_SESSION_IDLE_MINUTES);
+  const absoluteHours = Math.max(1, company.session_absolute_hours || DEFAULT_SESSION_ABSOLUTE_HOURS);
   const expiresAt = new Date(now + idleMinutes * 60_000).toISOString();
   const absoluteExpiresAt = new Date(now + absoluteHours * 3_600_000).toISOString();
   const tokenHash = await sha256Hex(token);
@@ -38,18 +84,16 @@ export async function createSession(
     .bind(id, user.id, tokenHash, csrf, ip, userAgent, nowISO(), nowISO(), expiresAt, absoluteExpiresAt)
     .run();
 
-  const secure = isSecureRequest(c);
+  const security = cookieSecurity(c);
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
-    secure,
-    sameSite: 'Lax',
+    ...security,
     path: '/',
     maxAge: idleMinutes * 60,
   });
   setCookie(c, CSRF_COOKIE, csrf, {
     httpOnly: false,
-    secure,
-    sameSite: 'Lax',
+    ...security,
     path: '/',
     maxAge: idleMinutes * 60,
   });
@@ -105,7 +149,7 @@ export async function loadSession(
     const company = await database
       .prepare(`SELECT session_idle_minutes, session_absolute_hours FROM company LIMIT 1`)
       .first<{ session_idle_minutes: number; session_absolute_hours: number }>();
-    const idleMinutes = Math.max(5, company?.session_idle_minutes ?? 30);
+    const idleMinutes = Math.max(5, company?.session_idle_minutes ?? DEFAULT_SESSION_IDLE_MINUTES);
     const candidate = new Date(Date.now() + idleMinutes * 60_000).toISOString();
     expiresAt = candidate < row.absolute_expires_at ? candidate : row.absolute_expires_at;
     await database
@@ -148,19 +192,27 @@ export async function loadSession(
 
 export async function destroySession(c: Context<AppEnv>, sessionId: string): Promise<void> {
   await c.env.DB.prepare(`DELETE FROM sessions WHERE id = ?`).bind(sessionId).run();
-  deleteCookie(c, SESSION_COOKIE, { path: '/' });
-  deleteCookie(c, CSRF_COOKIE, { path: '/' });
+  clearSessionCookies(c);
 }
 
+/**
+ * Drops the cookies of the current browser. Both variants are emitted: the very
+ * first deployment issued CHIPS cookies, and a browser keeps that copy next to
+ * the plain one unless the delete carries the same attributes. A leftover
+ * partitioned cookie is what kept sending a dead token before a fresh login.
+ */
 export function clearSessionCookies(c: Context<AppEnv>): void {
-  deleteCookie(c, SESSION_COOKIE, { path: '/' });
-  deleteCookie(c, CSRF_COOKIE, { path: '/' });
+  const { secure } = cookieSecurity(c);
+  for (const name of [SESSION_COOKIE, CSRF_COOKIE]) {
+    deleteCookie(c, name, { path: '/' });
+    if (secure) {
+      deleteCookie(c, name, { path: '/', secure: true, sameSite: 'None', partitioned: true });
+    }
+  }
 }
 
 export async function currentUser(c: Context<AppEnv>): Promise<AuthenticatedUser | null> {
-  const token = getCookie(c, SESSION_COOKIE);
-  if (!token) return null;
-  const loaded = await loadSession(c.env.DB, token);
+  const loaded = await loadSessionFromRequest(c);
   return loaded?.session.user ?? null;
 }
 

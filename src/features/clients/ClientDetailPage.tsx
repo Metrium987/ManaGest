@@ -1,7 +1,16 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Building2, Mail, MapPin, Pencil, Phone, Plus, Printer } from 'lucide-react';
+import { ArrowLeft, Building2, FileCheck2, Mail, MapPin, Pencil, Phone, Plus, Printer } from 'lucide-react';
+import {
+  CLIENT_BANK_LABELS,
+  CLIENT_PAYMENT_METHOD_LABELS,
+  CLIENT_PAYMENT_TERM_LABELS,
+  CLIENT_VAT_REGIME_LABELS,
+  ENTITY_CATEGORY_LABELS,
+  LEGAL_FORM_LABELS,
+} from '@shared/client-profile';
+import { ClientDocumentsPanel } from './ClientDocumentsPanel';
 import { api } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
@@ -54,7 +63,7 @@ export function ClientDetailPage() {
           </Link>
         }
         title={data.display_name}
-        subtitle={[data.city, data.email].filter(Boolean).join(' · ') || t('clients.detailTitle')}
+        subtitle={[data.number, ENTITY_CATEGORY_LABELS[data.entity_category], data.city, data.email].filter(Boolean).join(' · ') || t('clients.detailTitle')}
         actions={
           <>
             <Button variant="secondary" onClick={() => setStatementOpen(true)} icon={<Printer className="h-4 w-4" aria-hidden="true" />}>
@@ -85,10 +94,41 @@ export function ClientDetailPage() {
         <SectionCard title={t('common.details')} className="xl:col-span-1">
           <dl className="divide-y divide-line text-sm">
             {[
+              { icon: Building2, label: t('clients.code'), value: data.number ?? '—' },
+              { icon: Building2, label: t('clients.category'), value: ENTITY_CATEGORY_LABELS[data.entity_category] ?? '—' },
+              { icon: FileCheck2, label: t('clientProfile.accountStatus'), value: t(`clientProfile.status.${data.account_status}`) },
+              ...(data.legal_name ? [{ icon: Building2, label: t('clientProfile.legalName'), value: data.legal_name }] : []),
+              ...(data.trade_name ? [{ icon: Building2, label: t('clientProfile.tradeName'), value: data.trade_name }] : []),
+              ...(data.legal_form ? [{ icon: Building2, label: t('clientProfile.legalForm'), value: LEGAL_FORM_LABELS[data.legal_form] }] : []),
               { icon: Building2, label: t('clients.tahitiNumber'), value: data.tax_id ?? '—' },
+              ...(data.numero_rcs ? [{ icon: Building2, label: t('clientProfile.rcs'), value: data.numero_rcs }] : []),
+              ...(data.numero_tps ? [{ icon: Building2, label: t('clientProfile.tps'), value: data.numero_tps }] : []),
+              ...(data.vat_regime ? [{ icon: Building2, label: t('clientProfile.vatRegime'), value: CLIENT_VAT_REGIME_LABELS[data.vat_regime] }] : []),
               { icon: Mail, label: t('common.email'), value: data.email ?? '—' },
               { icon: Phone, label: t('common.phone'), value: data.phone ?? '—' },
-              { icon: MapPin, label: t('common.address'), value: [data.address1, data.postal_code, data.city, data.country].filter(Boolean).join(', ') || '—' },
+              ...(data.contact_role ? [{ icon: Building2, label: t('clientProfile.contactRole'), value: data.contact_role }] : []),
+              { icon: MapPin, label: t('clientProfile.poBox'), value: [data.po_box_number ? `B.P. ${data.po_box_number}` : null, data.postal_code, data.po_box_municipality].filter(Boolean).join(', ') || '—' },
+              ...(data.street_building_zone || data.physical_municipality
+                ? [{
+                    icon: MapPin,
+                    label: t('clientProfile.street'),
+                    value: [data.street_building_zone, data.pk_landmark, data.district, data.physical_municipality, data.island]
+                      .filter(Boolean).join(', '),
+                  }]
+                : []),
+              ...(data.payment_method
+                ? [{ icon: Building2, label: t('clientProfile.paymentMethod'), value: CLIENT_PAYMENT_METHOD_LABELS[data.payment_method] }]
+                : []),
+              ...(data.payment_terms_code
+                ? [{ icon: Building2, label: t('clientProfile.paymentTermsLabel'), value: CLIENT_PAYMENT_TERM_LABELS[data.payment_terms_code] }]
+                : []),
+              ...(data.bank_name
+                ? [{
+                    icon: Building2,
+                    label: t('clientProfile.bank'),
+                    value: [CLIENT_BANK_LABELS[data.bank_name], data.iban].filter(Boolean).join(' · '),
+                  }]
+                : []),
             ].map((row) => {
               const Icon = row.icon;
               return (
@@ -101,10 +141,9 @@ export function ClientDetailPage() {
                 </div>
               );
             })}
-            <div className="px-5 py-3">
-              <dt className="text-xs text-muted">{t('clients.paymentTerms')}</dt>
-              <dd className="font-medium text-ink-900">{data.payment_terms} {t('common.date').toLowerCase() === 'date' ? 'jours' : ''}</dd>
-            </div>
+            {data.has_delegation_authority ? (
+              <div className="px-5 py-3 text-xs font-medium text-brand-700">{t('clientProfile.delegation')}</div>
+            ) : null}
             {data.is_tax_exempt ? (
               <div className="px-5 py-3 text-xs font-medium text-brand-700">{t('invoices.taxExemptNote')}</div>
             ) : null}
@@ -174,6 +213,19 @@ export function ClientDetailPage() {
           </div>
         </div>
       </div>
+
+      <SectionCard
+        title={t('clientProfile.documents')}
+        subtitle={t('clientProfile.documentsHint')}
+        className="mt-4"
+      >
+        <div className="flex items-start gap-3">
+          <FileCheck2 className="mt-0.5 h-5 w-5 shrink-0 text-muted" aria-hidden="true" />
+          <div className="min-w-0 flex-1">
+            <ClientDocumentsPanel clientId={data.id} canWrite={can('clients.write')} />
+          </div>
+        </div>
+      </SectionCard>
 
       {editOpen ? (
         <ClientFormModal open client={data} onClose={() => setEditOpen(false)} />

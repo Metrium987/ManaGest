@@ -12,8 +12,13 @@ export class ApiError extends Error {
 }
 
 function readCookie(name: string): string {
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : '';
+  // A browser may hold the same cookie twice (a partitioned copy of an earlier
+  // deployment next to the current one); the newest one comes last, and the
+  // server accepts any candidate that matches the session.
+  const pattern = new RegExp(`(?:^|; )${name}=([^;]*)`, 'g');
+  let value = '';
+  for (const match of document.cookie.matchAll(pattern)) value = decodeURIComponent(match[1]);
+  return value;
 }
 
 export async function apiRequest<T>(

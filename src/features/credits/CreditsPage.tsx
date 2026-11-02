@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CreditCard, Plus } from 'lucide-react';
 import { toMinor } from '@shared/money';
+import { DEFAULT_TAX_RATE } from '@shared/domain';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { t } from '@/lib/i18n';
@@ -26,7 +27,7 @@ export function CreditsPage() {
   const [date, setDate] = useState(todayISO());
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState(0);
-  const [taxRate, setTaxRate] = useState(company?.default_tax_rate ?? 16);
+  const [taxRate, setTaxRate] = useState(company?.default_tax_rate ?? DEFAULT_TAX_RATE);
   const [invoiceId, setInvoiceId] = useState('');
   const [applyAmount, setApplyAmount] = useState(0);
 

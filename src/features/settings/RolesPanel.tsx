@@ -50,6 +50,8 @@ export function RolesPanel() {
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [selected, setSelected] = useState<Permission[]>([]);
+  const [permUser, setPermUser] = useState<Account | null>(null);
+  const [permSelected, setPermSelected] = useState<Permission[]>([]);
 
   const roles = useQuery({ queryKey: ['roles'], queryFn: () => api.get<{ roles: RoleRow[] }>('/roles') });
   const users = useQuery({
@@ -99,6 +101,28 @@ export function RolesPanel() {
     onError: (error) => toast.error(errorMessage(error)),
   });
 
+  // Per-user permissions: the tailored list lives on a custom role of its own, so
+  // the fixed role stays the reference and the account can be reset at any time.
+  const saveUserPermissions = useMutation({
+    mutationFn: () => api.put(`/roles/user/${permUser?.id}/permissions`, { permissions: permSelected }),
+    onSuccess: () => {
+      toast.success(t('roles.userPermissionsSaved'));
+      setPermUser(null);
+      invalidate();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const resetUserPermissions = useMutation({
+    mutationFn: (userId: string) => api.delete(`/roles/user/${userId}/permissions`),
+    onSuccess: () => {
+      toast.success(t('roles.userPermissionsReset'));
+      setPermUser(null);
+      invalidate();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
   const startCreate = () => {
     setEditing(null);
     setName('');
@@ -120,6 +144,12 @@ export function RolesPanel() {
 
   const rows = roles.data?.roles ?? [];
   const accounts = users.data?.data ?? [];
+
+  /** What the account can do today: its custom list, or the fixed role's matrix. */
+  const effectivePermissions = (account: Account): Permission[] => {
+    const custom = account.role_key ? rows.find((role) => role.key === account.role_key) : undefined;
+    return custom ? custom.permissions : [...(ROLE_PERMISSIONS[account.role] ?? [])];
+  };
 
   return (
     <>
@@ -191,6 +221,7 @@ export function RolesPanel() {
                 <th scope="col">{t('activity.user')}</th>
                 <th scope="col">{t('common.email')}</th>
                 <th scope="col">{t('roles.assign')}</th>
+                <th scope="col" className="text-right">{t('roles.permissions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -213,6 +244,19 @@ export function RolesPanel() {
                         <option key={role.key} value={role.key}>{role.name}</option>
                       ))}
                     </select>
+                  </td>
+                  <td className="text-right">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      disabled={!canWrite}
+                      onClick={() => {
+                        setPermUser(account);
+                        setPermSelected(effectivePermissions(account));
+                      }}
+                    >
+                      {t('roles.editPermissions')}
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -249,6 +293,56 @@ export function RolesPanel() {
           </tbody>
         </table>
       </SectionCard>
+
+      <Modal
+        open={permUser !== null}
+        onClose={() => setPermUser(null)}
+        title={t('roles.perUser', { name: `${permUser?.first_name ?? ''} ${permUser?.last_name ?? ''}`.trim() })}
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPermUser(null)}>{t('common.cancel')}</Button>
+            {permUser?.role_key ? (
+              <Button
+                variant="secondary"
+                loading={resetUserPermissions.isPending}
+                onClick={() => permUser && resetUserPermissions.mutate(permUser.id)}
+              >
+                {t('roles.resetPermissions')}
+              </Button>
+            ) : null}
+            <Button loading={saveUserPermissions.isPending} onClick={() => saveUserPermissions.mutate()}>{t('roles.save')}</Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-xs text-muted">{t('roles.perUserHint')}</p>
+          {permUser ? (
+            <p className="text-xs text-muted">
+              {t('roles.perUserBase', { role: ROLE_LABELS[permUser.role] ?? permUser.role })}
+            </p>
+          ) : null}
+          <div className="grid max-h-80 gap-1.5 overflow-y-auto rounded-xl border border-line p-3 sm:grid-cols-2">
+            {PERMISSIONS.map((permission) => (
+              <label key={permission} className="flex items-center gap-2 text-xs text-ink-800">
+                <input
+                  type="checkbox"
+                  className="h-3.5 w-3.5 rounded border-line-strong"
+                  checked={permSelected.includes(permission)}
+                  onChange={() =>
+                    setPermSelected((current) =>
+                      current.includes(permission)
+                        ? current.filter((item) => item !== permission)
+                        : [...current, permission],
+                    )
+                  }
+                />
+                <span className="font-mono">{permission}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         open={open}

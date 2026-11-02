@@ -51,6 +51,16 @@ export async function loadRolePermissions(database: D1Database, roleKey: string)
   return parsePermissions(row?.permissions);
 }
 
+/**
+ * A grant can never exceed what the actor holds. Returns null when the request
+ * asks for a permission the actor does not have, so a delegated account manager
+ * cannot hand out more than they were given.
+ */
+export function restrictToActor(actor: Permission[], requested: Permission[]): Permission[] | null {
+  const owned = new Set<string>(actor);
+  return requested.every((permission) => owned.has(permission)) ? requested : null;
+}
+
 /** The role key that governs a session: a custom role wins over the fixed column. */
 export function roleKeyOf(user: { role: string; role_key?: string | null }): string {
   return user.role_key ?? user.role;

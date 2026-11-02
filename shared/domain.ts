@@ -3,18 +3,26 @@
  * All identifiers and enum-like values live here so behaviour stays consistent.
  */
 
+import { localised } from './labels-locale';
+
 export const APP_NAME = 'ManaGest';
 
 export const ROLES = ['owner', 'admin', 'accountant', 'sales', 'viewer'] as const;
 export type Role = (typeof ROLES)[number];
 
-export const ROLE_LABELS: Record<Role, string> = {
+export const ROLE_LABELS: Record<Role, string> = localised({
   owner: 'Propriétaire',
   admin: 'Administrateur',
   accountant: 'Comptable',
   sales: 'Commercial',
   viewer: 'Lecture seule',
-};
+}, {
+  owner: 'Owner',
+  admin: 'Administrator',
+  accountant: 'Accountant',
+  sales: 'Sales',
+  viewer: 'Read-only',
+});
 
 export const PERMISSIONS = [
   'clients.read', 'clients.write', 'clients.delete',
@@ -24,6 +32,11 @@ export const PERMISSIONS = [
   'credits.read', 'credits.write', 'credits.delete',
   'recurring.read', 'recurring.write', 'recurring.delete',
   'products.read', 'products.write', 'products.delete',
+  // H1: moving a quantity is a warehouse act, not editing the sheet. A buyer can
+  // adjust stock without being able to rewrite prices or delete articles.
+  'stock.adjust',
+  // D4: seeing a purchase cost is buying information, not access to the ledger.
+  'products.cost.read',
   'expenses.read', 'expenses.write', 'expenses.delete',
   'vendors.read', 'vendors.write', 'vendors.delete',
   'purchase_orders.read', 'purchase_orders.write', 'purchase_orders.delete',
@@ -56,7 +69,10 @@ const OPERATIONAL_READ: Permission[] = PERMISSIONS.filter(
     // read-only or sales account must not see the books.
     && p !== 'accounting.read'
     // Approving is a control act, not everyday operational reading.
-    && p !== 'approvals.read',
+    && p !== 'approvals.read'
+    // D4: a cost is buying information. Read-only and sales roles used to get it
+    // only by holding the whole ledger; now the two are separate.
+    && p !== 'products.cost.read',
 );
 
 const FINANCE_WRITE: Permission[] = [
@@ -103,7 +119,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   owner: [...PERMISSIONS],
   admin: [...PERMISSIONS],
   // The accountant closes and reopens periods: that is their core control.
-  accountant: [...OPERATIONAL_READ, 'activity.read', 'periods.read', 'periods.write', ...FINANCE_WRITE, 'accounting.read', 'accounting.write', 'approvals.read', 'approvals.write'],
+  accountant: [...OPERATIONAL_READ, 'activity.read', 'periods.read', 'periods.write', ...FINANCE_WRITE, 'accounting.read', 'accounting.write', 'approvals.read', 'approvals.write', 'products.cost.read'],
   sales: [...SALES_READ, ...SALES_WRITE],
   viewer: [...OPERATIONAL_READ],
 };
@@ -126,12 +142,16 @@ export const PAYMENT_METHODS = [
 ] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
-export const PROJECT_STATUSES = ['active', 'completed', 'archived'] as const;
+export const PROJECT_STATUSES = ['planned', 'active', 'completed', 'archived'] as const;
 export const TASK_STATUSES = ['todo', 'in_progress', 'done'] as const;
 
 /** Local TVA rates in French Polynesia (percent). */
 export const TVA_RATES = [
   { rate: 16, label: 'TVA 16 % (taux normal)' },
+  // Q4: 1 % for the archipelagos other than the Society islands, since 1 July
+  // 2026. The server refuses it without the archipel evidence (see
+  // shared/archipelago.ts), so the rate is selectable but never free of proof.
+  { rate: 1, label: 'TVA 1 % (archipels)' },
   { rate: 13, label: 'TVA 13 % (taux intermédiaire)' },
   { rate: 5, label: 'TVA 5 % (taux réduit)' },
   { rate: 0, label: 'Exonéré' },
@@ -141,10 +161,13 @@ export const VAT_REGIMES = ['standard', 'franchise'] as const;
 
 export const LINE_TAX_STATUSES = ['taxable', 'exempt'] as const;
 export type LineTaxStatusDomain = (typeof LINE_TAX_STATUSES)[number];
-export const LINE_TAX_STATUS_LABELS: Record<LineTaxStatusDomain, string> = {
+export const LINE_TAX_STATUS_LABELS: Record<LineTaxStatusDomain, string> = localised({
   taxable: 'TVA applicable',
   exempt: 'Exonéré de TVA',
-};
+}, {
+  taxable: 'VAT applies',
+  exempt: 'VAT exempt',
+});
 
 export const COUNTRIES = ['Polynésie française', 'France', 'Nouvelle-Calédonie', 'Autre'] as const;
 
@@ -158,7 +181,27 @@ export const ZERO_DECIMAL_CURRENCIES = ['XPF', 'JPY'] as const;
 
 export const DEFAULT_TIMEZONE = 'Pacific/Tahiti';
 export const DEFAULT_CURRENCY = 'XPF';
-export const DEFAULT_LOCALE = 'fr-FR';
+/**
+ * Display locale used by Intl formatters. French Polynesia uses metropolitan
+ * French for dates and numbers with the Pacific-franc currency; the setting is
+ * editable in Paramètres → Société and stored on the company row.
+ */
+export const DEFAULT_LOCALE = 'fr-PF';
+
+/** Rendering locales offered in Paramètres → Société (dates, numbers, currency). */
+export const DISPLAY_LOCALES = [
+  { value: 'fr-PF', label: 'Français (Polynésie française)' },
+  { value: 'fr-FR', label: 'Français (France)' },
+  { value: 'en-US', label: 'English (United States)' },
+  { value: 'en-GB', label: 'English (United Kingdom)' },
+] as const;
+
+/**
+ * Default local TVA rate, used to seed a new company and as the fallback while
+ * the company settings load. The live value is `company.default_tax_rate`
+ * (Paramètres → Facturation), never this constant.
+ */
+export const DEFAULT_TAX_RATE = 16;
 
 export const SESSION_COOKIE = 'mg_session';
 export const CSRF_COOKIE = 'mg_csrf';

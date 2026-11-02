@@ -1,6 +1,6 @@
 import { discountPercentOf } from '../lib/approvals';
 import { assertSeparation, requireApprovalIfNeeded } from '../services/approvals';
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { addDays, todayIn } from '../lib/dates';
 import { nowISO } from '../db';
@@ -9,6 +9,14 @@ import { retentionElapsed, DEFAULT_RETENTION_YEARS } from '../lib/retention';
 import { fail } from '../lib/errors';
 import { nextNumber, recordNumberGap } from '../lib/numbering';
 import { computeTotals } from '../lib/tax';
+import { enrichLines } from '../lib/catalogue';
+import { applyClientPricingForClient } from '../lib/client-pricing';
+import { applyExpertiseForLines } from '../lib/expertise';
+import { consumeInvoiceStock } from '../services/stock';
+import { lotTrackingMode } from '../lib/lots';
+import {
+  returnableQuantities, sumByProduct, validateReturn, type StockQuantityRow,
+} from '../lib/stock-returns';
 import { offsetOf, paginationSchema, parseInput, lineItemsSchema, optionalIsoDate } from '../lib/validation';
 import { assertPeriodOpen } from '../lib/locks';
 import { diffSnapshot } from '../lib/audit';
@@ -19,10 +27,37 @@ import {
 import { buildInvoicePdf } from '../services/pdf';
 import { resolveLayout } from '../services/pdf-style';
 import { getExtra } from '../lib/settings-extra';
+import { validateArchipelagoVat } from '../../shared/archipelago';
 import { deriveInvoiceStatus, isOverdue, refundableAmount } from '../services/status';
 import { recalcCredit } from '../services/documents';
 import { recordManualReminder } from '../services/reminders';
 import type { AppEnv } from '../types';
+
+/**
+ * Q4: the 1 % archipelago rate is refused without its proof — the customer's
+ * Tahiti number (which the transport contract must carry), the archipelago, the
+ * transport reference and the fact that we ship the goods ourselves. Applying it
+ * loosely means paying the missing VAT back.
+ */
+async function assertArchipelagoEvidence(
+  c: Context<AppEnv>,
+  body: { line_items: { tax_rate: number; tax_status?: string | null; product_family?: string | null }[]; archipelago?: string | null; transport_reference?: string | null; shipped_by_seller: boolean },
+  clientTaxId: string | null,
+) {
+  const excluded = (await getExtra(c.env.DB, 'archipelago_excluded_families')).split(',');
+  const check = validateArchipelagoVat({
+    lines: body.line_items,
+    evidence: {
+      client_tax_id: clientTaxId,
+      archipelago: body.archipelago,
+      transport_reference: body.transport_reference,
+      shipped_by_seller: body.shipped_by_seller,
+    },
+    excluded_families: excluded,
+  });
+  if (check.ok) return null;
+  return fail(422, check.code, check.details);
+}
 
 const invoiceSchema = z.object({
   client_id: z.string().min(8).max(60),
@@ -35,6 +70,11 @@ const invoiceSchema = z.object({
   terms: z.string().max(2000).nullish(),
   footer: z.string().max(1000).nullish(),
   po_number: z.string().max(80).nullish(),
+  // Q4: the evidence that a 1 % archipelago rate is legitimate. Stored with the
+  // document, because the tax is refunded if it cannot be produced.
+  archipelago: z.string().max(20).nullish(),
+  transport_reference: z.string().max(80).nullish(),
+  shipped_by_seller: z.boolean().default(false),
 });
 
 export const invoiceRoutes = new Hono<AppEnv>();
@@ -150,14 +190,22 @@ invoiceRoutes.post('/', requirePermission('invoices.write'), async (c) => {
   const user = c.get('user')!;
   const body = parseInput(invoiceSchema, await c.req.json().catch(() => ({})));
   await assertPeriodOpen(c.env.DB, body.date);
+  // Freeze the catalogue identity on the lines before any total is computed.
+  body.line_items = await enrichLines(c.env.DB, body.line_items);
+  // D1: the client grid only fills lines nobody priced yet.
+  body.line_items = await applyExpertiseForLines(c.env.DB, body.line_items);
+  body.line_items = await applyClientPricingForClient(c.env.DB, body.client_id, body.line_items);
 
   const client = await c.env.DB.prepare(
-    `SELECT id, is_tax_exempt, payment_terms, currency FROM clients
+    `SELECT id, is_tax_exempt, payment_terms, currency, tax_id FROM clients
      WHERE id = ? AND deleted_at IS NULL AND archived = 0`,
   )
     .bind(body.client_id)
-    .first<{ id: string; is_tax_exempt: number; payment_terms: number; currency: string }>();
+    .first<{ id: string; is_tax_exempt: number; payment_terms: number; currency: string; tax_id: string | null }>();
   if (!client) return fail(422, 'VALIDATION_ERROR', { client_id: 'not_found' });
+
+  const archipelago = await assertArchipelagoEvidence(c, body, client.tax_id);
+  if (archipelago) return archipelago;
 
   const totals = computeTotals(
     body.line_items,
@@ -171,14 +219,17 @@ invoiceRoutes.post('/', requirePermission('invoices.write'), async (c) => {
 
   await c.env.DB.prepare(
     `INSERT INTO invoices (id, client_id, number, status, date, due_date, currency, subtotal, discount_type, discount_value,
-      discount_total, tax_total, total, paid_total, balance, tax_exempt, po_number, line_items, notes, terms, footer, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      discount_total, tax_total, total, paid_total, balance, tax_exempt, po_number, line_items, notes, terms, footer,
+      archipelago, transport_reference, shipped_by_seller, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id, body.client_id, number, body.date, dueDate, client.currency || company.currency,
       totals.subtotal, body.discount_type, body.discount_value, totals.discount_total, totals.tax_total,
       totals.total, totals.total, client.is_tax_exempt, body.po_number ?? null, serialiseLines(body.line_items),
-      body.notes ?? null, terms, body.footer || company.invoice_footer, user.id, nowISO(), nowISO(),
+      body.notes ?? null, terms, body.footer || company.invoice_footer,
+      body.archipelago ?? null, body.transport_reference ?? null, body.shipped_by_seller ? 1 : 0,
+      user.id, nowISO(), nowISO(),
     )
     .run();
 
@@ -205,7 +256,7 @@ invoiceRoutes.patch('/:id', requirePermission('invoices.write'), async (c) => {
   const body = parseInput(invoiceSchema, await c.req.json().catch(() => ({})));
 
   const existing = await c.env.DB.prepare(
-    `SELECT i.*, c.is_tax_exempt FROM invoices i JOIN clients c ON c.id = i.client_id
+    `SELECT i.*, c.is_tax_exempt, c.tax_id AS client_tax_id FROM invoices i JOIN clients c ON c.id = i.client_id
      WHERE i.id = ? AND i.deleted_at IS NULL`,
   )
     .bind(id)
@@ -215,6 +266,13 @@ invoiceRoutes.patch('/:id', requirePermission('invoices.write'), async (c) => {
   if ((existing.paid_total as number) > 0) return fail(409, 'INVOICE_HAS_PAYMENTS');
   // Both dates: re-dating must not move a document into or out of a closed month.
   await assertPeriodOpen(c.env.DB, existing.date as string, body.date);
+  body.line_items = await enrichLines(c.env.DB, body.line_items);
+  // D1: the client grid only fills lines nobody priced yet.
+  body.line_items = await applyExpertiseForLines(c.env.DB, body.line_items);
+  body.line_items = await applyClientPricingForClient(c.env.DB, body.client_id, body.line_items);
+
+  const patchCheck = await assertArchipelagoEvidence(c, body, (existing.client_tax_id as string | null) ?? null);
+  if (patchCheck) return patchCheck;
 
   const totals = computeTotals(
     body.line_items,
@@ -225,13 +283,15 @@ invoiceRoutes.patch('/:id', requirePermission('invoices.write'), async (c) => {
   await c.env.DB.prepare(
     `UPDATE invoices SET client_id = ?, date = ?, due_date = ?, subtotal = ?, discount_type = ?, discount_value = ?,
       discount_total = ?, tax_total = ?, total = ?, balance = ?, po_number = ?, line_items = ?, notes = ?, terms = ?,
-      footer = ?, updated_at = ? WHERE id = ?`,
+      footer = ?, archipelago = ?, transport_reference = ?, shipped_by_seller = ?, updated_at = ? WHERE id = ?`,
   )
     .bind(
       body.client_id, body.date, body.due_date, totals.subtotal, body.discount_type, body.discount_value,
       totals.discount_total, totals.tax_total, totals.total, totals.total, body.po_number ?? null,
       serialiseLines(body.line_items), body.notes ?? null, body.terms || company.invoice_terms,
-      body.footer || company.invoice_footer, nowISO(), id,
+      body.footer || company.invoice_footer,
+      body.archipelago ?? null, body.transport_reference ?? null, body.shipped_by_seller ? 1 : 0,
+      nowISO(), id,
     )
     .run();
 
@@ -260,13 +320,13 @@ invoiceRoutes.post('/:id/send', requirePermission('invoices.write'), async (c) =
   const id = c.req.param('id');
   const user = c.get('user')!;
   const invoice = await c.env.DB.prepare(
-    `SELECT id, number, status, date, subtotal, discount_type, discount_value, total
+    `SELECT id, number, status, date, subtotal, discount_type, discount_value, total, line_items
      FROM invoices WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(id)
     .first<{
       id: string; number: string; status: string; date: string; subtotal: number;
-      discount_type: string; discount_value: number; total: number;
+      discount_type: string; discount_value: number; total: number; line_items: string | null;
     }>();
   if (!invoice) return fail(404, 'NOT_FOUND');
   if (invoice.status !== 'draft') return fail(409, 'INVALID_TRANSITION');
@@ -282,6 +342,14 @@ invoiceRoutes.post('/:id/send', requirePermission('invoices.write'), async (c) =
   });
   await assertPeriodOpen(c.env.DB, invoice.date);
 
+  // A3: the goods leave the warehouse when the document is issued. The refusal
+  // throws before the status changes, so a short order leaves a draft behind.
+  const consumed = await consumeInvoiceStock(c.env.DB, {
+    reference: invoice.number,
+    lines: safeLines(invoice.line_items),
+    userId: user.id,
+  });
+
   await c.env.DB.prepare(
     `UPDATE invoices SET status = 'sent', sent_at = ?, updated_at = ? WHERE id = ? AND status = 'draft'`,
   )
@@ -294,10 +362,10 @@ invoiceRoutes.post('/:id/send', requirePermission('invoices.write'), async (c) =
     entityType: 'invoice',
     entityId: id,
     summary: 'activity.invoice_sent',
-    meta: { number: invoice.number },
+    meta: { number: invoice.number, lines: consumed.length },
   });
 
-  return c.json({ ok: true });
+  return c.json({ ok: true, consumed });
 });
 
 invoiceRoutes.post('/:id/cancel', requirePermission('invoices.write'), async (c) => {
@@ -332,6 +400,9 @@ invoiceRoutes.post('/:id/cancel', requirePermission('invoices.write'), async (c)
     .bind(nowISO(), nowISO(), id)
     .run();
 
+  // Cancellation is a financial act, not a physical one: the goods are still at
+  // the customer's until someone records a return (see A6). Restocking here would
+  // invent an inflow nobody counted.
   await logActivity(c.env.DB, {
     userId: user.id,
     action: 'cancelled',
@@ -390,6 +461,206 @@ invoiceRoutes.post('/:id/duplicate', requirePermission('invoices.write'), async 
   return c.json({ id, number }, 201);
 });
 
+/**
+ * Customer returns (A6). The credit note reverses the money; this moves the
+ * goods. What may come back is what actually left stock for this invoice, minus
+ * what already came back — a service or an untracked line never left, so it can
+ * never return.
+ */
+async function invoiceReturnLedger(database: D1Database, reference: string) {
+  const soldRows = await database
+    .prepare(
+      `SELECT product_id, SUM(quantity_milli) AS quantity_milli FROM stock_movements
+       WHERE reference = ? AND reason = 'invoice' GROUP BY product_id`,
+    )
+    .bind(reference)
+    .all<StockQuantityRow>();
+  const returnedRows = await database
+    .prepare(
+      `SELECT product_id, SUM(quantity_milli) AS quantity_milli FROM stock_movements
+       WHERE reference = ? AND reason = 'customer_return' GROUP BY product_id`,
+    )
+    .bind(reference)
+    .all<StockQuantityRow>();
+
+  const sold = sumByProduct(soldRows.results ?? []);
+  const returned = sumByProduct(returnedRows.results ?? []);
+  const lines = returnableQuantities(sold, returned);
+  if (!lines.length) return { lines: [], names: new Map<string, string>(), remaining: new Map<string, number>() };
+
+  const ids = lines.map((line) => line.product_id);
+  const names = new Map<string, string>();
+  const products = await database
+    .prepare(`SELECT id, name FROM products WHERE id IN (${ids.map(() => '?').join(',')})`)
+    .bind(...ids)
+    .all<{ id: string; name: string }>();
+  for (const product of products.results ?? []) names.set(product.id, product.name);
+
+  return {
+    lines,
+    names,
+    remaining: new Map(lines.map((line) => [line.product_id, line.remaining_milli])),
+  };
+}
+
+invoiceRoutes.get('/:id/returns', requirePermission('invoices.read'), async (c) => {
+  const invoice = await c.env.DB.prepare(
+    `SELECT id, number, status FROM invoices WHERE id = ? AND deleted_at IS NULL`,
+  )
+    .bind(c.req.param('id'))
+    .first<{ id: string; number: string; status: string }>();
+  if (!invoice) return fail(404, 'NOT_FOUND');
+
+  const ledger = await invoiceReturnLedger(c.env.DB, invoice.number);
+  return c.json({
+    status: invoice.status,
+    data: ledger.lines.map((line) => ({
+      product_id: line.product_id,
+      name: ledger.names.get(line.product_id) ?? null,
+      sold: line.sold_milli / 1000,
+      returned: line.returned_milli / 1000,
+      remaining: line.remaining_milli / 1000,
+    })),
+  });
+});
+
+invoiceRoutes.post('/:id/returns', requirePermission('invoices.write'), async (c) => {
+  const user = c.get('user')!;
+  const id = c.req.param('id');
+  const body = parseInput(
+    z.object({
+      lines: z.array(z.object({
+        product_id: z.string().min(8).max(60),
+        quantity: z.coerce.number().min(0).max(1_000_000),
+      })).min(1).max(100),
+      reason: z.string().trim().max(300).nullish(),
+    }),
+    await c.req.json().catch(() => ({})),
+  );
+
+  const invoice = await c.env.DB.prepare(
+    `SELECT id, number, status FROM invoices WHERE id = ? AND deleted_at IS NULL`,
+  )
+    .bind(id)
+    .first<{ id: string; number: string; status: string }>();
+  if (!invoice) return fail(404, 'NOT_FOUND');
+  // A draft never took anything out of stock: there is nothing to give back.
+  if (!['sent', 'partial', 'paid'].includes(invoice.status)) return fail(409, 'INVALID_TRANSITION');
+
+  const ledger = await invoiceReturnLedger(c.env.DB, invoice.number);
+  const requested = body.lines.map((line) => ({
+    product_id: line.product_id,
+    quantity_milli: Math.round(Number(line.quantity) * 1000),
+  }));
+  const validation = validateReturn(requested, ledger.remaining);
+  if (!validation.ok) {
+    return fail(409, 'RETURN_EXCEEDS_SOLD', {
+      lines: validation.refusals
+        .map((refusal) => {
+          const name = ledger.names.get(refusal.product_id) ?? refusal.product_id;
+          return `${name}: ${refusal.requested_milli / 1000} > ${refusal.remaining_milli / 1000}`;
+        })
+        .join(' | '),
+    });
+  }
+
+  const ids = [...new Set(requested.map((line) => line.product_id))];
+  const products = await c.env.DB
+    .prepare(
+      `SELECT id, name, cost, lot_tracking, warehouse_location FROM products
+       WHERE id IN (${ids.map(() => '?').join(',')})`,
+    )
+    .bind(...ids)
+    .all<{ id: string; name: string; cost: number; lot_tracking: string | null; warehouse_location: string | null }>();
+  const byId = new Map((products.results ?? []).map((product) => [product.id, product]));
+
+  // B2: goods come back to the batch they left from. The invoice ledger already
+  // says which lot was picked, so the return asks it instead of guessing — and
+  // refuses when several batches were shipped on the same line, because picking
+  // one of them would be an invention.
+  const saleLots = await c.env.DB
+    .prepare(
+      `SELECT product_id, lot FROM stock_movements
+       WHERE reference = ? AND reason = 'invoice' AND lot IS NOT NULL`,
+    )
+    .bind(invoice.number)
+    .all<{ product_id: string; lot: string }>();
+
+  const now = nowISO();
+  const statements: D1PreparedStatement[] = [];
+  const returned: { product_id: string; quantity: number }[] = [];
+  for (const line of requested) {
+    if (line.quantity_milli <= 0) continue;
+    const product = byId.get(line.product_id);
+    let lotCode: string | null = null;
+    if (lotTrackingMode(product?.lot_tracking) !== 'none') {
+      const shipped = [...new Set(
+        (saleLots.results ?? [])
+          .filter((row) => row.product_id === line.product_id)
+          .map((row) => row.lot),
+      )];
+      if (shipped.length !== 1) {
+        return fail(422, 'VALIDATION_ERROR', { lot: shipped.length ? 'ambiguous' : 'required' });
+      }
+      [lotCode] = shipped;
+    }
+
+    statements.push(
+      c.env.DB.prepare(`UPDATE products SET quantity_milli = quantity_milli + ?, updated_at = ? WHERE id = ?`)
+        .bind(line.quantity_milli, now, line.product_id),
+    );
+    if (lotCode) {
+      statements.push(
+        c.env.DB.prepare(
+          `INSERT INTO stock_lots (id, product_id, lot_code, expiry_date, location, quantity_milli, created_at, updated_at)
+           VALUES (?, ?, ?, NULL, ?, ?, ?, ?)
+           ON CONFLICT(product_id, lot_code) DO UPDATE SET
+             quantity_milli = stock_lots.quantity_milli + excluded.quantity_milli,
+             updated_at = excluded.updated_at`,
+        ).bind(
+          crypto.randomUUID(), line.product_id, lotCode,
+          product?.warehouse_location ?? null, line.quantity_milli, now, now,
+        ),
+        c.env.DB.prepare(
+          `INSERT INTO stock_movements
+             (id, product_id, kind, quantity_milli, reason, reference, unit_cost, location, lot, user_id, created_at)
+           VALUES (?, ?, 'in', ?, 'customer_return', ?, ?, ?, ?, ?, ?)`,
+        ).bind(
+          crypto.randomUUID(), line.product_id, line.quantity_milli, invoice.number,
+          Number(product?.cost ?? 0), product?.warehouse_location ?? null, lotCode, user.id, now,
+        ),
+      );
+    } else {
+      statements.push(
+        c.env.DB.prepare(
+          `INSERT INTO stock_movements
+             (id, product_id, kind, quantity_milli, reason, reference, unit_cost, location, user_id, created_at)
+           VALUES (?, ?, 'in', ?, 'customer_return', ?, ?, ?, ?, ?)`,
+        ).bind(
+          crypto.randomUUID(), line.product_id, line.quantity_milli, invoice.number,
+          Number(product?.cost ?? 0), product?.warehouse_location ?? null, user.id, now,
+        ),
+      );
+    }
+    returned.push({ product_id: line.product_id, quantity: line.quantity_milli / 1000 });
+  }
+
+  if (!statements.length) return fail(422, 'VALIDATION_ERROR', { lines: 'empty' });
+  await c.env.DB.batch(statements);
+
+  await logActivity(c.env.DB, {
+    userId: user.id,
+    action: 'returned',
+    entityType: 'invoice',
+    entityId: id,
+    summary: 'activity.customer_return',
+    meta: { number: invoice.number, lines: returned.length, reason: body.reason ?? null },
+    ip: clientIp(c),
+  });
+
+  return c.json({ ok: true, returned });
+});
+
 invoiceRoutes.post('/:id/mark-paid', requirePermission('payments.write'), async (c) => {
   const id = c.req.param('id');
   const user = c.get('user')!;
@@ -400,19 +671,30 @@ invoiceRoutes.post('/:id/mark-paid', requirePermission('payments.write'), async 
   );
 
   const invoice = await c.env.DB.prepare(
-    `SELECT id, client_id, number, status, balance, total, date, created_by
+    `SELECT id, client_id, number, status, balance, total, date, created_by, line_items
      FROM invoices WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(id)
     .first<{
       id: string; client_id: string; number: string; status: string;
       balance: number; total: number; date: string; created_by: string | null;
+      line_items: string | null;
     }>();
   if (!invoice) return fail(404, 'NOT_FOUND');
   if (invoice.balance <= 0) return fail(409, 'INVOICE_ALREADY_PAID');
   if (invoice.status === 'cancelled') return fail(409, 'INVOICE_CANCELLED');
   // T-302: when separation of duties is enabled, the creator cannot collect it.
   await assertSeparation(c.env.DB, invoice.created_by, user.id);
+
+  // Collecting a draft issues it: the goods leave stock here too, never on a
+  // path that skips the warehouse.
+  if (invoice.status === 'draft') {
+    await consumeInvoiceStock(c.env.DB, {
+      reference: invoice.number,
+      lines: safeLines(invoice.line_items),
+      userId: user.id,
+    });
+  }
 
   const today = todayIn(company.timezone);
   // The payment is dated today: only the payment's own period must be open.

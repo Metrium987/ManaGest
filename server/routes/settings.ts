@@ -8,11 +8,32 @@ import { fail } from '../lib/errors';
 import { validatePassword } from '../lib/passwords';
 import { todayIn } from '../lib/dates';
 import { EXTRA_DEFAULTS, EXTRA_KEYS, isExtraKey, isValidExtraValue, type ExtraKey } from '../lib/settings-extra';
-import { optionalText, paginationSchema, parseInput } from '../lib/validation';
+import {
+  ACCOUNT_ROLES,
+  ACCOUNT_SETTING_KEYS,
+  DEFAULT_ACCOUNT_CODES,
+  duplicateAccountCode,
+  type AccountCodes,
+} from '../../shared/accounts';
+import { optionalIsoDate, optionalText, paginationSchema, parseInput } from '../lib/validation';
+import {
+  CLIENT_PAYMENT_METHODS,
+  CLIENT_PAYMENT_TERMS,
+  CLIENT_PAYMENT_TERM_DAYS,
+  CLIENT_VAT_REGIMES,
+  ENTITY_CATEGORIES,
+  LEGAL_FORMS,
+  legacyVatRegimeFor,
+  mailingAddressLine,
+  mailingCity,
+  vatRegimeDetailFromLegacy,
+} from '../../shared/client-profile';
 import { clientIp, requireAuth, requirePermission } from '../middleware';
 import { rebuildAllInvoiceTaxLines } from '../services/documents';
 import { encryptMailSecret, ensureMailConfig, publicMailConfig, readMailConfig, validateSmtpHost } from '../services/email';
 import type { AppEnv, UserRow } from '../types';
+// Same mention the setup wizard writes on a franchise workspace.
+import { FRANCHISE_LEGAL_NOTE } from '../../shared/company-defaults';
 
 const companySchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -30,7 +51,29 @@ const companySchema = z.object({
   tax_id: optionalText(20),
   rcs: optionalText(40),
   share_capital: optionalText(40),
-  vat_regime: z.enum(['standard', 'franchise']),
+  vat_regime: z.enum(['standard', 'franchise']).optional(),
+  vat_regime_detail: z.enum(CLIENT_VAT_REGIMES).nullish().transform((value) => value ?? null),
+  entity_category: z.enum(ENTITY_CATEGORIES).optional(),
+  legal_form: z.enum(LEGAL_FORMS).nullish().transform((value) => value ?? null),
+  numero_tps: optionalText(40),
+  contact_role: optionalText(80),
+  po_box_number: optionalText(40),
+  po_box_municipality: optionalText(80),
+  island: optionalText(80),
+  physical_municipality: optionalText(80),
+  district: optionalText(80),
+  pk_landmark: optionalText(80),
+  street_building_zone: optionalText(160),
+  delivery_instructions: optionalText(500),
+  payment_method: z.enum(CLIENT_PAYMENT_METHODS).nullish().transform((value) => value ?? null),
+  payment_terms_code: z.enum(CLIENT_PAYMENT_TERMS).nullish().transform((value) => value ?? null),
+  tax_exemption_decree_num: optionalText(60),
+  tax_exemption_expiry: optionalIsoDate,
+  // Accepts the stored 0/1 as well as a boolean, so an API client that echoes
+  // the row back never trips the validation.
+  data_consent_accepted: z
+    .union([z.boolean(), z.number().int().min(0).max(1).transform((value) => value === 1)])
+    .optional(),
   default_tax_rate: z.coerce.number().int().min(0).max(100),
   payment_terms: z.coerce.number().int().min(0).max(365),
   number_pattern: z.string().trim().min(3).max(40),
@@ -49,6 +92,10 @@ const companySchema = z.object({
 const COMPANY_DIFF_KEYS = [
   'name', 'legal_name', 'email', 'phone', 'address1', 'address2', 'city', 'postal_code',
   'country', 'timezone', 'currency', 'locale', 'tax_id', 'rcs', 'share_capital', 'vat_regime',
+  'vat_regime_detail', 'entity_category', 'legal_form', 'numero_tps', 'contact_role',
+  'po_box_number', 'po_box_municipality', 'island', 'physical_municipality', 'district',
+  'pk_landmark', 'street_building_zone', 'delivery_instructions', 'payment_method',
+  'payment_terms_code', 'tax_exemption_decree_num', 'tax_exemption_expiry', 'data_consent_accepted',
   'default_tax_rate', 'payment_terms', 'number_pattern', 'invoice_terms', 'invoice_footer',
   'legal_notes', 'bank_name', 'bank_holder', 'bank_iban', 'bank_bic',
   'session_idle_minutes', 'session_absolute_hours',
@@ -223,6 +270,28 @@ settingsRoutes.get('/extras', requirePermission('settings.read'), async (c) => {
   });
 });
 
+/**
+ * The chart codes form one consistent set: two roles sharing a code would post a
+ * sale to the very account it is deferred to. The check runs against the stored
+ * values plus what this request writes, so a batch and a single-key write agree.
+ */
+async function accountCodeConflict(
+  database: D1Database,
+  incoming: Record<string, string>,
+): Promise<string | null> {
+  const rows = await database
+    .prepare(`SELECT key, value FROM settings_extra WHERE key LIKE 'account_%'`)
+    .all<{ key: string; value: string }>();
+  const stored = new Map((rows.results ?? []).map((row) => [row.key, row.value]));
+  const codes: Partial<Record<keyof AccountCodes, string>> = {};
+  for (const role of ACCOUNT_ROLES) {
+    const key = ACCOUNT_SETTING_KEYS[role];
+    codes[role] = (incoming[key] ?? stored.get(key) ?? DEFAULT_ACCOUNT_CODES[role]).trim();
+  }
+  const duplicate = duplicateAccountCode(codes);
+  return duplicate ? ACCOUNT_SETTING_KEYS[duplicate] : null;
+}
+
 /** Batch update of the fiscal defaults, validated and journalled once. */
 settingsRoutes.patch('/extras', requirePermission('settings.write'), async (c) => {
   const user = c.get('user')!;
@@ -243,6 +312,8 @@ settingsRoutes.patch('/extras', requirePermission('settings.write'), async (c) =
     if (!isValidExtraValue(key, text)) return fail(422, 'VALIDATION_ERROR', { [key]: 'invalid' });
     entries.push([key, text]);
   }
+  const conflict = await accountCodeConflict(c.env.DB, Object.fromEntries(entries));
+  if (conflict) return fail(422, 'VALIDATION_ERROR', { [conflict]: 'duplicate' });
   const now = nowISO();
   for (const [key, value] of entries) {
     await c.env.DB.prepare(
@@ -266,6 +337,10 @@ settingsRoutes.put('/extras/:key', requirePermission('settings.write'), async (c
   const body = parseInput(z.object({ value: z.string().trim().min(1).max(80) }), await c.req.json().catch(() => ({})));
   if (!isExtraKey(key)) return fail(422, 'VALIDATION_ERROR', { key: 'unsupported' });
   if (!isValidExtraValue(key, body.value)) return fail(422, 'VALIDATION_ERROR', { value: 'invalid' });
+  if (key.startsWith('account_')) {
+    const conflict = await accountCodeConflict(c.env.DB, { [key]: body.value });
+    if (conflict) return fail(422, 'VALIDATION_ERROR', { [conflict]: 'duplicate' });
+  }
   const user = c.get('user')!;
   await c.env.DB.prepare(
     `INSERT INTO settings_extra (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
@@ -296,21 +371,82 @@ settingsRoutes.patch('/', requirePermission('settings.write'), async (c) => {
   const user = c.get('user')!;
   const body = parseInput(companySchema, await c.req.json().catch(() => ({})));
 
-  await c.env.DB.prepare(
-    `UPDATE company SET name = ?, legal_name = ?, email = ?, phone = ?, address1 = ?, address2 = ?, city = ?,
-      postal_code = ?, country = ?, timezone = ?, currency = ?, locale = ?, tax_id = ?, rcs = ?, share_capital = ?,
-      vat_regime = ?, default_tax_rate = ?, payment_terms = ?, number_pattern = ?, invoice_terms = ?, invoice_footer = ?,
-      legal_notes = ?, bank_name = ?, bank_holder = ?, bank_iban = ?, bank_bic = ?, session_idle_minutes = ?,
-      session_absolute_hours = ?, updated_at = ? WHERE id = ?`,
-  ).bind(
-    body.name, body.legal_name, body.email, body.phone, body.address1, body.address2, body.city, body.postal_code,
-    body.country, body.timezone, body.currency, body.locale, body.tax_id, body.rcs, body.share_capital, body.vat_regime,
-    body.default_tax_rate, body.payment_terms, body.number_pattern, body.invoice_terms, body.invoice_footer,
-    body.legal_notes, body.bank_name, body.bank_holder, body.bank_iban, body.bank_bic, body.session_idle_minutes,
-    body.session_absolute_hours, nowISO(), company.id,
-  ).run();
+  // The detailed regime drives the legacy two-value one, and the payment-term
+  // enum drives the day count the documents use.
+  const vatDetail = body.vat_regime_detail ?? vatRegimeDetailFromLegacy(company.vat_regime);
+  const vatLegacy = body.vat_regime_detail
+    ? legacyVatRegimeFor(body.vat_regime_detail)
+    : (body.vat_regime ?? company.vat_regime);
+  const values = {
+    name: body.name,
+    legal_name: body.legal_name,
+    entity_category: body.entity_category ?? company.entity_category,
+    legal_form: body.legal_form,
+    numero_tps: body.numero_tps,
+    email: body.email,
+    phone: body.phone,
+    contact_role: body.contact_role,
+    po_box_number: body.po_box_number,
+    po_box_municipality: body.po_box_municipality,
+    address1: mailingAddressLine({
+      street_building_zone: body.street_building_zone,
+      po_box_number: body.po_box_number,
+      address1: body.address1,
+    }),
+    address2: body.address2,
+    city: mailingCity({
+      physical_municipality: body.physical_municipality,
+      po_box_municipality: body.po_box_municipality,
+      city: body.city,
+    }),
+    postal_code: body.postal_code,
+    island: body.island,
+    physical_municipality: body.physical_municipality,
+    district: body.district,
+    pk_landmark: body.pk_landmark,
+    street_building_zone: body.street_building_zone,
+    delivery_instructions: body.delivery_instructions,
+    country: body.country,
+    timezone: body.timezone,
+    currency: body.currency,
+    locale: body.locale,
+    tax_id: body.tax_id,
+    rcs: body.rcs,
+    share_capital: body.share_capital,
+    vat_regime: vatLegacy,
+    vat_regime_detail: vatDetail,
+    default_tax_rate: body.default_tax_rate,
+    payment_method: body.payment_method,
+    payment_terms_code: body.payment_terms_code,
+    payment_terms: body.payment_terms_code
+      ? CLIENT_PAYMENT_TERM_DAYS[body.payment_terms_code]
+      : body.payment_terms,
+    number_pattern: body.number_pattern,
+    invoice_terms: body.invoice_terms,
+    invoice_footer: body.invoice_footer,
+    // A franchise or exempt regime must carry its mention on every document:
+    // when the user left the field empty, the standard note is filled in.
+    legal_notes: body.legal_notes
+      ?? (vatLegacy === 'franchise' ? FRANCHISE_LEGAL_NOTE : null),
+    bank_name: body.bank_name,
+    bank_holder: body.bank_holder,
+    bank_iban: body.bank_iban,
+    bank_bic: body.bank_bic,
+    tax_exemption_decree_num: body.tax_exemption_decree_num,
+    tax_exemption_expiry: body.tax_exemption_expiry,
+    data_consent_accepted: body.data_consent_accepted === undefined
+      ? company.data_consent_accepted
+      : (body.data_consent_accepted ? 1 : 0),
+    session_idle_minutes: body.session_idle_minutes,
+    session_absolute_hours: body.session_absolute_hours,
+  } satisfies Record<string, string | number | null>;
+  const columns = Object.keys(values) as (keyof typeof values)[];
 
-  const changes = diffSnapshot(company, body, COMPANY_DIFF_KEYS);
+  await c.env.DB.prepare(
+    `UPDATE company SET ${columns.map((column) => `${column} = ?`).join(', ')}, updated_at = ? WHERE id = ?`,
+  ).bind(...columns.map((column) => values[column]), nowISO(), company.id).run();
+
+  const changes = diffSnapshot(company, values, COMPANY_DIFF_KEYS);
   await logActivity(c.env.DB, {
     userId: user.id, action: 'updated', entityType: 'company', entityId: company.id,
     summary: 'activity.settings_updated',
@@ -461,7 +597,7 @@ userRoutes.use('*', requireAuth);
 
 userRoutes.get('/', requirePermission('users.read'), async (c) => {
   const rows = await c.env.DB.prepare(
-    `SELECT id, email, first_name, last_name, role, is_active, last_login_at, created_at FROM users
+    `SELECT id, email, first_name, last_name, role, role_key, is_active, last_login_at, created_at FROM users
      WHERE deleted_at IS NULL ORDER BY created_at ASC`,
   ).all();
   return c.json({ data: rows.results ?? [] });
@@ -626,15 +762,42 @@ userRoutes.delete('/:id', requirePermission('users.write'), async (c) => {
 export const activityRoutes = new Hono<AppEnv>();
 activityRoutes.use('*', requireAuth);
 
+const COST_KEYS = /(price|cost|margin|marge|salary|paie)/i;
+
+/**
+ * H2: the journal shows a field diff, but a stored snapshot of a sheet carries
+ * purchase prices and margins. An account without `products.cost.read` must not
+ * read them here only because it may read the journal, so the values are
+ * replaced by a placeholder instead of being hidden — the change itself stays
+ * auditable.
+ */
+function redactCosts(json: unknown): unknown {
+  if (typeof json !== 'string' || !json) return json;
+  try {
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+    const redacted: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(parsed)) {
+      redacted[key] = COST_KEYS.test(key) ? '•••' : value;
+    }
+    return JSON.stringify(redacted);
+  } catch {
+    return json;
+  }
+}
+
 activityRoutes.get('/', requirePermission('activity.read'), async (c) => {
   const { page, per_page } = parseInput(z.object(paginationSchema), c.req.query());
   const count = await c.env.DB.prepare(`SELECT COUNT(*) AS count FROM activities`).first<{ count: number }>();
   const rows = await c.env.DB.prepare(
     `SELECT a.*, u.first_name, u.last_name FROM activities a LEFT JOIN users u ON u.id = a.user_id
      ORDER BY a.created_at DESC LIMIT ? OFFSET ?`,
-  ).bind(per_page, offsetOf(page, per_page)).all();
+  ).bind(per_page, offsetOf(page, per_page)).all<Record<string, unknown>>();
   const total = count?.count ?? 0;
-  return c.json({ data: rows.results ?? [], meta: { page, per_page, total, total_pages: Math.max(1, Math.ceil(total / per_page)) } });
+  const canReadCosts = c.get('user')!.permissions.includes('products.cost.read');
+  const data = (rows.results ?? []).map((row) => canReadCosts
+    ? row
+    : { ...row, before_json: redactCosts(row.before_json), after_json: redactCosts(row.after_json) });
+  return c.json({ data, meta: { page, per_page, total, total_pages: Math.max(1, Math.ceil(total / per_page)) } });
 });
 
 /** Recomputes the hash chain so tampering with the journal is detectable. */

@@ -1,3 +1,5 @@
+import { DEFAULT_LOCALE } from '../../shared/domain';
+
 export {
   currencyDecimals,
   fromMinor,
@@ -6,11 +8,11 @@ export {
   formatMoney,
 } from '../../shared/money';
 
-export function formatNumber(value: number, locale = 'fr-FR'): string {
+export function formatNumber(value: number, locale = DEFAULT_LOCALE): string {
   return new Intl.NumberFormat(locale).format(value);
 }
 
-export function formatPercent(value: number, locale = 'fr-FR'): string {
+export function formatPercent(value: number, locale = DEFAULT_LOCALE): string {
   return new Intl.NumberFormat(locale, {
     style: 'percent',
     maximumFractionDigits: 2,

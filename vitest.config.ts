@@ -5,6 +5,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // The UI modules import the shared vocabulary through this alias (see
+      // tsconfig/vite); the tests must resolve it the same way.
+      '@shared': fileURLToPath(new URL('./shared', import.meta.url)),
     },
   },
   test: {

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import { t } from '@/lib/i18n';
+import { formatLocale } from '@/lib/format';
+import { currencyDecimals } from '@shared/money';
 
 /**
  * T-103: the page a client opens from a public link. It is deliberately outside
@@ -58,7 +60,10 @@ interface SharedPayload {
 }
 
 function money(value: number, currency: string): string {
-  return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(value)} ${currency}`;
+  return `${new Intl.NumberFormat(formatLocale(), {
+    minimumFractionDigits: currencyDecimals(currency),
+    maximumFractionDigits: currencyDecimals(currency),
+  }).format(value)} ${currency}`;
 }
 
 export function PublicDocumentPage() {

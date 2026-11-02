@@ -6,7 +6,7 @@ import { fail } from '../lib/errors';
 import { parseInput } from '../lib/validation';
 import { requireAuth, requirePermission } from '../middleware';
 import { PERMISSIONS, ROLE_PERMISSIONS, type Permission, type Role } from '../../shared/domain';
-import { isSystemRole } from '../services/roles';
+import { isSystemRole, restrictToActor } from '../services/roles';
 import type { AppEnv } from '../types';
 
 /**
@@ -118,6 +118,81 @@ roleRoutes.delete('/:key', requirePermission('users.write'), async (c) => {
     userId: actor.id, action: 'deleted', entityType: 'role', entityId: key,
     summary: 'activity.role_deleted',
   });
+  return c.body(null, 204);
+});
+
+/**
+ * Per-user permissions. The account keeps its fixed role as the reference, and a
+ * custom role of its own carries the tailored list; both are written in one call
+ * so an account is never half-configured. Editing twice updates the same row.
+ */
+roleRoutes.put('/user/:userId/permissions', requirePermission('users.write'), async (c) => {
+  const actor = c.get('user')!;
+  const userId = c.req.param('userId');
+  const body = parseInput(
+    z.object({ permissions: z.array(z.string().min(1).max(60)).max(200).default([]) }),
+    await c.req.json().catch(() => ({})),
+  );
+
+  const target = await c.env.DB.prepare(
+    `SELECT id, first_name, last_name, role, role_key FROM users WHERE id = ? AND deleted_at IS NULL`,
+  )
+    .bind(userId)
+    .first<{ id: string; first_name: string; last_name: string; role: Role; role_key: string | null }>();
+  if (!target) return fail(404, 'NOT_FOUND');
+  // Only an owner may touch an owner, exactly like the user-management routes.
+  if (target.role === 'owner' && actor.role !== 'owner') return fail(403, 'FORBIDDEN');
+
+  const permissions = validatePermissions(body.permissions);
+  const allowed = restrictToActor(actor.permissions, permissions);
+  if (!allowed) return fail(403, 'FORBIDDEN');
+  if (!allowed.length) return fail(422, 'VALIDATION_ERROR', { permissions: 'empty' });
+
+  const key = `custom_${target.id.replace(/-/g, '').slice(0, 12)}`;
+  const name = `${target.first_name} ${target.last_name}`.trim().slice(0, 52) + ' (sur mesure)';
+  const now = nowISO();
+
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO roles (key, name, permissions, is_system, created_at, updated_at)
+       VALUES (?, ?, ?, 0, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET name = excluded.name, permissions = excluded.permissions, updated_at = excluded.updated_at`,
+    ).bind(key, name, JSON.stringify(allowed), now, now),
+    c.env.DB.prepare(`UPDATE users SET role_key = ?, updated_at = ? WHERE id = ?`).bind(key, now, userId),
+  ]);
+
+  await logActivity(c.env.DB, {
+    userId: actor.id, action: 'updated', entityType: 'user', entityId: userId,
+    summary: 'activity.role_assigned',
+    meta: { role: name, previous: target.role_key ?? target.role, permissions: allowed.length },
+  });
+
+  return c.json({ role_key: key, permissions: allowed });
+});
+
+/** Drops the tailored list and gives the account its fixed role back. */
+roleRoutes.delete('/user/:userId/permissions', requirePermission('users.write'), async (c) => {
+  const actor = c.get('user')!;
+  const userId = c.req.param('userId');
+  const target = await c.env.DB.prepare(
+    `SELECT id, role, role_key FROM users WHERE id = ? AND deleted_at IS NULL`,
+  )
+    .bind(userId)
+    .first<{ id: string; role: Role; role_key: string | null }>();
+  if (!target) return fail(404, 'NOT_FOUND');
+  if (target.role === 'owner' && actor.role !== 'owner') return fail(403, 'FORBIDDEN');
+
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE users SET role_key = NULL, updated_at = ? WHERE id = ?`).bind(nowISO(), userId),
+    c.env.DB.prepare(`DELETE FROM roles WHERE key = ? AND is_system = 0`).bind(target.role_key ?? ''),
+  ]);
+
+  await logActivity(c.env.DB, {
+    userId: actor.id, action: 'updated', entityType: 'user', entityId: userId,
+    summary: 'activity.role_assigned',
+    meta: { role: target.role, previous: target.role_key ?? target.role },
+  });
+
   return c.body(null, 204);
 });
 

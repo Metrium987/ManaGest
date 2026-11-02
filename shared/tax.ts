@@ -11,6 +11,8 @@ export interface LineItem {
   tax_rate: number;
   /** Local TVA status per line: exempt lines show no 0-rate bucket (BK-001/PF-TVA-002). */
   tax_status?: LineTaxStatus;
+  /** Q11: the profit centre as it was on the day the document was issued. */
+  profit_center?: string | null;
 }
 
 export interface DiscountInput {

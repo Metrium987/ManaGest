@@ -7,6 +7,7 @@ import { errorMessage } from '@/lib/errors';
 import { t } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { addDaysISO, todayISO } from '@/lib/format';
+import { DEFAULT_TAX_RATE } from '@shared/domain';
 import type { Client, LineItem, ListResponse, Product, Quote } from '@/lib/types';
 import { PageHeader, SectionCard, Skeleton } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
@@ -14,6 +15,12 @@ import { Field, FormGrid, Input, Select, Textarea } from '@/components/ui/Form';
 import { LineItemsEditor, emptyLine } from '@/components/domain/LineItemsEditor';
 import { TotalsPanel } from '@/components/domain/TotalsPanel';
 import { useToast } from '@/components/ui/Toast';
+
+interface ProjectTemplateOption {
+  id: string;
+  name: string;
+  current_version: number | null;
+}
 
 function QuoteEditor({ quote }: { quote?: Quote }) {
   const navigate = useNavigate();
@@ -23,7 +30,12 @@ function QuoteEditor({ quote }: { quote?: Quote }) {
   const [clientId, setClientId] = useState(quote?.client_id ?? '');
   const [date, setDate] = useState(quote?.date ?? todayISO());
   const [validUntil, setValidUntil] = useState(quote?.valid_until ?? addDaysISO(todayISO(), 30));
-  const [lines, setLines] = useState<LineItem[]>(quote?.line_items ?? [emptyLine(company?.default_tax_rate ?? 16)]);
+  // Q10: the template this quote is priced from. Its version is frozen at save time,
+  // and accepting the quote opens the project from that very version.
+  const [templateId, setTemplateId] = useState(
+    (quote as { project_template_id?: string | null } | undefined)?.project_template_id ?? '',
+  );
+  const [lines, setLines] = useState<LineItem[]>(quote?.line_items ?? [emptyLine(company?.default_tax_rate ?? DEFAULT_TAX_RATE)]);
   const [discountType, setDiscountType] = useState<'percent' | 'amount'>(quote?.discount_type ?? 'percent');
   const [discountValue, setDiscountValue] = useState(quote?.discount_value ?? 0);
   const [notes, setNotes] = useState(quote?.notes ?? '');
@@ -38,6 +50,10 @@ function QuoteEditor({ quote }: { quote?: Quote }) {
     queryKey: ['products', 'options'],
     queryFn: () => api.get<ListResponse<Product>>('/products?per_page=100'),
   });
+  const templates = useQuery({
+    queryKey: ['project-templates'],
+    queryFn: () => api.get<ListResponse<ProjectTemplateOption>>('/project-templates'),
+  });
   const client = clients.data?.data.find((item) => item.id === clientId);
 
   const save = useMutation({
@@ -46,6 +62,7 @@ function QuoteEditor({ quote }: { quote?: Quote }) {
         client_id: clientId,
         date,
         valid_until: validUntil,
+        project_template_id: templateId || null,
         line_items: lines,
         discount_type: discountType,
         discount_value: discountValue,
@@ -87,7 +104,7 @@ function QuoteEditor({ quote }: { quote?: Quote }) {
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
         <div className="space-y-4">
           <SectionCard title={t('invoices.lines')} bodyClassName="p-5 sm:p-6">
-            <LineItemsEditor lines={lines} onChange={setLines} products={products.data?.data ?? []} currency={currency} />
+            <LineItemsEditor lines={lines} onChange={setLines} products={products.data?.data ?? []} currency={currency} tier={client?.price_tier} />
             {errors.lines ? <p className="field-error">{errors.lines}</p> : null}
           </SectionCard>
           <SectionCard title={t('common.notes')} bodyClassName="grid gap-4 p-5 sm:grid-cols-2">
@@ -113,6 +130,16 @@ function QuoteEditor({ quote }: { quote?: Quote }) {
               </Field>
               <Field label={t('quotes.validUntil')} htmlFor="valid_until">
                 <Input id="valid_until" type="date" value={validUntil} onChange={(event) => setValidUntil(event.target.value)} />
+              </Field>
+              <Field label={t('quotes.projectTemplate')} htmlFor="project_template" hint={t('quotes.projectTemplateHint')}>
+                <Select id="project_template" value={templateId} onChange={(event) => setTemplateId(event.target.value)}>
+                  <option value="">{t('common.none')}</option>
+                  {(templates.data?.data ?? []).map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name} (v{template.current_version ?? 1})
+                    </option>
+                  ))}
+                </Select>
               </Field>
             </FormGrid>
           </SectionCard>

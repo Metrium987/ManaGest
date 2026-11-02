@@ -7,6 +7,9 @@ import { fail } from '../lib/errors';
 import { nextNumber } from '../lib/numbering';
 import { isExpiredQuote } from '../services/status';
 import { computeTotals } from '../lib/tax';
+import { enrichLines } from '../lib/catalogue';
+import { applyClientPricingForClient } from '../lib/client-pricing';
+import { applyExpertiseForLines } from '../lib/expertise';
 import { assertPeriodOpen } from '../lib/locks';
 import { lineItemsSchema, offsetOf, optionalIsoDate, paginationSchema, parseInput } from '../lib/validation';
 import { requireAuth, requirePermission } from '../middleware';
@@ -14,6 +17,7 @@ import { safeLines, serialiseLines, syncInvoiceFromRow } from '../services/docum
 import { buildDocumentPdf } from '../services/pdf-documents';
 import { resolveLayout } from '../services/pdf-style';
 import { getExtra } from '../lib/settings-extra';
+import { createProjectFromTemplate, templateVersionExists } from '../lib/project-templates';
 import type { AppEnv } from '../types';
 
 const quoteSchema = z.object({
@@ -25,6 +29,10 @@ const quoteSchema = z.object({
   discount_value: z.coerce.number().int().min(0).default(0),
   notes: z.string().max(4000).nullish(),
   terms: z.string().max(2000).nullish(),
+  // Q10: the project template this quote was priced from. Accepting the quote opens
+  // its project, from the very version that was quoted — not the current one.
+  project_template_id: z.string().max(60).nullish(),
+  project_template_version: z.coerce.number().int().min(1).nullish(),
 });
 
 export const quoteRoutes = new Hono<AppEnv>();
@@ -130,6 +138,11 @@ quoteRoutes.post('/', requirePermission('quotes.write'), async (c) => {
   const company = c.get('company')!;
   const user = c.get('user')!;
   const body = parseInput(quoteSchema, await c.req.json().catch(() => ({})));
+  // Freeze the catalogue identity on the lines before any total is computed.
+  body.line_items = await enrichLines(c.env.DB, body.line_items);
+  // D1: the client grid only fills lines nobody priced yet.
+  body.line_items = await applyExpertiseForLines(c.env.DB, body.line_items);
+  body.line_items = await applyClientPricingForClient(c.env.DB, body.client_id, body.line_items);
 
   const client = await c.env.DB.prepare(
     `SELECT id, is_tax_exempt, currency FROM clients WHERE id = ? AND deleted_at IS NULL`,
@@ -137,6 +150,13 @@ quoteRoutes.post('/', requirePermission('quotes.write'), async (c) => {
     .bind(body.client_id)
     .first<{ id: string; is_tax_exempt: number; currency: string }>();
   if (!client) return fail(422, 'VALIDATION_ERROR', { client_id: 'not_found' });
+
+  // A quote may name the template it was priced from; pointing at nothing is refused.
+  if (body.project_template_id) {
+    const version = await templateVersionExists(c.env.DB, body.project_template_id, body.project_template_version ?? null);
+    if (!version) return fail(422, 'VALIDATION_ERROR', { project_template_id: 'not_found' });
+    body.project_template_version = version;
+  }
 
   const totals = computeTotals(
     body.line_items,
@@ -148,13 +168,15 @@ quoteRoutes.post('/', requirePermission('quotes.write'), async (c) => {
 
   await c.env.DB.prepare(
     `INSERT INTO quotes (id, client_id, number, status, date, valid_until, currency, subtotal, discount_type, discount_value,
-      discount_total, tax_total, total, tax_exempt, line_items, notes, terms, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      discount_total, tax_total, total, tax_exempt, line_items, notes, terms,
+      project_template_id, project_template_version, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       id, body.client_id, number, body.date, body.valid_until ?? addDays(body.date, 30), client.currency || company.currency,
       totals.subtotal, body.discount_type, body.discount_value, totals.discount_total, totals.tax_total, totals.total,
       client.is_tax_exempt, serialiseLines(body.line_items), body.notes ?? null, body.terms || company.invoice_terms,
+      body.project_template_id ?? null, body.project_template_version ?? null,
       user.id, nowISO(), nowISO(),
     )
     .run();
@@ -174,6 +196,10 @@ quoteRoutes.post('/', requirePermission('quotes.write'), async (c) => {
 quoteRoutes.patch('/:id', requirePermission('quotes.write'), async (c) => {
   const id = c.req.param('id');
   const body = parseInput(quoteSchema, await c.req.json().catch(() => ({})));
+  body.line_items = await enrichLines(c.env.DB, body.line_items);
+  // D1: the client grid only fills lines nobody priced yet.
+  body.line_items = await applyExpertiseForLines(c.env.DB, body.line_items);
+  body.line_items = await applyClientPricingForClient(c.env.DB, body.client_id, body.line_items);
   const existing = await c.env.DB.prepare(
     `SELECT q.status, c.is_tax_exempt, q.currency FROM quotes q JOIN clients c ON c.id = q.client_id
      WHERE q.id = ? AND q.deleted_at IS NULL`,
@@ -182,6 +208,11 @@ quoteRoutes.patch('/:id', requirePermission('quotes.write'), async (c) => {
     .first<{ status: string; is_tax_exempt: number; currency: string }>();
   if (!existing) return fail(404, 'NOT_FOUND');
   if (['converted', 'rejected'].includes(existing.status)) return fail(409, 'QUOTE_LOCKED');
+  if (body.project_template_id) {
+    const version = await templateVersionExists(c.env.DB, body.project_template_id, body.project_template_version ?? null);
+    if (!version) return fail(422, 'VALIDATION_ERROR', { project_template_id: 'not_found' });
+    body.project_template_version = version;
+  }
 
   const totals = computeTotals(
     body.line_items,
@@ -191,12 +222,14 @@ quoteRoutes.patch('/:id', requirePermission('quotes.write'), async (c) => {
 
   await c.env.DB.prepare(
     `UPDATE quotes SET client_id = ?, date = ?, valid_until = ?, subtotal = ?, discount_type = ?, discount_value = ?,
-      discount_total = ?, tax_total = ?, total = ?, line_items = ?, notes = ?, terms = ?, updated_at = ? WHERE id = ?`,
+      discount_total = ?, tax_total = ?, total = ?, line_items = ?, notes = ?, terms = ?,
+      project_template_id = ?, project_template_version = ?, updated_at = ? WHERE id = ?`,
   )
     .bind(
       body.client_id, body.date, body.valid_until, totals.subtotal, body.discount_type, body.discount_value,
       totals.discount_total, totals.tax_total, totals.total, serialiseLines(body.line_items),
-      body.notes ?? null, body.terms, nowISO(), id,
+      body.notes ?? null, body.terms,
+      body.project_template_id ?? null, body.project_template_version ?? null, nowISO(), id,
     )
     .run();
   return c.json({ ok: true });
@@ -226,16 +259,49 @@ quoteRoutes.post('/:id/send', requirePermission('quotes.write'), async (c) => {
 });
 
 quoteRoutes.post('/:id/approve', requirePermission('quotes.write'), async (c) => {
+  const user = c.get('user')!;
   const id = c.req.param('id');
-  const quote = await c.env.DB.prepare(`SELECT id, status FROM quotes WHERE id = ? AND deleted_at IS NULL`)
+  const quote = await c.env.DB.prepare(
+    `SELECT id, number, status, client_id, project_template_id, project_template_version
+       FROM quotes WHERE id = ? AND deleted_at IS NULL`,
+  )
     .bind(id)
-    .first<{ id: string; status: string }>();
+    .first<{
+      id: string; number: string | null; status: string; client_id: string;
+      project_template_id: string | null; project_template_version: number | null;
+    }>();
   if (!quote) return fail(404, 'NOT_FOUND');
   if (quote.status !== 'sent') return fail(409, 'INVALID_TRANSITION');
   await c.env.DB.prepare(`UPDATE quotes SET status = 'approved', updated_at = ? WHERE id = ?`)
     .bind(nowISO(), id)
     .run();
-  return c.json({ ok: true });
+
+  // Q10: acceptance is what opens the project. It is `planned` — sold, not started —
+  // and its tasks are `todo`, each carrying the estimate of the version that was
+  // quoted. Creating it later would let the sale and the planning drift apart.
+  let project = null;
+  if (quote.project_template_id) {
+    project = await createProjectFromTemplate(c.env.DB, {
+      templateId: quote.project_template_id,
+      version: quote.project_template_version ?? null,
+      clientId: quote.client_id,
+      name: quote.number ? `Projet ${quote.number}` : null,
+      quoteId: id,
+      userId: user.id,
+    });
+    if (project) {
+      await logActivity(c.env.DB, {
+        userId: user.id,
+        action: 'created',
+        entityType: 'project',
+        entityId: project.projectId,
+        summary: 'activity.project_created',
+        meta: { quote: quote.number, template_version: project.version, tasks: project.taskCount },
+      });
+    }
+  }
+
+  return c.json({ ok: true, project_id: project?.projectId ?? null });
 });
 
 quoteRoutes.post('/:id/reject', requirePermission('quotes.write'), async (c) => {

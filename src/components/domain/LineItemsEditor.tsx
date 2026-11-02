@@ -1,7 +1,11 @@
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
+import { api } from '@/lib/api';
 import type { LineItem, Product } from '@/lib/types';
 import { fromMinor, toMinor } from '@shared/money';
-import { TVA_RATES } from '@shared/domain';
+import { useTaxRates } from '@/lib/tax-rates';
+import { expertisePrice, linePriceFor } from '@shared/product-erp';
 import { formatMoney } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { Button } from '@/components/ui/Button';
@@ -23,13 +27,26 @@ export function LineItemsEditor({
   products,
   currency,
   disabled,
+  tier,
 }: {
   lines: LineItem[];
   onChange: (lines: LineItem[]) => void;
   products: Product[];
   currency: string;
   disabled?: boolean;
+  /** D1: the price grid of the customer the document is for. */
+  tier?: string | null;
 }) {
+  // The rates come from Paramètres → Taxes, not from a list frozen in the code.
+  const taxRates = useTaxRates();
+  const rateOptions = useMemo(() => {
+    const options = new Map<number, string>();
+    for (const rate of taxRates) options.set(rate.rate, `${rate.rate} %`);
+    // A document keeps its own rate even if the rate was renamed or removed.
+    for (const line of lines) if (!options.has(line.tax_rate)) options.set(line.tax_rate, `${line.tax_rate} %`);
+    return [...options.entries()].sort((a, b) => b[0] - a[0]);
+  }, [taxRates, lines]);
+
   const update = (index: number, patch: Partial<LineItem>) => {
     onChange(lines.map((line, i) => (i === index ? { ...line, ...patch } : line)));
   };
@@ -44,6 +61,13 @@ export function LineItemsEditor({
     onChange(lines.filter((_, i) => i !== index));
   };
 
+  // Q11: the profit centre is a short code copied onto the line, so an issued
+  // document keeps the centre it was sold under even if the list changes.
+  const centres = useQuery({
+    queryKey: ['profit-centers'],
+    queryFn: () => api.get<{ data: { code: string; name: string; archived: boolean }[] }>('/profit-centers'),
+  });
+
   const applyProduct = (index: number, productId: string) => {
     const product = products.find((item) => item.id === productId);
     if (!product) {
@@ -53,7 +77,7 @@ export function LineItemsEditor({
     update(index, {
       product_id: product.id,
       description: product.description || product.name,
-      unit_price: product.unit_price,
+      unit_price: linePriceFor(product, tier, 1),
       tax_rate: product.tax_rate,
     });
   };
@@ -66,6 +90,12 @@ export function LineItemsEditor({
           {t('invoices.addLine')}
         </Button>
       </div>
+
+      <datalist id="profit-center-options">
+        {(centres.data?.data ?? []).filter((centre) => !centre.archived).map((centre) => (
+          <option key={centre.code} value={centre.code}>{centre.name}</option>
+        ))}
+      </datalist>
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[680px] border-separate border-spacing-y-2 text-sm">
@@ -83,6 +113,8 @@ export function LineItemsEditor({
             {lines.map((line, index) => {
               const total = Math.round(line.unit_price * line.quantity);
               const descriptionId = `line-desc-${index}`;
+              const lineProduct = products.find((item) => item.id === line.product_id);
+              const levels = lineProduct?.expertise_levels ?? [];
               return (
                 <tr key={line.id} className="align-top">
                   <td className="rounded-l-xl border border-r-0 border-line bg-white p-2">
@@ -113,6 +145,70 @@ export function LineItemsEditor({
                           </option>
                         ))}
                       </select>
+                      <input
+                        className="w-24 rounded border-0 bg-transparent p-0 text-xs text-muted focus:ring-0"
+                        value={line.profit_center ?? ''}
+                        onChange={(event) => update(index, { profit_center: event.target.value.toUpperCase() || null })}
+                        placeholder={t('invoices.profitCenter')}
+                        aria-label={t('invoices.profitCenter')}
+                        list="profit-center-options"
+                        maxLength={20}
+                        disabled={disabled}
+                      />
+                      {levels.length ? (
+                        <select
+                          className="max-w-[150px] rounded border-0 bg-transparent p-0 text-xs text-muted focus:ring-0"
+                          value={line.expertise_level ?? ''}
+                          onChange={(event) => {
+                            const level = event.target.value;
+                            const price = expertisePrice(levels, level);
+                            update(index, { expertise_level: level || null, ...(price ? { unit_price: price } : {}) });
+                          }}
+                          disabled={disabled}
+                          aria-label={t('invoices.expertiseLevel')}
+                        >
+                          <option value="">{t('invoices.expertiseLevel')}</option>
+                          {levels.map((entry) => (
+                            <option key={entry.level} value={entry.level}>{entry.level}</option>
+                          ))}
+                        </select>
+                      ) : null}
+                      {lineProduct?.links?.substitutes?.length && (lineProduct.quantity ?? 0) <= 0 ? (
+                        <div className="mt-1 px-1.5 text-[11px] text-muted">
+                          {t('invoices.outOfStockSuggest')}{' '}
+                          {lineProduct.links.substitutes.slice(0, 3).map((sub) => (
+                            <button
+                              key={sub.id}
+                              type="button"
+                              className="mr-1 underline hover:text-brand-700"
+                              onClick={() => update(index, {
+                                product_id: sub.id, description: sub.name, unit_price: sub.unit_price, expertise_level: null,
+                              })}
+                              disabled={disabled}
+                            >
+                              {sub.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                      {lineProduct?.links?.accessories?.length ? (
+                        <div className="mt-1 px-1.5 text-[11px] text-muted">
+                          {t('invoices.accessorySuggest')}{' '}
+                          {lineProduct.links.accessories.slice(0, 3).map((acc) => (
+                            <button
+                              key={acc.id}
+                              type="button"
+                              className="mr-1 underline hover:text-brand-700"
+                              onClick={() => onChange([...lines, {
+                                ...emptyLine(line.tax_rate), product_id: acc.id, description: acc.name, unit_price: acc.unit_price,
+                              }])}
+                              disabled={disabled}
+                            >
+                              + {acc.name}
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
                       <span className="text-[11px] text-muted">
                         {formatMoney(line.unit_price, currency)} / {t('common.unitPrice').toLowerCase()}
                       </span>
@@ -128,7 +224,17 @@ export function LineItemsEditor({
                       inputMode="decimal"
                       className="input border-0 px-1 text-right focus:ring-0"
                       value={line.quantity}
-                      onChange={(event) => update(index, { quantity: Number(event.target.value) })}
+                      onChange={(event) => {
+                        const quantity = Number(event.target.value);
+                        // The volume step follows the quantity, but only while the
+                        // line still carries the grid price: a negotiated price wins.
+                        const patch: Partial<LineItem> = { quantity };
+                        const product = products.find((item) => item.id === line.product_id);
+                        if (product && line.unit_price === linePriceFor(product, tier, line.quantity)) {
+                          patch.unit_price = linePriceFor(product, tier, quantity);
+                        }
+                        update(index, patch);
+                      }}
                       disabled={disabled}
                     />
                   </td>
@@ -163,8 +269,8 @@ export function LineItemsEditor({
                       }}
                       disabled={disabled}
                     >
-                      {TVA_RATES.map((rate) => (
-                        <option key={rate.rate} value={rate.rate}>{rate.rate} %</option>
+                      {rateOptions.map(([rate]) => (
+                        <option key={rate} value={rate}>{rate} %</option>
                       ))}
                       <option value="exempt">{t('invoices.taxExempt')}</option>
                     </select>

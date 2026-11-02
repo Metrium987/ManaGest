@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Activity, BarChart3, Briefcase, Building2, Calculator, ChevronDown, ClipboardCheck, CreditCard, FileText, FolderKanban,
+  Activity, BarChart3, Briefcase, Building2, Calculator, CalendarDays, ChevronDown, ClipboardCheck, CreditCard, FileText, FolderKanban,
   Landmark, LayoutDashboard, ListChecks, LogOut, Menu, Package, Plus, Receipt, RefreshCw,
   Search, Settings, ShieldCheck, ShoppingCart, Upload, Users, Wallet, X,
 } from 'lucide-react';
@@ -50,10 +50,12 @@ const NAV: NavSection[] = [
     title: 'nav.operations',
     items: [
       { to: '/produits', label: 'nav.products', icon: Package, permission: 'products.read' },
+      { to: '/inventaire', label: 'nav.counting', icon: ListChecks, permission: 'products.read' },
       { to: '/depenses', label: 'nav.expenses', icon: ShoppingCart, permission: 'expenses.read' },
       { to: '/fournisseurs', label: 'nav.vendors', icon: Building2, permission: 'vendors.read' },
       { to: '/bons-de-commande', label: 'nav.purchaseOrders', icon: Briefcase, permission: 'purchase_orders.read' },
       { to: '/projets', label: 'nav.projects', icon: FolderKanban, permission: 'projects.read' },
+      { to: '/planification', label: 'nav.planning', icon: CalendarDays, permission: 'projects.read' },
       { to: '/taches', label: 'nav.tasks', icon: ListChecks, permission: 'tasks.read' },
     ],
   },

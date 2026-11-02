@@ -10,6 +10,12 @@ export interface Env {
   SMTP_PASSWORD?: string;
   /** Secret the external scheduler presents to POST /api/runs/daily (T-104a). */
   DAILY_RUN_TOKEN?: string;
+  /**
+   * Break-glass secret for POST /api/setup/recover-owner: a workspace whose only
+   * administrator lost access can be given a new owner account once. Absent by
+   * default, so the route is closed unless an operator provisions it.
+   */
+  OWNER_RECOVERY_TOKEN?: string;
 }
 
 export interface CompanyRow {
@@ -30,6 +36,24 @@ export interface CompanyRow {
   rcs: string | null;
   share_capital: string | null;
   vat_regime: string;
+  vat_regime_detail: string | null;
+  entity_category: string;
+  legal_form: string | null;
+  numero_tps: string | null;
+  contact_role: string | null;
+  po_box_number: string | null;
+  po_box_municipality: string | null;
+  island: string | null;
+  physical_municipality: string | null;
+  district: string | null;
+  pk_landmark: string | null;
+  street_building_zone: string | null;
+  delivery_instructions: string | null;
+  payment_method: string | null;
+  payment_terms_code: string | null;
+  tax_exemption_decree_num: string | null;
+  tax_exemption_expiry: string | null;
+  data_consent_accepted: number;
   logo_url: string | null;
   default_tax_rate: number;
   payment_terms: number;

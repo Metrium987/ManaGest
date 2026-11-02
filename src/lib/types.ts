@@ -1,4 +1,14 @@
 import type { Permission, Role } from '@shared/domain';
+import type {
+  ClientAccountStatus,
+  ClientBank,
+  ClientDocumentType,
+  ClientPaymentMethod,
+  ClientPaymentTerms,
+  ClientVatRegime,
+  EntityCategory,
+  LegalForm,
+} from '@shared/client-profile';
 
 export interface Pagination {
   page: number;
@@ -30,6 +40,24 @@ export interface Company {
   rcs: string | null;
   share_capital: string | null;
   vat_regime: 'standard' | 'franchise';
+  vat_regime_detail: ClientVatRegime | null;
+  entity_category: EntityCategory;
+  legal_form: LegalForm | null;
+  numero_tps: string | null;
+  contact_role: string | null;
+  po_box_number: string | null;
+  po_box_municipality: string | null;
+  island: string | null;
+  physical_municipality: string | null;
+  district: string | null;
+  pk_landmark: string | null;
+  street_building_zone: string | null;
+  delivery_instructions: string | null;
+  payment_method: ClientPaymentMethod | null;
+  payment_terms_code: ClientPaymentTerms | null;
+  tax_exemption_decree_num: string | null;
+  tax_exemption_expiry: string | null;
+  data_consent_accepted: number;
   logo_url: string | null;
   default_tax_rate: number;
   payment_terms: number;
@@ -70,19 +98,46 @@ export interface Client {
   id: string;
   number: string | null;
   display_name: string;
+  entity_category: EntityCategory;
+  legal_name: string | null;
+  trade_name: string | null;
+  legal_form: LegalForm | null;
+  numero_rcs: string | null;
+  numero_tps: string | null;
+  vat_regime: ClientVatRegime | null;
+  price_tier: 'public' | 'pro' | 'member';
   first_name: string | null;
   last_name: string | null;
   email: string | null;
   phone: string | null;
+  contact_role: string | null;
+  has_delegation_authority: number;
   address1: string | null;
   address2: string | null;
+  po_box_number: string | null;
+  po_box_municipality: string | null;
   city: string | null;
   postal_code: string | null;
+  island: string | null;
+  physical_municipality: string | null;
+  district: string | null;
+  pk_landmark: string | null;
+  street_building_zone: string | null;
+  delivery_instructions: string | null;
   country: string;
   tax_id: string | null;
   currency: string;
+  payment_method: ClientPaymentMethod | null;
+  payment_terms_code: ClientPaymentTerms | null;
   payment_terms: number;
+  bank_name: ClientBank | null;
+  iban: string | null;
+  credit_limit: number;
   is_tax_exempt: number;
+  tax_exemption_decree_num: string | null;
+  tax_exemption_expiry: string | null;
+  data_consent_accepted: number;
+  account_status: ClientAccountStatus;
   notes: string | null;
   archived: number;
   balance: number;
@@ -91,6 +146,16 @@ export interface Client {
   credit_balance: number;
   created_at: string;
   updated_at: string;
+}
+
+export interface ClientDocument {
+  id: string;
+  doc_type: ClientDocumentType;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  created_at: string;
+  uploaded_by_name?: string | null;
 }
 
 export interface Contact {
@@ -108,6 +173,9 @@ export interface ClientDetail extends Client {
   invoices: InvoiceSummary[];
   quotes: QuoteSummary[];
   payments: PaymentSummary[];
+  documents: ClientDocument[];
+  required_documents: ClientDocumentType[];
+  missing_documents: ClientDocumentType[];
 }
 
 export interface LineItem {
@@ -118,6 +186,10 @@ export interface LineItem {
   unit_price: number;
   tax_rate: number;
   tax_status?: 'taxable' | 'exempt';
+  /** D2: the service level billed on this line. */
+  expertise_level?: string | null;
+  /** Q11: the profit centre as it was on the day the document was issued. */
+  profit_center?: string | null;
 }
 
 export interface TaxBucket {
@@ -152,6 +224,10 @@ export interface Invoice extends InvoiceSummary {
   tax_total: number;
   tax_exempt: number;
   po_number: string | null;
+  /** Q4: the proof of a 1 % archipelago sale, stored on the document. */
+  archipelago: string | null;
+  transport_reference: string | null;
+  shipped_by_seller: number | boolean;
   notes: string | null;
   terms: string | null;
   footer: string | null;
@@ -240,17 +316,151 @@ export interface PaymentSummary {
   invoice_count?: number;
 }
 
+export interface StockMovement {
+  id: string;
+  product_id: string;
+  kind: 'in' | 'out' | 'adjust' | 'transfer';
+  quantity_milli: number;
+  quantity: number;
+  reason: string | null;
+  reference: string | null;
+  /** null when the profile may not see buying costs. */
+  unit_cost: number | null;
+  location: string | null;
+  lot: string | null;
+  user_name?: string | null;
+  created_at: string;
+}
+
+/** The ERP item sheet. Costs and margin are null when `cost_masked` is true. */
 export interface Product {
   id: string;
   product_key: string | null;
   name: string;
   description: string | null;
   unit_price: number;
-  cost: number;
+  cost: number | null;
+  purchase_price: number | null;
+  landed_cost: number | null;
+  margin_rate: number | null;
+  cost_masked: boolean;
+  stock_value: number | null;
   quantity_milli: number;
+  quantity: number;
   track_quantity: number;
+  allow_negative_stock: number;
+  lot_tracking: string;
   tax_rate: number;
+  item_type: string;
+  family: string | null;
+  subfamily: string | null;
+  lifecycle_status: string;
+  buyer: string | null;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  supplier_ref: string | null;
+  purchase_currency: string;
+  lead_time_days: number;
+  stock_mode: string;
+  weight_gross_g: number;
+  weight_net_g: number;
+  volume_cm3: number;
+  warehouse_location: string | null;
+  customs_code: string | null;
+  valuation_method: string;
+  purchase_account: string | null;
+  sales_account: string | null;
+  stock_account: string | null;
+  analytic_axis: string | null;
+  price_pro: number;
+  price_member: number;
+  /** D3: what replaces the article when empty, and what goes with it. */
+  links?: { substitutes: LinkedProductRef[]; accessories: LinkedProductRef[] };
+  margin_target: number;
+  volume_discounts: { min_quantity: number; percent: number }[];
+  bom_mode: string;
+  bom: { product_id: string; quantity: number }[];
+  substitutes: string[];
+  accessories: string[];
+  moq: number;
+  order_multiple: number;
+  reorder_point: number;
+  safety_stock: number;
+  max_stock: number;
+  replenish_mode: string;
+  stock_alert: 'out' | 'low' | 'ok' | 'none';
+  suggested_reorder: number;
+  // Fiche service
+  invoice_label: string | null;
+  service_type: string;
+  billing_unit: string;
+  billing_trigger: string;
+  min_billable: number;
+  overtime_rules: { label: string; percent: number }[];
+  expertise_levels: { level: string; price: number }[];
+  cps_rate: number;
+  cps_amount: number;
+  tax_exemption_note: string | null;
+  skills: string | null;
+  estimated_hours: number;
+  project_template: string | null;
+  sla_response_hours: number;
+  sla_resolution_hours: number;
+  billing_frequency: string;
+  renewal_mode: string;
+  notice_days: number;
+  price_revision_index: string | null;
+  expense_mode: string;
+  travel_zone: string | null;
+  deliverables: string | null;
+  client_prerequisites: string | null;
+  subcontract_account: string | null;
+  revenue_recognition: string;
+  revision: number;
   created_at: string;
+  updated_at: string | null;
+  created_by: string | null;
+  updated_by: string | null;
+}
+
+export interface StockValuation {
+  id: string;
+  movement_id: string | null;
+  reason: string | null;
+  quantity_before_milli: number;
+  cost_before: number;
+  inbound_milli: number;
+  inbound_unit_cost: number;
+  quantity_after_milli: number;
+  cost_after: number;
+  value_after: number;
+  created_at: string;
+}
+
+export interface LinkedProductRef {
+  id: string;
+  name: string;
+  product_key: string | null;
+  unit_price: number;
+  quantity_milli: number;
+  in_stock: boolean;
+}
+
+export interface ProductDetail extends Product {
+  /** F2: the accounts the article would use once its family's default applies. */
+  effective_accounts: {
+    sales_account: string | null;
+    purchase_account: string | null;
+    stock_account: string | null;
+  } | null;
+  movements: StockMovement[];
+  valuations: StockValuation[];
+  components: { id: string; name: string; product_key: string | null; quantity_milli: number }[];
+  kit_available: number | null;
+}
+
+export interface ProductListResponse extends ListResponse<Product> {
+  families: string[];
 }
 
 export interface Expense {
@@ -290,7 +500,7 @@ export interface PurchaseOrder {
   number: string | null;
   vendor_id: string;
   vendor_name: string;
-  status: 'draft' | 'sent' | 'approved' | 'received' | 'cancelled';
+  status: 'draft' | 'sent' | 'approved' | 'partially_received' | 'received' | 'cancelled';
   date: string;
   expected_date: string | null;
   total: number;
@@ -324,6 +534,12 @@ export interface Task {
   hourly_rate: number;
   billable: number;
   invoice_id?: string | null;
+  product_id?: string | null;
+  service_level?: string | null;
+  work_date?: string | null;
+  premium_label?: string | null;
+  premium_percent?: number;
+  billed_minutes?: number;
 }
 
 export interface RecurringInvoice {
@@ -370,6 +586,24 @@ export interface DailyRun {
 
 export interface DashboardData {
   today: string;
+  contract_notices?: {
+    count: number;
+    top: { id: string; client_name: string; end_date: string; notice_deadline: string; days_left: number; overdue: boolean }[];
+  };
+  stock_alerts?: {
+    out: number;
+    low: number;
+    suggested_milli: number;
+    top: {
+      product_id: string;
+      name: string;
+      level: 'out' | 'low';
+      quantity_milli: number;
+      reorder_point_milli: number;
+      suggested_milli: number;
+      supplier_name: string | null;
+    }[];
+  };
   last_run?: DailyRun | null;
   kpis: {
     invoiced_month: number;
@@ -434,8 +668,12 @@ export interface SettingsPayload {
 }
 
 export interface ReportResponse {
-  rows: Record<string, string | number>[];
-  summary: Record<string, number>;
+  rows: Record<string, string | number | null>[];
+  summary: Record<string, number | null>;
+  /** Margin report only: true when cost and margin were hidden by permissions. */
+  masked?: boolean;
+  group_by?: string;
+  documents?: number;
 }
 
 export interface ActivityEntry {
@@ -501,4 +739,42 @@ export interface ImportResult {
   skipped: number;
   invalid_count: number;
   identifiers: string[];
+}
+
+// Cycle counting (B1)
+export interface StockCount {
+  id: string;
+  reference: string;
+  scope: string;
+  scope_value: string | null;
+  status: string;
+  note: string | null;
+  line_count: number;
+  created_at: string;
+  validated_at: string | null;
+  cancelled_at: string | null;
+}
+
+export interface StockCountLine {
+  id: string;
+  product_id: string;
+  name: string;
+  product_key: string | null;
+  expected_milli: number;
+  counted_milli: number | null;
+  current_milli: number | null;
+  movement_id: string | null;
+}
+
+export interface StockCountDetail extends StockCount {
+  lines: StockCountLine[];
+  summary: {
+    total: number;
+    counted: number;
+    pending: number;
+    shortages: number;
+    surpluses: number;
+    net_delta_milli: number;
+  };
+  stale_product_ids: string[];
 }

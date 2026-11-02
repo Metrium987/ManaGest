@@ -8,7 +8,7 @@ import { errorMessage } from '@/lib/errors';
 import { t } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
 import { formatDuration, formatMoney } from '@/lib/format';
-import type { ListResponse, Project, Task } from '@/lib/types';
+import type { ListResponse, Product, Project, Task } from '@/lib/types';
 import { EmptyState, PageHeader, SectionCard, Skeleton, StatusBadge, Tabs } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Checkbox, Field, FormGrid, Input, Select } from '@/components/ui/Form';
@@ -30,6 +30,7 @@ export function TasksPage() {
   const [dragging, setDragging] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: '', description: '', project_id: '', status: 'todo', hours: 0, hourly_rate: 0, billable: true,
+    product_id: '', service_level: '', work_date: '', premium_label: '', premium_percent: 0,
   });
 
   const tasks = useQuery({
@@ -37,10 +38,19 @@ export function TasksPage() {
     queryFn: () => api.get<ListResponse<Task>>(`/tasks${toQuery({ per_page: 100 })}`),
   });
   const projects = useQuery({ queryKey: ['projects', 'options'], queryFn: () => api.get<ListResponse<Project>>('/projects?per_page=100') });
+  // A time entry is billed against a service: the catalogue supplies the rate,
+  // the minimum billable quantity and the invoice wording.
+  const services = useQuery({
+    queryKey: ['products', 'services'],
+    queryFn: () => api.get<ListResponse<Product>>(`/products${toQuery({ per_page: 100, item_type: 'service' })}`),
+  });
+  const serviceOptions = services.data?.data ?? [];
+  const selectedService = serviceOptions.find((item) => item.id === form.product_id);
 
   const rows = tasks.data?.data ?? [];
   const billable = useMemo(
-    () => rows.filter((task) => task.billable && !task.invoice_id && task.minutes > 0 && task.hourly_rate > 0),
+    () => rows.filter((task) => task.billable && !task.invoice_id && task.minutes > 0
+      && (task.hourly_rate > 0 || Boolean(task.product_id))),
     [rows],
   );
 
@@ -54,11 +64,19 @@ export function TasksPage() {
         minutes: Math.round(form.hours * 60),
         hourly_rate: toMinor(form.hourly_rate, currency),
         billable: form.billable,
+        product_id: form.product_id || null,
+        service_level: form.service_level || null,
+        work_date: form.work_date || null,
+        premium_label: form.premium_label || null,
+        premium_percent: form.premium_percent,
       }),
     onSuccess: () => {
       toast.success(t('tasks.new'));
       setOpen(false);
-      setForm({ title: '', description: '', project_id: '', status: 'todo', hours: 0, hourly_rate: 0, billable: true });
+      setForm({
+        title: '', description: '', project_id: '', status: 'todo', hours: 0, hourly_rate: 0, billable: true,
+        product_id: '', service_level: '', work_date: '', premium_label: '', premium_percent: 0,
+      });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
     onError: (error) => toast.error(errorMessage(error)),
@@ -104,6 +122,8 @@ export function TasksPage() {
         { label: t('invoices.client'), value: task.client_name },
         { label: t('tasks.duration'), value: formatDuration(task.minutes) },
         { label: t('tasks.hourlyRate'), value: formatMoney(task.hourly_rate, currency) },
+        { label: t('tasks.workDate'), value: task.work_date ?? null },
+        { label: t('tasks.premium'), value: task.premium_percent ? `${task.premium_label ?? ''} ${task.premium_percent} %` : null },
         { label: t('tasks.billable'), value: task.billable ? '✓' : '—' },
         { label: t('common.status'), value: <StatusBadge status={task.status} /> },
         { label: t('common.description'), value: task.description, wide: true },
@@ -326,8 +346,41 @@ export function TasksPage() {
             <Field label={t('tasks.hourlyRate')} htmlFor="task_rate">
               <Input id="task_rate" type="number" min="0" value={form.hourly_rate || ''} onChange={(event) => setForm({ ...form, hourly_rate: Number(event.target.value) })} />
             </Field>
+            <Field label={t('tasks.service')} htmlFor="task_service">
+              <Select
+                id="task_service"
+                value={form.product_id}
+                onChange={(event) => setForm({ ...form, product_id: event.target.value, service_level: '' })}
+              >
+                <option value="">{t('tasks.noService')}</option>
+                {serviceOptions.map((service) => (
+                  <option key={service.id} value={service.id}>{service.name}</option>
+                ))}
+              </Select>
+            </Field>
+            {selectedService?.expertise_levels?.length ? (
+              <Field label={t('tasks.serviceLevel')} htmlFor="task_level">
+                <Select id="task_level" value={form.service_level} onChange={(event) => setForm({ ...form, service_level: event.target.value })}>
+                  <option value="">—</option>
+                  {selectedService.expertise_levels.map((level) => (
+                    <option key={level.level} value={level.level}>{level.level}</option>
+                  ))}
+                </Select>
+              </Field>
+            ) : null}
+            <Field label={t('tasks.workDate')} htmlFor="task_work_date">
+              <Input id="task_work_date" type="date" value={form.work_date} onChange={(event) => setForm({ ...form, work_date: event.target.value })} />
+            </Field>
           </FormGrid>
           <Checkbox label={t('tasks.billable')} checked={form.billable} onChange={(event) => setForm({ ...form, billable: event.target.checked })} />
+          <FormGrid>
+            <Field label={t('tasks.premium')} htmlFor="task_premium">
+              <Input id="task_premium" value={form.premium_label} onChange={(event) => setForm({ ...form, premium_label: event.target.value })} />
+            </Field>
+            <Field label={t('tasks.premiumPercent')} htmlFor="task_premium_percent">
+              <Input id="task_premium_percent" type="number" min="0" max="300" value={form.premium_percent || ''} onChange={(event) => setForm({ ...form, premium_percent: Number(event.target.value) })} />
+            </Field>
+          </FormGrid>
         </div>
       </Modal>
     </>

@@ -21,6 +21,9 @@ export default defineConfig({
       '/api': {
         target: apiTarget,
         changeOrigin: false,
+        // Forward x-forwarded-proto so the Worker knows the browser is on HTTPS
+        // (the preview tunnel terminates TLS before this dev proxy).
+        xfwd: true,
       },
     },
   },

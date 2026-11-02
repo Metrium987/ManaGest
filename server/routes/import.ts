@@ -133,13 +133,19 @@ importRoutes.post('/preview/:entity', requireAuth, entityGuard, async (c) => {
     missing_columns: [],
     valid_count: result.validCount,
     invalid_count: result.invalidCount,
-    rows: result.rows.map((row) => ({
-      row: row.row,
-      values: row.values,
-      valid: row.valid,
-      action: row.key && existing.has(row.key.toLowerCase()) ? 'update' : 'create',
-      issues: row.issues,
-    })),
+    rows: result.rows.map((row) => {
+      // H4.5: an existing key updates the sheet, and the preview says so — the
+      // operator must see a duplicate before committing, not discover it after.
+      const duplicate = Boolean(row.key && existing.has(row.key.toLowerCase()));
+      return {
+        row: row.row,
+        values: row.values,
+        valid: row.valid,
+        action: duplicate ? 'update' : 'create',
+        duplicate,
+        issues: row.issues,
+      };
+    }),
   });
 });
 
@@ -252,7 +258,7 @@ importRoutes.post('/commit/:entity', requireAuth, entityGuard, async (c) => {
         // `country` is NOT NULL in the schema: island businesses default to the local territory.
         country: values.country || 'Polynésie française',
         tax_id: values.tax_id || null,
-        payment_terms: values.payment_terms ? Number(values.payment_terms) : 30,
+        payment_terms: values.payment_terms ? Number(values.payment_terms) : company.payment_terms,
         is_tax_exempt: values.is_tax_exempt ? toBoolean(values.is_tax_exempt) : 0,
         currency: values.currency || company.currency,
         notes: values.notes || null,

@@ -219,6 +219,8 @@ export async function buildInvoicePdf(
   for (const bucket of totals.tax_buckets) {
     totalRows.push([`TVA ${bucket.rate} %`, money(bucket.amount, currency)]);
   }
+
+
   totalRows.push(['Total TTC', money(totals.total, currency), true]);
 
   for (const [label, value, strong] of totalRows) {

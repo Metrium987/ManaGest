@@ -11,7 +11,10 @@ import type { Client, Invoice, LineItem, ListResponse, Product } from '@/lib/typ
 import { fromMinor, toMinor } from '@shared/money';
 import { PageHeader, SectionCard, Skeleton } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
-import { Field, FormGrid, Input, Select, Textarea } from '@/components/ui/Form';
+import { Checkbox, Field, FormGrid, Input, Select, Textarea } from '@/components/ui/Form';
+import { ARCHIPELAGO_LABELS, ARCHIPELAGO_VAT_RATE, ARCHIPELAGOS } from '@shared/archipelago';
+import { DEFAULT_TAX_RATE } from '@shared/domain';
+import { DEFAULT_PAYMENT_TERMS_DAYS } from '@shared/company-defaults';
 import { LineItemsEditor, emptyLine } from '@/components/domain/LineItemsEditor';
 import { TotalsPanel } from '@/components/domain/TotalsPanel';
 import { useToast } from '@/components/ui/Toast';
@@ -26,6 +29,9 @@ interface InvoiceDraft {
   discount_value: number;
   notes: string;
   terms: string;
+  archipelago: string;
+  transport_reference: string;
+  shipped_by_seller: boolean;
 }
 
 function InvoiceEditor({ invoice }: { invoice?: Invoice }) {
@@ -37,13 +43,16 @@ function InvoiceEditor({ invoice }: { invoice?: Invoice }) {
   const [draft, setDraft] = useState<InvoiceDraft>(() => ({
     client_id: invoice?.client_id ?? params.get('client') ?? '',
     date: invoice?.date ?? todayISO(),
-    due_date: invoice?.due_date ?? addDaysISO(todayISO(), company?.payment_terms ?? 30),
+    due_date: invoice?.due_date ?? addDaysISO(todayISO(), company?.payment_terms ?? DEFAULT_PAYMENT_TERMS_DAYS),
     po_number: invoice?.po_number ?? '',
-    line_items: invoice?.line_items ?? [emptyLine(company?.default_tax_rate ?? 16)],
+    line_items: invoice?.line_items ?? [emptyLine(company?.default_tax_rate ?? DEFAULT_TAX_RATE)],
     discount_type: invoice?.discount_type ?? 'percent',
     discount_value: invoice?.discount_value ?? 0,
     notes: invoice?.notes ?? '',
     terms: invoice?.terms ?? company?.invoice_terms ?? '',
+    archipelago: invoice?.archipelago ?? '',
+    transport_reference: invoice?.transport_reference ?? '',
+    shipped_by_seller: Boolean(invoice?.shipped_by_seller),
   }));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [dueTouched, setDueTouched] = useState(false);
@@ -78,6 +87,9 @@ function InvoiceEditor({ invoice }: { invoice?: Invoice }) {
             notes: draft.notes,
             terms: draft.terms,
             po_number: draft.po_number,
+            archipelago: draft.archipelago || null,
+            transport_reference: draft.transport_reference || null,
+            shipped_by_seller: draft.shipped_by_seller,
           })
         : api.post<{ id: string }>('/invoices', {
             client_id: draft.client_id,
@@ -89,6 +101,9 @@ function InvoiceEditor({ invoice }: { invoice?: Invoice }) {
             notes: draft.notes,
             terms: draft.terms,
             po_number: draft.po_number,
+            archipelago: draft.archipelago || null,
+            transport_reference: draft.transport_reference || null,
+            shipped_by_seller: draft.shipped_by_seller,
           }),
     onSuccess: (result) => {
       toast.success(invoice ? t('invoices.updated') : t('invoices.created'));
@@ -147,8 +162,31 @@ function InvoiceEditor({ invoice }: { invoice?: Invoice }) {
               onChange={(lines) => setDraft((current) => ({ ...current, line_items: lines }))}
               products={products.data?.data ?? []}
               currency={currency}
+              tier={selectedClient?.price_tier}
             />
             {errors.line_items ? <p className="field-error">{errors.line_items}</p> : null}
+            {draft.line_items.some((line) => line.tax_status !== 'exempt' && line.tax_rate === ARCHIPELAGO_VAT_RATE) ? (
+              <fieldset className="space-y-3 rounded-lg border border-line p-4">
+                <legend className="px-1 text-sm font-semibold text-ink-950">{t('invoices.archipelagoTitle')}</legend>
+                <p className="text-xs text-muted">{t('invoices.archipelagoHint')}</p>
+                <FormGrid>
+                  <Field label={t('invoices.archipelago')} htmlFor="archipelago">
+                    <Select id="archipelago" value={draft.archipelago} onChange={(event) => setDraft((current) => ({ ...current, archipelago: event.target.value }))}>
+                      <option value="">—</option>
+                      {ARCHIPELAGOS.map((code) => <option key={code} value={code}>{ARCHIPELAGO_LABELS[code]}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label={t('invoices.transportReference')} htmlFor="transport_reference">
+                    <Input id="transport_reference" value={draft.transport_reference} onChange={(event) => setDraft((current) => ({ ...current, transport_reference: event.target.value }))} />
+                  </Field>
+                </FormGrid>
+                <Checkbox
+                  checked={draft.shipped_by_seller}
+                  onChange={(event) => setDraft((current) => ({ ...current, shipped_by_seller: event.target.checked }))}
+                  label={t('invoices.shippedBySeller')}
+                />
+              </fieldset>
+            ) : null}
           </SectionCard>
 
           <SectionCard title={t('common.notes')} bodyClassName="p-5 sm:p-6">
@@ -189,7 +227,7 @@ function InvoiceEditor({ invoice }: { invoice?: Invoice }) {
                     setDraft((current) => ({
                       ...current,
                       date,
-                      due_date: dueTouched ? current.due_date : addDaysISO(date, selectedClient?.payment_terms ?? 30),
+                      due_date: dueTouched ? current.due_date : addDaysISO(date, selectedClient?.payment_terms ?? DEFAULT_PAYMENT_TERMS_DAYS),
                     }));
                   }}
                 />

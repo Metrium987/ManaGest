@@ -1,6 +1,24 @@
 import type { ReactNode } from 'react';
 import { CheckCircle2 } from 'lucide-react';
+import { DEFAULT_TIMEZONE } from '@shared/domain';
 import { t } from '@/lib/i18n';
+
+/** The default timezone and its current offset, read from the configuration. */
+function timezoneLabel(): string {
+  if (!DEFAULT_TIMEZONE) return '';
+  try {
+    const name = new Intl.DateTimeFormat('en-US', {
+      timeZone: DEFAULT_TIMEZONE,
+      timeZoneName: 'longOffset',
+    }).formatToParts(new Date()).find((part) => part.type === 'timeZoneName')?.value;
+    const match = name?.match(/GMT([+-])(\d{2}):(\d{2})/);
+    if (!match) return DEFAULT_TIMEZONE;
+    const minutes = match[3] === '00' ? '' : `:${match[3]}`;
+    return `${DEFAULT_TIMEZONE} · UTC${match[1] === '-' ? '−' : '+'}${Number(match[2])}${minutes}`;
+  } catch {
+    return DEFAULT_TIMEZONE;
+  }
+}
 
 export function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -57,7 +75,7 @@ export function AuthLayout({ children }: { children: ReactNode }) {
 
         <div className="relative flex items-center justify-between border-t border-white/10 pt-5 text-[11px] text-white/45">
           <span>{t('auth.localSignature')}</span>
-          <span>Pacific/Tahiti · UTC−10</span>
+          <span>{timezoneLabel()}</span>
         </div>
       </aside>
 

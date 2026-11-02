@@ -11,7 +11,7 @@ import {
   generateRecoveryCodes, generateTotpSecret, groupSecret, normalizeRecoveryCode, otpauthUri,
   verifyTotp,
 } from '../lib/totp';
-import { permissionsForRole } from '../lib/permissions';
+import { resolveUserPermissions } from '../services/roles';
 import { parseInput } from '../lib/validation';
 import { clientIp, loadCompany, requireAuth } from '../middleware';
 import { createSession, destroySession } from '../services/session';
@@ -35,7 +35,7 @@ const mfaChallengeSchema = z.object({
   code: z.string().min(4).max(20),
 });
 
-function loginPayload(user: UserRow) {
+async function loginPayload(user: UserRow, database: D1Database) {
   return {
     user: {
       id: user.id,
@@ -43,7 +43,9 @@ function loginPayload(user: UserRow) {
       first_name: user.first_name,
       last_name: user.last_name,
       role: user.role,
-      permissions: permissionsForRole(user.role),
+      // A per-user permission list is resolved here too, otherwise the interface
+      // gates on the fixed role while the API already applies the custom list.
+      permissions: await resolveUserPermissions(database, user),
     },
   };
 }
@@ -130,7 +132,7 @@ authRoutes.post('/login', async (c) => {
     meta: { ip },
   });
 
-  return c.json(loginPayload(user));
+  return c.json(await loginPayload(user, c.env.DB));
 });
 
 /**
@@ -237,7 +239,7 @@ authRoutes.post('/mfa/verify', async (c) => {
     ip,
   });
 
-  return c.json(loginPayload(user));
+  return c.json(await loginPayload(user, c.env.DB));
 });
 
 /** Stores a fresh secret (not yet active); activation needs a valid code. */
@@ -360,7 +362,8 @@ authRoutes.get('/me', requireAuth, async (c) => {
   return c.json({
     user: { ...user, mfa_enabled: Boolean(mfa?.mfa_enabled) },
     company,
-    permissions: permissionsForRole(user.role),
+    // The session already carries the permissions resolved for this account.
+    permissions: user.permissions,
   });
 });
 

@@ -1,41 +1,79 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { DEFAULT_CURRENCY, DEFAULT_LOCALE, DEFAULT_TIMEZONE, TVA_RATES } from '../../shared/domain';
+import { DEFAULT_CURRENCY, DEFAULT_LOCALE, DEFAULT_TAX_RATE, DEFAULT_TIMEZONE, TVA_RATES } from '../../shared/domain';
+import { DEFAULT_INVOICE_FOOTER, DEFAULT_INVOICE_TERMS, FRANCHISE_LEGAL_NOTE } from '../../shared/company-defaults';
+import {
+  CLIENT_PAYMENT_METHODS,
+  CLIENT_PAYMENT_TERMS,
+  CLIENT_PAYMENT_TERM_DAYS,
+  CLIENT_VAT_REGIMES,
+  ENTITY_CATEGORIES,
+  LEGAL_FORMS,
+  legacyVatRegimeFor,
+  mailingAddressLine,
+  mailingCity,
+} from '../../shared/client-profile';
 import { nowISO, one } from '../db';
-import { hashPassword } from '../lib/crypto';
+import { constantTimeEqual, hashPassword } from '../lib/crypto';
 import { fail } from '../lib/errors';
 import { logActivity } from '../lib/audit';
 import { validatePassword } from '../lib/passwords';
-import { parseInput } from '../lib/validation';
+import { optionalIsoDate, parseInput } from '../lib/validation';
 import { loadCompany } from '../middleware';
 import { seedDemoData } from '../services/seed';
 import type { AppEnv } from '../types';
 
 const setupSchema = z.object({
-  company: z.object({
-    name: z.string().trim().min(2).max(120),
-    legal_name: z.string().trim().max(160).optional().default(''),
-    email: z.string().trim().email().max(190).optional().or(z.literal('')),
-    phone: z.string().trim().max(40).optional().default(''),
-    address1: z.string().trim().max(160).optional().default(''),
-    address2: z.string().trim().max(160).optional().default(''),
-    city: z.string().trim().max(80).optional().default(''),
-    postal_code: z.string().trim().max(20).optional().default(''),
-    tax_id: z
-      .string()
-      .trim()
-      .max(20)
-      .regex(/^[A-Za-z]\d{5}$/, 'invalid_tahiti_number')
-      .optional()
-      .or(z.literal('')),
-    rcs: z.string().trim().max(40).optional().default(''),
-    share_capital: z.string().trim().max(40).optional().default(''),
-    vat_regime: z.enum(['standard', 'franchise']).default('standard'),
-    default_tax_rate: z.coerce.number().int().min(0).max(100).default(16),
-    payment_terms: z.coerce.number().int().min(0).max(365).default(30),
-    invoice_terms: z.string().trim().max(1000).optional().default(''),
-    invoice_footer: z.string().trim().max(500).optional().default(''),
-  }),
+  // Same rubrics as a client record, applied to the workspace's own company.
+  company: z
+    .object({
+      name: z.string().trim().min(2).max(120),
+      entity_category: z.enum(ENTITY_CATEGORIES).default('PRIVATE_COMPANY'),
+      legal_name: z.string().trim().min(1).max(160),
+      legal_form: z.enum(LEGAL_FORMS),
+      email: z.string().trim().email().max(190).optional().or(z.literal('')),
+      phone: z.string().trim().max(40).optional().default(''),
+      contact_role: z.string().trim().max(80).optional().default(''),
+      address1: z.string().trim().max(160).optional().default(''),
+      address2: z.string().trim().max(160).optional().default(''),
+      city: z.string().trim().max(80).optional().default(''),
+      po_box_number: z.string().trim().max(40).optional().default(''),
+      po_box_municipality: z.string().trim().min(1).max(80),
+      postal_code: z.string().trim().min(1).max(20),
+      island: z.string().trim().max(80).optional().default(''),
+      physical_municipality: z.string().trim().max(80).optional().default(''),
+      district: z.string().trim().max(80).optional().default(''),
+      pk_landmark: z.string().trim().max(80).optional().default(''),
+      street_building_zone: z.string().trim().max(160).optional().default(''),
+      delivery_instructions: z.string().trim().max(500).optional().default(''),
+      tax_id: z
+        .string()
+        .trim()
+        .max(20)
+        .regex(/^([A-Za-z]\d{5}|\d{7})$/, 'invalid_tahiti_number')
+        .transform((value) => value.toUpperCase()),
+      rcs: z.string().trim().max(40).optional().default(''),
+      numero_tps: z.string().trim().max(40).optional().default(''),
+      share_capital: z.string().trim().max(40).optional().default(''),
+      vat_regime_detail: z.enum(CLIENT_VAT_REGIMES),
+      default_tax_rate: z.coerce.number().int().min(0).max(100).default(DEFAULT_TAX_RATE),
+      payment_method: z.enum(CLIENT_PAYMENT_METHODS),
+      payment_terms_code: z.enum(CLIENT_PAYMENT_TERMS),
+      bank_name: z.string().trim().max(80).optional().default(''),
+      bank_holder: z.string().trim().max(120).optional().default(''),
+      bank_iban: z.string().trim().max(60).optional().default(''),
+      bank_bic: z.string().trim().max(20).optional().default(''),
+      tax_exemption_decree_num: z.string().trim().max(60).optional().default(''),
+      tax_exemption_expiry: optionalIsoDate,
+      data_consent_accepted: z.boolean().default(false),
+      invoice_terms: z.string().trim().max(1000).optional().default(''),
+      invoice_footer: z.string().trim().max(500).optional().default(''),
+    })
+    .superRefine((company, ctx) => {
+      if (!company.data_consent_accepted) {
+        ctx.addIssue({ code: 'custom', path: ['data_consent_accepted'], message: 'consent_required' });
+      }
+    }),
   admin: z.object({
     first_name: z.string().trim().min(1).max(80),
     last_name: z.string().trim().min(1).max(80),
@@ -45,10 +83,9 @@ const setupSchema = z.object({
   demo_data: z.boolean().default(false),
 });
 
-const DEFAULT_TERMS =
-  'Paiement à réception de facture. Les factures en retard font l\'objet d\'un rappel manuel; tout intérêt de retard éventuel est calculé et mentionné par l\'application avant émission.';
-const DEFAULT_FOOTER = 'Merci de votre confiance.';
-const FRANCHISE_NOTE = 'TVA non applicable, franchise en base.';
+const DEFAULT_TERMS = DEFAULT_INVOICE_TERMS;
+const DEFAULT_FOOTER = DEFAULT_INVOICE_FOOTER;
+const FRANCHISE_NOTE = FRANCHISE_LEGAL_NOTE;
 
 export const setupRoutes = new Hono<AppEnv>();
 
@@ -76,36 +113,60 @@ setupRoutes.post('/install', async (c) => {
   const currency = DEFAULT_CURRENCY;
   const passwordHash = await hashPassword(body.admin.password);
 
-  const companyStatement = c.env.DB.prepare(
-    `INSERT INTO company (id, name, legal_name, email, phone, address1, address2, city, postal_code, country,
-      timezone, currency, locale, tax_id, rcs, share_capital, vat_regime, default_tax_rate, payment_terms,
-      number_pattern, invoice_terms, invoice_footer, legal_notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Polynésie française', ?, ?, ?, ?, ?, ?, ?, ?, ?, '{prefix}-{YYYY}-{####}', ?, ?, ?, ?, ?)`,
-  ).bind(
-    companyId,
-    body.company.name,
-    body.company.legal_name || null,
-    body.company.email || null,
-    body.company.phone || null,
-    body.company.address1 || null,
-    body.company.address2 || null,
-    body.company.city || null,
-    body.company.postal_code || null,
-    DEFAULT_TIMEZONE,
+  const companyValues = {
+    id: companyId,
+    name: body.company.name,
+    legal_name: body.company.legal_name,
+    entity_category: body.company.entity_category,
+    legal_form: body.company.legal_form,
+    numero_tps: body.company.numero_tps || null,
+    email: body.company.email || null,
+    phone: body.company.phone || null,
+    contact_role: body.company.contact_role || null,
+    po_box_number: body.company.po_box_number || null,
+    po_box_municipality: body.company.po_box_municipality,
+    address1: mailingAddressLine(body.company),
+    address2: body.company.address2 || null,
+    city: mailingCity(body.company),
+    postal_code: body.company.postal_code,
+    island: body.company.island || null,
+    physical_municipality: body.company.physical_municipality || null,
+    district: body.company.district || null,
+    pk_landmark: body.company.pk_landmark || null,
+    street_building_zone: body.company.street_building_zone || null,
+    delivery_instructions: body.company.delivery_instructions || null,
+    country: 'Polynésie française',
+    timezone: DEFAULT_TIMEZONE,
     currency,
-    DEFAULT_LOCALE,
-    body.company.tax_id || null,
-    body.company.rcs || null,
-    body.company.share_capital || null,
-    body.company.vat_regime,
-    body.company.default_tax_rate,
-    body.company.payment_terms,
-    body.company.invoice_terms || DEFAULT_TERMS,
-    body.company.invoice_footer || DEFAULT_FOOTER,
-    body.company.vat_regime === 'franchise' ? FRANCHISE_NOTE : null,
-    now,
-    now,
-  );
+    locale: DEFAULT_LOCALE,
+    tax_id: body.company.tax_id,
+    rcs: body.company.rcs || null,
+    share_capital: body.company.share_capital || null,
+    vat_regime: legacyVatRegimeFor(body.company.vat_regime_detail),
+    vat_regime_detail: body.company.vat_regime_detail,
+    default_tax_rate: body.company.default_tax_rate,
+    payment_method: body.company.payment_method,
+    payment_terms_code: body.company.payment_terms_code,
+    payment_terms: CLIENT_PAYMENT_TERM_DAYS[body.company.payment_terms_code],
+    number_pattern: '{prefix}-{YYYY}-{####}',
+    invoice_terms: body.company.invoice_terms || DEFAULT_TERMS,
+    invoice_footer: body.company.invoice_footer || DEFAULT_FOOTER,
+    legal_notes: legacyVatRegimeFor(body.company.vat_regime_detail) === 'franchise' ? FRANCHISE_NOTE : null,
+    bank_name: body.company.bank_name || null,
+    bank_holder: body.company.bank_holder || null,
+    bank_iban: body.company.bank_iban || null,
+    bank_bic: body.company.bank_bic || null,
+    tax_exemption_decree_num: body.company.tax_exemption_decree_num || null,
+    tax_exemption_expiry: body.company.tax_exemption_expiry,
+    data_consent_accepted: body.company.data_consent_accepted ? 1 : 0,
+    created_at: now,
+    updated_at: now,
+  } satisfies Record<string, string | number | null>;
+  const companyColumns = Object.keys(companyValues) as (keyof typeof companyValues)[];
+  const companyStatement = c.env.DB.prepare(
+    `INSERT INTO company (${companyColumns.join(', ')})
+     VALUES (${companyColumns.map(() => '?').join(', ')})`,
+  ).bind(...companyColumns.map((column) => companyValues[column]));
 
   const userStatement = c.env.DB.prepare(
     `INSERT INTO users (id, email, password_hash, first_name, last_name, role, is_active, created_at, updated_at)
@@ -157,4 +218,77 @@ setupRoutes.post('/install', async (c) => {
   );
 
   return c.json({ configured: true }, 201);
+});
+
+/**
+ * Break-glass: restores an owner account when nobody can sign in any more.
+ * Closed unless the platform secret OWNER_RECOVERY_TOKEN is provisioned, usable
+ * once per database, and every use is recorded in the audit journal.
+ */
+setupRoutes.post('/recover-owner', async (c) => {
+  const secret = c.env.OWNER_RECOVERY_TOKEN;
+  if (!secret) return fail(503, 'RECOVERY_NOT_CONFIGURED');
+  const presented = c.req.header('x-recovery-token') ?? '';
+  if (!presented || !constantTimeEqual(presented, secret)) return fail(401, 'INVALID_RECOVERY_TOKEN');
+
+  const company = await loadCompany(c.env.DB);
+  if (!company) return fail(409, 'SETUP_REQUIRED');
+
+  const used = await one(
+    c.env.DB.prepare(`SELECT value FROM app_meta WHERE key = 'owner_recovery_used'`),
+  ) as { value: string } | null;
+  if (used) return fail(409, 'RECOVERY_ALREADY_USED');
+
+  const body = parseInput(
+    z.object({
+      email: z.string().trim().toLowerCase().email().max(190),
+      password: z.string().min(1).max(200),
+      first_name: z.string().trim().min(1).max(80).default('Admin'),
+      last_name: z.string().trim().min(1).max(80).default('ManaGest'),
+    }),
+    await c.req.json().catch(() => ({})),
+  );
+  validatePassword({
+    password: body.password,
+    email: body.email,
+    firstName: body.first_name,
+    lastName: body.last_name,
+  });
+
+  const now = nowISO();
+  const hash = await hashPassword(body.password);
+  const existing = await c.env.DB.prepare(`SELECT id FROM users WHERE email = ?`)
+    .bind(body.email)
+    .first<{ id: string }>();
+  const userId = existing?.id ?? crypto.randomUUID();
+
+  if (existing) {
+    await c.env.DB.batch([
+      c.env.DB.prepare(
+        `UPDATE users SET password_hash = ?, role = 'owner', is_active = 1, deleted_at = NULL, updated_at = ? WHERE id = ?`,
+      ).bind(hash, now, userId),
+      c.env.DB.prepare(`DELETE FROM sessions WHERE user_id = ?`).bind(userId),
+    ]);
+  } else {
+    await c.env.DB.prepare(
+      `INSERT INTO users (id, email, password_hash, first_name, last_name, role, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'owner', 1, ?, ?)`,
+    ).bind(userId, body.email, hash, body.first_name, body.last_name, now, now).run();
+  }
+
+  await c.env.DB.prepare(
+    `INSERT INTO app_meta (key, value) VALUES ('owner_recovery_used', ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+  ).bind(now).run();
+
+  await logActivity(c.env.DB, {
+    userId,
+    action: 'updated',
+    entityType: 'user',
+    entityId: userId,
+    summary: 'activity.user_password_reset',
+    meta: { email: body.email, via: 'recover-owner' },
+  });
+
+  return c.json({ ok: true, user_id: userId, email: body.email });
 });

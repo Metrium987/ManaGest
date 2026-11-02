@@ -94,6 +94,10 @@ const STATUS_STYLES: Record<string, string> = {
   unmatched: 'bg-warning-50 text-warning-700 border-warning-200',
   matched: 'bg-success-50 text-success-700 border-success-200',
   ignored: 'bg-slate-100 text-slate-500 border-slate-200',
+  PENDING_DOCUMENTS: 'bg-warning-50 text-warning-700 border-warning-200',
+  UNDER_REVIEW: 'bg-brand-50 text-brand-700 border-brand-200',
+  APPROVED: 'bg-success-50 text-success-700 border-success-200',
+  REJECTED: 'bg-danger-50 text-danger-700 border-danger-200',
   draft_dot: 'bg-slate-400',
 };
 

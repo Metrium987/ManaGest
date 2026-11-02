@@ -19,10 +19,12 @@ import { PaymentsPage } from '@/features/payments/PaymentsPage';
 import { CreditsPage } from '@/features/credits/CreditsPage';
 import { RecurringPage } from '@/features/recurring/RecurringPage';
 import { ProductsPage } from '@/features/products/ProductsPage';
+import { CountingPage } from '@/features/inventory/CountingPage';
 import { ExpensesPage } from '@/features/expenses/ExpensesPage';
 import { VendorsPage } from '@/features/vendors/VendorsPage';
 import { PurchaseOrdersPage } from '@/features/purchaseOrders/PurchaseOrdersPage';
 import { ProjectsPage } from '@/features/projects/ProjectsPage';
+import { PlanningPage } from '@/features/planning/PlanningPage';
 import { TasksPage } from '@/features/tasks/TasksPage';
 import { BankPage } from '@/features/bank/BankPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
@@ -88,10 +90,12 @@ export default function App() {
         <Route path="avoirs" element={<CreditsPage />} />
         <Route path="factures-recurrentes" element={<RecurringPage />} />
         <Route path="produits" element={<ProductsPage />} />
+        <Route path="inventaire" element={<CountingPage />} />
         <Route path="depenses" element={<ExpensesPage />} />
         <Route path="fournisseurs" element={<VendorsPage />} />
         <Route path="bons-de-commande" element={<PurchaseOrdersPage />} />
         <Route path="projets" element={<ProjectsPage />} />
+        <Route path="planification" element={<PlanningPage />} />
         <Route path="taches" element={<TasksPage />} />
         <Route path="banque" element={<BankPage />} />
         <Route path="rapports" element={<ReportsPage />} />

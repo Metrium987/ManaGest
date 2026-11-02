@@ -1,8 +1,27 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, ShieldCheck, Sparkles } from 'lucide-react';
-import { TVA_RATES } from '@shared/domain';
+import { ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, MapPin, ShieldCheck, Sparkles } from 'lucide-react';
+import { DEFAULT_TAX_RATE, TVA_RATES } from '@shared/domain';
+import { DEFAULT_INVOICE_TERMS } from '@shared/company-defaults';
+import {
+  CLIENT_PAYMENT_METHODS,
+  CLIENT_PAYMENT_METHOD_LABELS,
+  CLIENT_PAYMENT_TERMS,
+  CLIENT_PAYMENT_TERM_LABELS,
+  CLIENT_VAT_REGIMES,
+  CLIENT_VAT_REGIME_LABELS,
+  ENTITY_CATEGORIES,
+  ENTITY_CATEGORY_HINTS,
+  ENTITY_CATEGORY_LABELS,
+  LEGAL_FORMS,
+  LEGAL_FORM_LABELS,
+  type ClientPaymentMethod,
+  type ClientPaymentTerms,
+  type ClientVatRegime,
+  type EntityCategory,
+  type LegalForm,
+} from '@shared/client-profile';
 import { api, ApiError } from '@/lib/api';
 import { t } from '@/lib/i18n';
 import { AuthLayout } from '@/components/layout/AuthLayout';
@@ -12,18 +31,36 @@ import { useToast } from '@/components/ui/Toast';
 
 interface SetupForm {
   company_name: string;
+  entity_category: EntityCategory;
+  legal_form: LegalForm | '';
   legal_name: string;
   tax_id: string;
   rcs: string;
+  numero_tps: string;
   share_capital: string;
+  vat_regime_detail: ClientVatRegime | '';
+  default_tax_rate: number;
   email: string;
   phone: string;
-  address1: string;
-  city: string;
+  contact_role: string;
+  po_box_number: string;
+  po_box_municipality: string;
   postal_code: string;
-  vat_regime: 'standard' | 'franchise';
-  default_tax_rate: number;
-  payment_terms: number;
+  island: string;
+  physical_municipality: string;
+  district: string;
+  pk_landmark: string;
+  street_building_zone: string;
+  delivery_instructions: string;
+  payment_method: ClientPaymentMethod | '';
+  payment_terms_code: ClientPaymentTerms | '';
+  bank_name: string;
+  bank_holder: string;
+  bank_iban: string;
+  bank_bic: string;
+  tax_exemption_decree_num: string;
+  tax_exemption_expiry: string;
+  data_consent_accepted: boolean;
   invoice_terms: string;
   invoice_footer: string;
   admin_first: string;
@@ -36,18 +73,36 @@ interface SetupForm {
 
 const INITIAL: SetupForm = {
   company_name: '',
+  entity_category: 'PRIVATE_COMPANY',
+  legal_form: '',
   legal_name: '',
   tax_id: '',
   rcs: '',
+  numero_tps: '',
   share_capital: '',
+  vat_regime_detail: '',
+  default_tax_rate: DEFAULT_TAX_RATE,
   email: '',
   phone: '',
-  address1: '',
-  city: '',
+  contact_role: '',
+  po_box_number: '',
+  po_box_municipality: '',
   postal_code: '',
-  vat_regime: 'standard',
-  default_tax_rate: 16,
-  payment_terms: 30,
+  island: '',
+  physical_municipality: '',
+  district: '',
+  pk_landmark: '',
+  street_building_zone: '',
+  delivery_instructions: '',
+  payment_method: '',
+  payment_terms_code: '',
+  bank_name: '',
+  bank_holder: '',
+  bank_iban: '',
+  bank_bic: '',
+  tax_exemption_decree_num: '',
+  tax_exemption_expiry: '',
+  data_consent_accepted: false,
   invoice_terms: '',
   invoice_footer: '',
   admin_first: '',
@@ -58,8 +113,18 @@ const INITIAL: SetupForm = {
   demo_data: true,
 };
 
-const DEFAULT_TERMS =
-  'Paiement à réception de facture. Passé ce délai, une pénalité de retard de 10 % et une indemnité forfaitaire de recouvrement de 5 000 F CFP sont applicables.';
+const DEFAULT_TERMS = DEFAULT_INVOICE_TERMS;
+
+const TOTAL_STEPS = 4;
+
+function SectionTitle({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <div className="border-b border-line pb-2">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-950">{title}</h2>
+      {hint ? <p className="mt-1 text-xs text-muted">{hint}</p> : null}
+    </div>
+  );
+}
 
 export function SetupPage() {
   const navigate = useNavigate();
@@ -84,18 +149,38 @@ export function SetupPage() {
       api.post('/setup/install', {
         company: {
           name: form.company_name,
+          entity_category: form.entity_category,
+          legal_form: form.legal_form,
           legal_name: form.legal_name,
           email: form.email,
           phone: form.phone,
-          address1: form.address1,
-          city: form.city,
+          contact_role: form.contact_role,
+          address1: form.street_building_zone,
+          city: form.physical_municipality || form.po_box_municipality,
+          po_box_number: form.po_box_number,
+          po_box_municipality: form.po_box_municipality,
           postal_code: form.postal_code,
+          island: form.island,
+          physical_municipality: form.physical_municipality,
+          district: form.district,
+          pk_landmark: form.pk_landmark,
+          street_building_zone: form.street_building_zone,
+          delivery_instructions: form.delivery_instructions,
           tax_id: form.tax_id,
           rcs: form.rcs,
+          numero_tps: form.numero_tps,
           share_capital: form.share_capital,
-          vat_regime: form.vat_regime,
+          vat_regime_detail: form.vat_regime_detail,
           default_tax_rate: form.default_tax_rate,
-          payment_terms: form.payment_terms,
+          payment_method: form.payment_method,
+          payment_terms_code: form.payment_terms_code,
+          bank_name: form.bank_name,
+          bank_holder: form.bank_holder,
+          bank_iban: form.bank_iban,
+          bank_bic: form.bank_bic,
+          tax_exemption_decree_num: form.tax_exemption_decree_num,
+          tax_exemption_expiry: form.tax_exemption_expiry || null,
+          data_consent_accepted: form.data_consent_accepted,
           invoice_terms: form.invoice_terms || DEFAULT_TERMS,
           invoice_footer: form.invoice_footer,
         },
@@ -115,11 +200,24 @@ export function SetupPage() {
       if (error instanceof ApiError && error.details) {
         const mapped: Record<string, string> = {};
         for (const [field, code] of Object.entries(error.details)) {
-          const key = field.replace('company.', '').replace('admin.', (prefix) => (prefix === 'admin.' ? 'admin_' : prefix));
-          mapped[key] = t(`errors.${code}`) === `errors.${code}` ? t('errors.validation') : t(`errors.${code}`);
+          const key = field.replace('company.', '').replace('admin.', 'admin_');
+          const validationKey = `validation.${code}`;
+          const errorKey = `errors.${code}`;
+          mapped[key] = t(validationKey) !== validationKey
+            ? t(validationKey)
+            : t(errorKey) !== errorKey
+              ? t(errorKey)
+              : t('errors.validation');
         }
         setErrors(mapped);
-        setStep(Object.keys(mapped).some((key) => key.startsWith('admin')) ? 2 : 1);
+        const stepOfKey = (key: string) => {
+          if (key.startsWith('admin')) return 3;
+          if (['payment_method', 'payment_terms_code', 'data_consent_accepted', 'invoice_terms', 'invoice_footer'].includes(key)) return 4;
+          if (['legal_name', 'legal_form', 'tax_id', 'vat_regime_detail', 'entity_category', 'rcs', 'numero_tps', 'share_capital', 'name'].includes(key)) return 1;
+          return 2;
+        };
+        const first = Object.keys(mapped)[0];
+        if (first) setStep(stepOfKey(first));
       } else if (error instanceof ApiError) {
         toast.error(t(`errors.${error.code}`) === `errors.${error.code}` ? t('errors.generic') : t(`errors.${error.code}`));
       } else {
@@ -132,17 +230,30 @@ export function SetupPage() {
     const next: Record<string, string> = {};
     if (step === 1) {
       if (!form.company_name.trim()) next.company_name = t('validation.required');
-      if (form.tax_id && !/^[A-Za-z]\d{5}$/.test(form.tax_id.trim())) {
+      if (!form.legal_name.trim()) next.legal_name = t('validation.required');
+      if (!form.legal_form) next.legal_form = t('validation.required');
+      if (!form.tax_id.trim()) next.tax_id = t('validation.required');
+      else if (!/^([A-Za-z]\d{5}|\d{7})$/.test(form.tax_id.trim())) {
         next.tax_id = t('validation.invalid_tahiti_number');
       }
-      if (form.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email)) next.email = t('errors.invalid_string');
+      if (!form.vat_regime_detail) next.vat_regime_detail = t('validation.required');
     }
     if (step === 2) {
+      if (form.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email)) next.email = t('validation.invalid_email');
+      if (!form.po_box_municipality.trim()) next.po_box_municipality = t('validation.required');
+      if (!form.postal_code.trim()) next.postal_code = t('validation.required');
+    }
+    if (step === 3) {
       if (!form.admin_first.trim()) next.admin_first = t('validation.required');
       if (!form.admin_last.trim()) next.admin_last = t('validation.required');
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.admin_email)) next.admin_email = t('errors.invalid_string');
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.admin_email)) next.admin_email = t('validation.invalid_email');
       if (form.password.length < 12) next.password = t('errors.too_small');
       if (form.password !== form.confirm) next.confirm = t('errors.validation');
+    }
+    if (step === 4) {
+      if (!form.payment_method) next.payment_method = t('validation.required');
+      if (!form.payment_terms_code) next.payment_terms_code = t('validation.required');
+      if (!form.data_consent_accepted) next.data_consent_accepted = t('validation.consent_required');
     }
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -151,7 +262,7 @@ export function SetupPage() {
   const next = (event: FormEvent) => {
     event.preventDefault();
     if (!validateStep()) return;
-    if (step < 3) {
+    if (step < TOTAL_STEPS) {
       setStep(step + 1);
       return;
     }
@@ -171,9 +282,10 @@ export function SetupPage() {
   }
 
   const steps = [
-    { label: t('setup.stepCompany'), icon: Building2 },
+    { label: t('clientProfile.legal'), icon: Building2 },
+    { label: t('clientProfile.address'), icon: MapPin },
     { label: t('setup.stepAdmin'), icon: ShieldCheck },
-    { label: t('setup.stepPreferences'), icon: Sparkles },
+    { label: t('clientProfile.terms'), icon: Sparkles },
   ];
 
   const errorText = (key: string) => (errors[key] ? errors[key] : undefined);
@@ -183,7 +295,7 @@ export function SetupPage() {
       <div className="card overflow-hidden">
         <div className="border-b border-line bg-surface/60 px-6 py-5">
           <p className="text-xs font-semibold uppercase tracking-widest text-brand-600">
-            {t('setup.stepOf', { current: step, total: 3 })}
+            {t('setup.stepOf', { current: step, total: TOTAL_STEPS })}
           </p>
           <h1 className="mt-1.5 font-display text-xl font-semibold text-ink-950">{t('setup.title')}</h1>
           <p className="mt-1 text-sm text-muted">{t('setup.subtitle')}</p>
@@ -218,6 +330,8 @@ export function SetupPage() {
         <form onSubmit={next} className="space-y-5 p-6" noValidate>
           {step === 1 ? (
             <>
+              <SectionTitle title={t('clientProfile.legal')} hint={t('clientProfile.legalHint')} />
+              <p className="text-xs text-muted">{t('clientProfile.requiredFields')}</p>
               <FormGrid>
                 <Field label={t('setup.companyName')} htmlFor="company_name" required error={errorText('company_name')}>
                   <Input
@@ -228,63 +342,137 @@ export function SetupPage() {
                     required
                   />
                 </Field>
-                <Field label={t('setup.legalName')} htmlFor="legal_name">
-                  <Input id="legal_name" value={form.legal_name} onChange={(event) => set('legal_name', event.target.value)} />
+                <Field label={t('clientProfile.entityCategory')} htmlFor="entity_category" required
+                  hint={ENTITY_CATEGORY_HINTS[form.entity_category]}>
+                  <Select
+                    id="entity_category"
+                    value={form.entity_category}
+                    onChange={(event) => set('entity_category', event.target.value as EntityCategory)}
+                  >
+                    {ENTITY_CATEGORIES.map((category) => (
+                      <option key={category} value={category}>{ENTITY_CATEGORY_LABELS[category]}</option>
+                    ))}
+                  </Select>
                 </Field>
-                <Field label={t('setup.tahitiNumber')} htmlFor="tax_id" hint={t('setup.tahitiHint')} error={errorText('tax_id')}>
+                <Field label={t('setup.legalName')} htmlFor="legal_name" required error={errorText('legal_name')}>
+                  <Input id="legal_name" value={form.legal_name} onChange={(event) => set('legal_name', event.target.value)} required />
+                </Field>
+                <Field label={t('clientProfile.legalForm')} htmlFor="legal_form" required error={errorText('legal_form')}>
+                  <Select
+                    id="legal_form"
+                    value={form.legal_form}
+                    required
+                    onChange={(event) => set('legal_form', event.target.value as LegalForm | '')}
+                  >
+                    <option value="">—</option>
+                    {LEGAL_FORMS.map((value) => (
+                      <option key={value} value={value}>{LEGAL_FORM_LABELS[value]}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={t('setup.tahitiNumber')} htmlFor="tax_id" hint={t('setup.tahitiHint')} required error={errorText('tax_id')}>
                   <Input
                     id="tax_id"
                     value={form.tax_id}
                     onChange={(event) => set('tax_id', event.target.value.toUpperCase())}
                     placeholder="T12345"
-                    maxLength={6}
+                    maxLength={7}
+                    required
                   />
                 </Field>
                 <Field label={t('setup.rcs')} htmlFor="rcs">
                   <Input id="rcs" value={form.rcs} onChange={(event) => set('rcs', event.target.value)} placeholder="Papeete B 12345" />
                 </Field>
+                <Field label={t('clientProfile.tps')} htmlFor="numero_tps">
+                  <Input id="numero_tps" value={form.numero_tps} onChange={(event) => set('numero_tps', event.target.value)} />
+                </Field>
+                <Field label={t('setup.shareCapital')} htmlFor="capital">
+                  <Input id="capital" value={form.share_capital} onChange={(event) => set('share_capital', event.target.value)} />
+                </Field>
+                <Field label={t('clientProfile.vatRegime')} htmlFor="vat_regime_detail" required error={errorText('vat_regime_detail')}>
+                  <Select
+                    id="vat_regime_detail"
+                    value={form.vat_regime_detail}
+                    required
+                    onChange={(event) => set('vat_regime_detail', event.target.value as ClientVatRegime | '')}
+                  >
+                    <option value="">—</option>
+                    {CLIENT_VAT_REGIMES.map((value) => (
+                      <option key={value} value={value}>{CLIENT_VAT_REGIME_LABELS[value]}</option>
+                    ))}
+                  </Select>
+                </Field>
+              </FormGrid>
+            </>
+          ) : null}
+
+          {step === 2 ? (
+            <>
+              <SectionTitle title={t('clientProfile.contact')} hint={t('clientProfile.contactHint')} />
+              <FormGrid>
                 <Field label={t('common.email')} htmlFor="company_email" error={errorText('email')}>
                   <Input id="company_email" type="email" value={form.email} onChange={(event) => set('email', event.target.value)} placeholder="contact@entreprise.pf" />
                 </Field>
                 <Field label={t('common.phone')} htmlFor="phone">
                   <Input id="phone" value={form.phone} onChange={(event) => set('phone', event.target.value)} placeholder="+689 40 00 00 00" />
                 </Field>
-                <Field label={t('common.address')} htmlFor="address1" className="sm:col-span-2">
-                  <Input id="address1" value={form.address1} onChange={(event) => set('address1', event.target.value)} placeholder="Rue du Général de Gaulle" />
-                </Field>
-                <Field label={t('common.postalCode')} htmlFor="postal_code">
-                  <Input id="postal_code" value={form.postal_code} onChange={(event) => set('postal_code', event.target.value)} placeholder="98713" />
-                </Field>
-                <Field label={t('common.city')} htmlFor="city">
-                  <Input id="city" value={form.city} onChange={(event) => set('city', event.target.value)} placeholder="Papeete" />
-                </Field>
-                <Field label={t('setup.vatRegime')} htmlFor="vat_regime" hint={t('setup.vatHint')}>
-                  <Select id="vat_regime" value={form.vat_regime} onChange={(event) => set('vat_regime', event.target.value as 'standard' | 'franchise')}>
-                    <option value="standard">{t('setup.vatStandard')}</option>
-                    <option value="franchise">{t('setup.vatFranchise')}</option>
-                  </Select>
-                </Field>
-                <Field label={t('setup.defaultTax')} htmlFor="default_tax_rate">
-                  <Select id="default_tax_rate" value={form.default_tax_rate} onChange={(event) => set('default_tax_rate', Number(event.target.value))}>
-                    {TVA_RATES.map((rate) => (
-                      <option key={rate.rate} value={rate.rate}>{rate.label}</option>
-                    ))}
-                  </Select>
+                <Field label={t('clientProfile.contactRole')} htmlFor="contact_role">
+                  <Input
+                    id="contact_role"
+                    value={form.contact_role}
+                    placeholder={t('clientProfile.contactRolePlaceholder')}
+                    onChange={(event) => set('contact_role', event.target.value)}
+                  />
                 </Field>
               </FormGrid>
-              <Field label={t('setup.invoiceTerms')} htmlFor="invoice_terms">
-                <Textarea
-                  id="invoice_terms"
-                  rows={3}
-                  value={form.invoice_terms}
-                  onChange={(event) => set('invoice_terms', event.target.value)}
-                  placeholder={DEFAULT_TERMS}
-                />
-              </Field>
+
+              <SectionTitle title={t('clientProfile.address')} hint={t('clientProfile.addressHint')} />
+              <FormGrid>
+                <Field label={t('clientProfile.poBox')} htmlFor="po_box_number">
+                  <Input id="po_box_number" value={form.po_box_number} onChange={(event) => set('po_box_number', event.target.value)} />
+                </Field>
+                <Field label={t('clientProfile.poBoxMunicipality')} htmlFor="po_box_municipality" required error={errorText('po_box_municipality')}>
+                  <Input
+                    id="po_box_municipality"
+                    value={form.po_box_municipality}
+                    placeholder="Papeete, Faa’a…"
+                    onChange={(event) => set('po_box_municipality', event.target.value)}
+                    required
+                  />
+                </Field>
+                <Field label={t('common.postalCode')} htmlFor="postal_code" required error={errorText('postal_code')}>
+                  <Input
+                    id="postal_code"
+                    value={form.postal_code}
+                    maxLength={5}
+                    placeholder="98713"
+                    onChange={(event) => set('postal_code', event.target.value)}
+                    required
+                  />
+                </Field>
+                <Field label={t('clientProfile.island')} htmlFor="island">
+                  <Input id="island" value={form.island} placeholder="Tahiti" onChange={(event) => set('island', event.target.value)} />
+                </Field>
+                <Field label={t('clientProfile.physicalMunicipality')} htmlFor="physical_municipality">
+                  <Input id="physical_municipality" value={form.physical_municipality} onChange={(event) => set('physical_municipality', event.target.value)} />
+                </Field>
+                <Field label={t('clientProfile.district')} htmlFor="district">
+                  <Input id="district" value={form.district} onChange={(event) => set('district', event.target.value)} />
+                </Field>
+                <Field label={t('clientProfile.pk')} htmlFor="pk_landmark">
+                  <Input id="pk_landmark" value={form.pk_landmark} onChange={(event) => set('pk_landmark', event.target.value)} />
+                </Field>
+                <Field label={t('clientProfile.street')} htmlFor="street_building_zone" className="sm:col-span-2">
+                  <Input id="street_building_zone" value={form.street_building_zone} onChange={(event) => set('street_building_zone', event.target.value)} />
+                </Field>
+                <Field label={t('clientProfile.delivery')} htmlFor="delivery_instructions" className="sm:col-span-2">
+                  <Textarea id="delivery_instructions" rows={2} value={form.delivery_instructions} onChange={(event) => set('delivery_instructions', event.target.value)} />
+                </Field>
+              </FormGrid>
             </>
           ) : null}
 
-          {step === 2 ? (
+          {step === 3 ? (
             <>
               <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-800">
                 {t('auth.secured')}
@@ -311,28 +499,92 @@ export function SetupPage() {
             </>
           ) : null}
 
-          {step === 3 ? (
+          {step === 4 ? (
             <>
+              <SectionTitle title={t('clientProfile.terms')} hint={t('clientProfile.termsHint')} />
+              <FormGrid>
+                <Field label={t('clientProfile.paymentMethod')} htmlFor="payment_method" required error={errorText('payment_method')}>
+                  <Select
+                    id="payment_method"
+                    value={form.payment_method}
+                    required
+                    onChange={(event) => set('payment_method', event.target.value as ClientPaymentMethod | '')}
+                  >
+                    <option value="">—</option>
+                    {CLIENT_PAYMENT_METHODS.map((value) => (
+                      <option key={value} value={value}>{CLIENT_PAYMENT_METHOD_LABELS[value]}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={t('clientProfile.paymentTermsLabel')} htmlFor="payment_terms_code" required error={errorText('payment_terms_code')}>
+                  <Select
+                    id="payment_terms_code"
+                    value={form.payment_terms_code}
+                    required
+                    onChange={(event) => set('payment_terms_code', event.target.value as ClientPaymentTerms | '')}
+                  >
+                    <option value="">—</option>
+                    {CLIENT_PAYMENT_TERMS.map((value) => (
+                      <option key={value} value={value}>{CLIENT_PAYMENT_TERM_LABELS[value]}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label={t('clientProfile.bank')} htmlFor="bank_name">
+                  <Input id="bank_name" value={form.bank_name} placeholder="Banque de Polynésie" onChange={(event) => set('bank_name', event.target.value)} />
+                </Field>
+                <Field label={t('settings.bankHolder')} htmlFor="bank_holder">
+                  <Input id="bank_holder" value={form.bank_holder} onChange={(event) => set('bank_holder', event.target.value)} />
+                </Field>
+                <Field label={t('clientProfile.iban')} htmlFor="bank_iban">
+                  <Input id="bank_iban" value={form.bank_iban} onChange={(event) => set('bank_iban', event.target.value)} />
+                </Field>
+                <Field label={t('settings.bankBic')} htmlFor="bank_bic">
+                  <Input id="bank_bic" value={form.bank_bic} onChange={(event) => set('bank_bic', event.target.value)} />
+                </Field>
+                <Field label={t('clientProfile.taxExemptionDecree')} htmlFor="tax_exemption_decree_num">
+                  <Input id="tax_exemption_decree_num" value={form.tax_exemption_decree_num} onChange={(event) => set('tax_exemption_decree_num', event.target.value)} />
+                </Field>
+                <Field label={t('clientProfile.taxExemptionExpiry')} htmlFor="tax_exemption_expiry">
+                  <Input id="tax_exemption_expiry" type="date" value={form.tax_exemption_expiry} onChange={(event) => set('tax_exemption_expiry', event.target.value)} />
+                </Field>
+                <Field label={t('setup.defaultTax')} htmlFor="default_tax_rate">
+                  <Select id="default_tax_rate" value={form.default_tax_rate} onChange={(event) => set('default_tax_rate', Number(event.target.value))}>
+                    {TVA_RATES.map((rate) => (
+                      <option key={rate.rate} value={rate.rate}>{rate.label}</option>
+                    ))}
+                  </Select>
+                </Field>
+              </FormGrid>
+
+              <SectionTitle title={t('clientProfile.compliance')} hint={t('clientProfile.complianceHint')} />
+              <Checkbox
+                label={t('clientProfile.consent')}
+                description={t('clientProfile.consentHint')}
+                checked={form.data_consent_accepted}
+                onChange={(event) => set('data_consent_accepted', event.target.checked)}
+                aria-invalid={errors.data_consent_accepted ? true : undefined}
+              />
+              {errors.data_consent_accepted ? <p className="field-error" role="alert">{errors.data_consent_accepted}</p> : null}
+
+              <Field label={t('setup.invoiceTerms')} htmlFor="invoice_terms">
+                <Textarea
+                  id="invoice_terms"
+                  rows={3}
+                  value={form.invoice_terms}
+                  onChange={(event) => set('invoice_terms', event.target.value)}
+                  placeholder={DEFAULT_TERMS}
+                />
+              </Field>
+              <Field label={t('setup.invoiceFooter')} htmlFor="invoice_footer">
+                <Input id="invoice_footer" value={form.invoice_footer} onChange={(event) => set('invoice_footer', event.target.value)} placeholder="Merci de votre confiance." />
+              </Field>
               <Checkbox
                 label={t('setup.demoData')}
                 description={t('setup.demoHint')}
                 checked={form.demo_data}
                 onChange={(event) => set('demo_data', event.target.checked)}
               />
-              <Field label={t('setup.paymentTerms')} htmlFor="payment_terms">
-                <Input
-                  id="payment_terms"
-                  type="number"
-                  min="0"
-                  max="365"
-                  value={form.payment_terms}
-                  onChange={(event) => set('payment_terms', Number(event.target.value))}
-                  className="max-w-[160px]"
-                />
-              </Field>
-              <Field label={t('setup.invoiceFooter')} htmlFor="invoice_footer">
-                <Input id="invoice_footer" value={form.invoice_footer} onChange={(event) => set('invoice_footer', event.target.value)} placeholder="Merci de votre confiance." />
-              </Field>
+
               <dl className="divide-y divide-line rounded-xl border border-line bg-surface/50 text-sm">
                 <div className="flex items-center justify-between px-4 py-3">
                   <dt className="text-muted">{t('common.name')}</dt>
@@ -360,9 +612,9 @@ export function SetupPage() {
             <Button
               type="submit"
               loading={install.isPending}
-              icon={step < 3 ? <ArrowRight className="h-4 w-4" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
+              icon={step < TOTAL_STEPS ? <ArrowRight className="h-4 w-4" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4" aria-hidden="true" />}
             >
-              {step < 3 ? t('common.next') : install.isPending ? t('setup.installing') : t('setup.install')}
+              {step < TOTAL_STEPS ? t('common.next') : install.isPending ? t('setup.installing') : t('setup.install')}
             </Button>
           </div>
         </form>

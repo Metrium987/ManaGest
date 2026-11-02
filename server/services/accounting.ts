@@ -1,9 +1,12 @@
 import { nowISO } from '../db';
+import { groupRevenue, resolveAccount } from '../lib/account-resolution';
+import { lineNetAmounts } from '../lib/margin';
+import { getAccountCodes } from '../lib/settings-extra';
+import type { AccountCodes } from '../../shared/accounts';
 import {
   CHART,
   OPENING_JOURNAL,
   OPENING_SOURCE_ID,
-  RETAINED_EARNINGS,
   creditLines,
   expenseLines,
   invoiceLines,
@@ -15,6 +18,7 @@ import {
   type DraftLine,
   type JournalCode,
   type OpeningRow,
+  type RevenueSplit,
 } from '../lib/accounting';
 
 /**
@@ -27,12 +31,25 @@ import {
  */
 
 let chartReady = false;
+let chartSignature = '';
 
-export async function ensureChart(database: D1Database): Promise<void> {
-  if (chartReady) return;
+/**
+ * Seeds the chart with the shared accounts **and** the codes the workspace has
+ * configured, so a custom account still has a label and a type in the trial
+ * balance. Settings are re-read whenever their signature changes: that is what
+ * makes a code change effective without a redeploy.
+ */
+export async function ensureChart(database: D1Database, provided?: AccountCodes): Promise<void> {
+  const codes = provided ?? await getAccountCodes(database);
+  const signature = Object.values(codes).join(',');
+  if (chartReady && signature === chartSignature) return;
   const now = nowISO();
+  const known = new Set(CHART.map((account) => account.code));
+  const configured = [...new Set(Object.values(codes))]
+    .filter((code) => !known.has(code))
+    .map<Account>((code) => ({ code, label: `Compte ${code}`, type: typeFromCode(code) }));
   await database.batch(
-    CHART.map((account) =>
+    [...CHART, ...configured].map((account) =>
       database
         .prepare(
           `INSERT OR IGNORE INTO accounts (code, label, type, is_active, created_at, updated_at)
@@ -42,6 +59,7 @@ export async function ensureChart(database: D1Database): Promise<void> {
     ),
   );
   chartReady = true;
+  chartSignature = signature;
 }
 
 interface PostingContext {
@@ -84,16 +102,94 @@ async function post(database: D1Database, context: PostingContext): Promise<bool
   return true;
 }
 
+/** Generic posting entry point for derived documents (E3 revenue recognition). */
+export async function postJournalEntry(
+  database: D1Database,
+  entry: {
+    sourceType: string; sourceId: string; event: string; date: string;
+    reference: string; label: string; journal: JournalCode; lines: DraftLine[];
+  },
+): Promise<boolean> {
+  return post(database, {
+    id: crypto.randomUUID(),
+    source_type: entry.sourceType,
+    source_id: entry.sourceId,
+    event: entry.event,
+    date: entry.date,
+    reference: entry.reference,
+    label: entry.label,
+    journal: entry.journal,
+    lines: entry.lines,
+  });
+}
+
 interface DocumentRow {
   id: string;
   number: string | null;
   date: string;
   subtotal: number;
   discount_total: number;
+  discount_type: string;
+  discount_value: number;
   tax_total: number;
   total: number;
   tax_exempt: number;
   status: string;
+  line_items: string | null;
+}
+
+interface SplitLine {
+  product_id?: string | null;
+  product_family?: string | null;
+  quantity?: number;
+  unit_price?: number;
+}
+
+/**
+ * Q2: which account each line's revenue belongs to. The article's own account
+ * wins, then its family's mapping, then the chart default. Amounts follow the
+ * document discount, spread over the lines exactly like the margin report does.
+ */
+async function revenueSplit(
+  row: DocumentRow,
+  catalogue: () => Promise<{ products: Map<string, { account: string | null; family: string | null }>; families: Map<string, string | null> }>,
+  codes: AccountCodes,
+): Promise<RevenueSplit[] | null> {
+  let lines: SplitLine[];
+  try {
+    lines = JSON.parse(row.line_items || '[]') as SplitLine[];
+  } catch {
+    return null;
+  }
+  if (!lines.length) return null;
+
+  const { products, families } = await catalogue();
+  const net = lineNetAmounts({
+    id: row.id,
+    date: row.date,
+    kind: 'invoice',
+    discount_type: row.discount_type === 'amount' ? 'amount' : 'percent',
+    discount_value: Number(row.discount_value ?? 0),
+    lines: lines.map((line) => ({
+      product_id: line.product_id ?? null,
+      product_family: line.product_family ?? null,
+      quantity: Number(line.quantity ?? 0),
+      unit_price: Number(line.unit_price ?? 0),
+    })),
+  });
+
+  return groupRevenue(lines.map((line, index) => {
+    const product = line.product_id ? products.get(line.product_id) : undefined;
+    const family = product?.family ?? line.product_family ?? null;
+    return {
+      account: resolveAccount({
+        product: product?.account ?? null,
+        family: family ? families.get(family) ?? null : null,
+        fallback: codes.sales,
+      }),
+      amount: net[index] ?? 0,
+    };
+  }));
 }
 
 function amounts(row: DocumentRow) {
@@ -108,20 +204,54 @@ function amounts(row: DocumentRow) {
   };
 }
 
+/** The accounts resolution needs: what each article says, and what its family
+ * gives as a default. Loaded once per sync pass, and only when asked for. */
+async function loadCatalogue(database: D1Database) {
+  const [products, families] = await Promise.all([
+    database
+      .prepare(`SELECT id, sales_account, family FROM products WHERE deleted_at IS NULL`)
+      .all<{ id: string; sales_account: string | null; family: string | null }>(),
+    database
+      .prepare(`SELECT family, sales_account FROM family_accounts`)
+      .all<{ family: string; sales_account: string | null }>(),
+  ]);
+  return {
+    products: new Map((products.results ?? []).map((row) => [row.id, { account: row.sales_account, family: row.family }])),
+    families: new Map((families.results ?? []).map((row) => [row.family, row.sales_account])),
+  };
+}
+
 /** Posts everything that is missing. Returns how many entries were created. */
 export async function syncAccounting(database: D1Database): Promise<number> {
-  await ensureChart(database);
+  const codes = await getAccountCodes(database);
+  await ensureChart(database, codes);
   let created = 0;
+
+  // Q2: posting revenue to the article's or family's account stays behind a
+  // workspace setting, so turning it on cannot rewrite how past entries read.
+  const flag = await database
+    .prepare(`SELECT value FROM settings_extra WHERE key = 'item_accounts'`)
+    .first<{ value: string }>();
+  const byItemAccount = ['1', 'true'].includes(String(flag?.value ?? '0'));
+  let cataloguePromise: ReturnType<typeof loadCatalogue> | null = null;
+  const catalogue = () => {
+    cataloguePromise ??= loadCatalogue(database);
+    return cataloguePromise;
+  };
 
   const invoices = await database
     .prepare(
-      `SELECT id, number, date, subtotal, discount_total, tax_total, total, tax_exempt, status
+      `SELECT id, number, date, subtotal, discount_total, discount_type, discount_value, tax_total,
+              total, tax_exempt, status, line_items
        FROM invoices WHERE deleted_at IS NULL AND status IN ('sent','partial','paid','cancelled')`,
     )
     .all<DocumentRow>();
   for (const row of invoices.results ?? []) {
     const reference = row.number ?? '—';
-    const lines = row.status === 'cancelled' ? reversalLines(amounts(row)) : invoiceLines(amounts(row));
+    const split = byItemAccount ? await revenueSplit(row, catalogue, codes) : null;
+    const lines = row.status === 'cancelled'
+      ? reversalLines(amounts(row), split, codes)
+      : invoiceLines(amounts(row), split, codes);
     if (!lines.length) continue;
     if (await post(database, {
       id: row.id, source_type: 'invoice', source_id: row.id,
@@ -132,13 +262,15 @@ export async function syncAccounting(database: D1Database): Promise<number> {
 
   const credits = await database
     .prepare(
-      `SELECT id, number, date, subtotal, discount_total, tax_total, total, tax_exempt, status
+      `SELECT id, number, date, subtotal, discount_total, discount_type, discount_value, tax_total,
+              total, tax_exempt, status, line_items
        FROM credits WHERE deleted_at IS NULL AND status IN ('sent','partial','applied')`,
     )
     .all<DocumentRow>();
   for (const row of credits.results ?? []) {
     const reference = row.number ?? '—';
-    const lines = creditLines(amounts(row));
+    const split = byItemAccount ? await revenueSplit(row, catalogue, codes) : null;
+    const lines = creditLines(amounts(row), split, codes);
     if (await post(database, {
       id: row.id, source_type: 'credit', source_id: row.id, event: 'issued',
       date: row.date, reference, label: `Avoir ${reference}`, journal: 'VE', lines,
@@ -155,7 +287,7 @@ export async function syncAccounting(database: D1Database): Promise<number> {
     if (await post(database, {
       id: row.id, source_type: 'payment', source_id: row.id, event: 'completed',
       date: row.date, reference, label: `Règlement ${reference}`, journal: 'BQ',
-      lines: paymentLines(row.amount, reference),
+      lines: paymentLines(row.amount, reference, codes),
     })) created += 1;
   }
 
@@ -169,7 +301,7 @@ export async function syncAccounting(database: D1Database): Promise<number> {
     if (await post(database, {
       id: row.id, source_type: 'expense', source_id: row.id, event: 'posted',
       date: row.date, reference: row.reference, label: `Dépense ${row.reference}`, journal: 'AC',
-      lines: expenseLines(row.amount, row.tax_amount, row.reference),
+      lines: expenseLines(row.amount, row.tax_amount, row.reference, codes),
     })) created += 1;
   }
 
@@ -266,7 +398,8 @@ export async function saveOpeningBalances(
   database: D1Database,
   input: { date: string; rows: readonly OpeningRow[] },
 ): Promise<{ lines: number; difference: number }> {
-  await ensureChart(database);
+  const codes = await getAccountCodes(database);
+  await ensureChart(database, codes);
   const now = nowISO();
   const totals = input.rows.reduce(
     (sum, row) => ({ debit: sum.debit + Math.round(row.debit), credit: sum.credit + Math.round(row.credit) }),
@@ -276,9 +409,9 @@ export async function saveOpeningBalances(
   // Every code the trial balance mentions becomes an account, so the journal can
   // join it and the balance sheet can classify it. An account that already
   // exists keeps its label and type: an import never rewrites the chart.
-  const codes = [...new Set([...input.rows.map((row) => row.code), RETAINED_EARNINGS])];
+  const accountCodes = [...new Set([...input.rows.map((row) => row.code), codes.retainedEarnings])];
   await database.batch(
-    codes.map((code) => {
+    accountCodes.map((code) => {
       const row = input.rows.find((item) => item.code === code);
       const balance = row ? Math.round(row.debit) - Math.round(row.credit) : 0;
       return database
@@ -286,7 +419,7 @@ export async function saveOpeningBalances(
           `INSERT OR IGNORE INTO accounts (code, label, type, is_active, created_at, updated_at)
            VALUES (?, ?, ?, 1, ?, ?)`,
         )
-        .bind(code, row?.label || (code === RETAINED_EARNINGS ? 'Report à nouveau' : `Compte ${code}`), typeFromCode(code, balance), now, now);
+        .bind(code, row?.label || (code === codes.retainedEarnings ? 'Report à nouveau' : `Compte ${code}`), typeFromCode(code, balance), now, now);
     }),
   );
 
@@ -310,7 +443,7 @@ export async function saveOpeningBalances(
     reference: 'AN',
     label: 'Reprise de balance',
     journal: OPENING_JOURNAL,
-    lines: openingLines(input.rows),
+    lines: openingLines(input.rows, codes),
   });
 
   return { lines: input.rows.filter((row) => row.debit > 0 || row.credit > 0).length, difference: totals.debit - totals.credit };

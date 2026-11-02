@@ -49,6 +49,9 @@ const ALLOWLIST = new Set([
   // The daily run is called by a machine, not a session: its guard is a
   // constant-time comparison against a platform secret, asserted below.
   'runs.ts /daily',
+  // Break-glass owner recovery: no session exists by definition, and the route
+  // is closed unless an operator provisions the secret. Guard asserted below.
+  'setup.ts /recover-owner',
 ]);
 
 /** The search router is guarded at router level, not per line: verify it stays. */
@@ -63,6 +66,7 @@ const FILE_LEVEL_GUARDS: Record<string, string> = {
   // from, so it is asserted through one helper that every route must call.
   'attachments.ts': 'assertPermission(role, ENTITY_PERMISSIONS[entity][action] as Permission)',
   'runs.ts': "if (!provided || !constantTimeEqual(provided, secret)) return fail(401, 'INVALID_RUN_TOKEN');",
+  'setup.ts': "if (!presented || !constantTimeEqual(presented, secret)) return fail(401, 'INVALID_RECOVERY_TOKEN');",
 };
 
 function routeLines(): { file: string; path: string; line: number; text: string }[] {

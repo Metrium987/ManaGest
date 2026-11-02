@@ -14,6 +14,7 @@ import {
   type RunStatus,
   type RunSummary,
 } from '../services/daily-run';
+import { maybeSendStockDigest } from '../services/stock-alerts';
 import type { AppEnv } from '../types';
 
 /**
@@ -33,6 +34,35 @@ runRoutes.get('/daily/last', requireAuth, requirePermission('reports.read'), asy
  * pressing it twice — or pressing it while the scheduler is running — cannot
  * produce a second pass.
  */
+/**
+ * Sends the stock digest on demand (C4). The once-a-day guard still applies, so
+ * this can never become a way to flood an inbox, and the outcome is reported
+ * instead of swallowed — "why did nobody get the mail?" needs an answer.
+ */
+runRoutes.post('/stock-alerts/digest', requireAuth, requirePermission('recurring.write'), async (c) => {
+  const company = c.get('company')!;
+  const user = c.get('user')!;
+  const day = todayIn(company.timezone);
+  const digest = await maybeSendStockDigest(c.env.DB, c.env, {
+    day,
+    companyName: company.name,
+    recipient: company.email ?? null,
+  }).catch(() => ({ sent: false, reason: 'MAIL_NOT_CONFIGURED' as const }));
+
+  if (digest.sent) {
+    await logActivity(c.env.DB, {
+      userId: user.id,
+      action: 'sent',
+      entityType: 'stock_alert',
+      entityId: day,
+      summary: 'activity.stock_digest_sent',
+      meta: { day },
+    });
+  }
+
+  return c.json({ day, digest });
+});
+
 runRoutes.post('/daily/manual', requireAuth, requirePermission('recurring.write'), async (c) => {
   const company = c.get('company')!;
   const user = c.get('user')!;
@@ -64,6 +94,13 @@ runRoutes.post('/daily/manual', requireAuth, requirePermission('recurring.write'
   }
 
   await finishDailyRun(c.env.DB, day, status, summary);
+  // The digest rides the daily pass (C4). A missing mail configuration must not
+  // turn a successful run into a failure: the alert still exists in the app.
+  const digest = await maybeSendStockDigest(c.env.DB, c.env, {
+    day,
+    companyName: company.name,
+    recipient: company.email ?? null,
+  }).catch(() => ({ sent: false, reason: 'MAIL_NOT_CONFIGURED' as const }));
   await logActivity(c.env.DB, {
     userId: user.id,
     action: 'ran',
@@ -74,7 +111,7 @@ runRoutes.post('/daily/manual', requireAuth, requirePermission('recurring.write'
     ip,
   });
 
-  return c.json({ ok: status !== 'failed', already_ran: false, day, status, summary }, status === 'failed' ? 500 : 200);
+  return c.json({ ok: status !== 'failed', already_ran: false, day, status, summary, digest }, status === 'failed' ? 500 : 200);
 });
 
 runRoutes.post('/daily', async (c) => {

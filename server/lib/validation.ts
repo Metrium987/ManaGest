@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ApiError } from './errors';
+import { isValidProfitCenter, normaliseProfitCenter } from '../../shared/profit-centers';
 
 /** Validate input and return only stable field/code pairs, never prose. */
 export function parseInput<T>(schema: z.ZodType<T>, data: unknown): T {
@@ -8,7 +9,10 @@ export function parseInput<T>(schema: z.ZodType<T>, data: unknown): T {
     const details: Record<string, string> = {};
     for (const issue of result.error.issues) {
       const key = issue.path.join('.') || '_';
-      if (!details[key]) details[key] = issue.code;
+      // A custom issue carries a stable code in its message (e.g. 'required'),
+      // so field errors stay translated instead of showing 'custom'.
+      const code = issue.code === 'custom' ? issue.message : issue.code;
+      if (!details[key]) details[key] = code;
     }
     throw new ApiError(422, 'VALIDATION_ERROR', details);
   }
@@ -58,6 +62,18 @@ export const lineItemSchema = z.object({
   tax_rate: percentRate,
   // Local TVA status (BK-001): exempt lines produce no 0-rate bucket.
   tax_status: z.enum(['taxable', 'exempt']).optional(),
+  expertise_level: z.string().trim().max(60).nullish().transform((value) => value ?? null).optional(),
+  // Q11: the profit centre is copied onto the line as a snapshot. A code that is no
+  // longer in the list is still accepted: an old document keeps what it was issued
+  // with, and the format is what protects the report from a stray value.
+  profit_center: z
+    .string()
+    .trim()
+    .max(20)
+    .nullish()
+    .transform((value) => normaliseProfitCenter(value))
+    .refine((value) => value === null || isValidProfitCenter(value), { message: 'invalid' })
+    .optional(),
 });
 
 export const lineItemsSchema = z.array(lineItemSchema).min(1).max(200);

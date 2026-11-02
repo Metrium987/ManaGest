@@ -7,6 +7,8 @@
  * hoped for in SQL.
  */
 
+import { DEFAULT_ACCOUNT_CODES, type AccountCodes } from '../../shared/accounts';
+
 export type AccountType = 'asset' | 'liability' | 'equity' | 'income' | 'expense';
 
 export interface Account {
@@ -34,24 +36,30 @@ export interface DocumentAmounts {
   taxExempt?: boolean;
 }
 
-/** The minimal chart the documents need. Codes follow the French PCG. */
+/** The minimal chart the documents need. Codes follow the French PCG; the
+ * defaults come from the shared table so the seeds and the settings cannot
+ * disagree. */
 export const CHART: Account[] = [
-  { code: '401000', label: 'Fournisseurs', type: 'liability' },
-  { code: '411000', label: 'Clients', type: 'asset' },
-  { code: '445660', label: 'TVA déductible', type: 'asset' },
-  { code: '445710', label: 'TVA collectée', type: 'liability' },
-  { code: '512000', label: 'Banque', type: 'asset' },
-  { code: '606000', label: 'Achats et charges externes', type: 'expense' },
-  { code: '706000', label: 'Prestations de services', type: 'income' },
+  { code: DEFAULT_ACCOUNT_CODES.supplier, label: 'Fournisseurs', type: 'liability' },
+  { code: DEFAULT_ACCOUNT_CODES.client, label: 'Clients', type: 'asset' },
+  { code: DEFAULT_ACCOUNT_CODES.vatDeductible, label: 'TVA déductible', type: 'asset' },
+  { code: DEFAULT_ACCOUNT_CODES.vatDue, label: 'TVA collectée', type: 'liability' },
+  { code: DEFAULT_ACCOUNT_CODES.bank, label: 'Banque', type: 'asset' },
+  { code: DEFAULT_ACCOUNT_CODES.expense, label: 'Achats et charges externes', type: 'expense' },
+  { code: DEFAULT_ACCOUNT_CODES.sales, label: 'Prestations de services', type: 'income' },
+  // E3: revenue billed in advance and not earned yet.
+  { code: DEFAULT_ACCOUNT_CODES.deferred, label: 'Produits constatés d’avance', type: 'liability' },
 ];
 
-const CLIENT = '411000';
-const SUPPLIER = '401000';
-const VAT_DUE = '445710';
-const VAT_DEDUCTIBLE = '445660';
-const BANK = '512000';
-const SALES = '706000';
-const EXPENSE = '606000';
+/** Q2: the account a sale posts its revenue to until the workspace says
+ * otherwise. The effective value is a setting, loaded by the posting service. */
+export const DEFAULT_SALES_ACCOUNT = DEFAULT_ACCOUNT_CODES.sales;
+
+/** Revenue carried by one account, as computed from the document's lines. */
+export interface RevenueSplit {
+  account_code: string;
+  amount: number;
+}
 
 function line(account: string, label: string, debit: number, credit: number): DraftLine {
   return { account_code: account, label, debit: Math.max(0, Math.round(debit)), credit: Math.max(0, Math.round(credit)) };
@@ -67,21 +75,57 @@ function netRevenue(document: DocumentAmounts): number {
  * the VAT collected. A fully exempt document has no VAT line at all rather than a
  * zero-rate bucket (BK-001), so the journal never invents a 0 % tax.
  */
-export function invoiceLines(document: DocumentAmounts): DraftLine[] {
+/**
+ * Q2: revenue may post to several accounts (one per article, or per family)
+ * instead of a single 706000. The split is computed by the caller, which is the
+ * only one that knows the catalogue; here it is scaled to the document's net
+ * revenue and the last account absorbs the rounding, so the entry still balances
+ * to the franc and the total is exactly the revenue.
+ */
+function revenueLines(
+  document: DocumentAmounts,
+  reference: string,
+  split?: RevenueSplit[] | null,
+  accounts: AccountCodes = DEFAULT_ACCOUNT_CODES,
+): DraftLine[] {
+  const revenue = netRevenue(document);
+  const useful = (split ?? []).filter((entry) => Math.round(Number(entry.amount) || 0) !== 0);
+  if (!useful.length) return [line(accounts.sales, `Facture ${reference}`, 0, revenue)];
+
+  const weight = useful.reduce((sum, entry) => sum + Math.round(entry.amount), 0);
+  let allocated = 0;
+  return useful.map((entry, index) => {
+    const amount = index === useful.length - 1
+      ? revenue - allocated
+      : Math.round(weight ? (revenue * Math.round(entry.amount)) / weight : 0);
+    allocated += amount;
+    return line(entry.account_code, `Facture ${reference}`, 0, amount);
+  });
+}
+
+export function invoiceLines(
+  document: DocumentAmounts,
+  split?: RevenueSplit[] | null,
+  accounts: AccountCodes = DEFAULT_ACCOUNT_CODES,
+): DraftLine[] {
   const reference = document.number ?? '—';
   const lines = [
-    line(CLIENT, `Facture ${reference}`, document.total, 0),
-    line(SALES, `Facture ${reference}`, 0, netRevenue(document)),
+    line(accounts.client, `Facture ${reference}`, document.total, 0),
+    ...revenueLines(document, reference, split, accounts),
   ];
   if (!document.taxExempt && document.taxTotal > 0) {
-    lines.push(line(VAT_DUE, `TVA collectée ${reference}`, 0, document.taxTotal));
+    lines.push(line(accounts.vatDue, `TVA collectée ${reference}`, 0, document.taxTotal));
   }
   return lines;
 }
 
 /** A credit note reverses exactly what the invoice posted, same accounts. */
-export function creditLines(document: DocumentAmounts): DraftLine[] {
-  return invoiceLines(document).map((entry) => ({
+export function creditLines(
+  document: DocumentAmounts,
+  split?: RevenueSplit[] | null,
+  accounts: AccountCodes = DEFAULT_ACCOUNT_CODES,
+): DraftLine[] {
+  return invoiceLines(document, split, accounts).map((entry) => ({
     ...entry,
     debit: entry.credit,
     credit: entry.debit,
@@ -89,22 +133,35 @@ export function creditLines(document: DocumentAmounts): DraftLine[] {
 }
 
 /** An invoice cancelled after issue is reversed, never deleted from the journal. */
-export function reversalLines(document: DocumentAmounts): DraftLine[] {
-  return creditLines(document);
+export function reversalLines(
+  document: DocumentAmounts,
+  split?: RevenueSplit[] | null,
+  accounts: AccountCodes = DEFAULT_ACCOUNT_CODES,
+): DraftLine[] {
+  return creditLines(document, split, accounts);
 }
 
-export function paymentLines(amount: number, reference: string): DraftLine[] {
+export function paymentLines(
+  amount: number,
+  reference: string,
+  accounts: AccountCodes = DEFAULT_ACCOUNT_CODES,
+): DraftLine[] {
   return [
-    line(BANK, `Encaissement ${reference}`, amount, 0),
-    line(CLIENT, `Encaissement ${reference}`, 0, amount),
+    line(accounts.bank, `Encaissement ${reference}`, amount, 0),
+    line(accounts.client, `Encaissement ${reference}`, 0, amount),
   ];
 }
 
 /** An expense is recorded at its pre-tax amount plus deductible VAT. */
-export function expenseLines(amount: number, taxAmount: number, reference: string): DraftLine[] {
-  const lines = [line(EXPENSE, `Dépense ${reference}`, Math.max(0, amount - taxAmount), 0)];
-  if (taxAmount > 0) lines.push(line(VAT_DEDUCTIBLE, `TVA déductible ${reference}`, taxAmount, 0));
-  lines.push(line(SUPPLIER, `Dépense ${reference}`, 0, amount));
+export function expenseLines(
+  amount: number,
+  taxAmount: number,
+  reference: string,
+  accounts: AccountCodes = DEFAULT_ACCOUNT_CODES,
+): DraftLine[] {
+  const lines = [line(accounts.expense, `Dépense ${reference}`, Math.max(0, amount - taxAmount), 0)];
+  if (taxAmount > 0) lines.push(line(accounts.vatDeductible, `TVA déductible ${reference}`, taxAmount, 0));
+  lines.push(line(accounts.supplier, `Dépense ${reference}`, 0, amount));
   return lines;
 }
 
@@ -174,7 +231,7 @@ export const OPENING_JOURNAL: JournalCode = 'AN';
 export const OPENING_SOURCE_ID = 'balances';
 
 /** Where an imbalance of the opening trial balance is carried. */
-export const RETAINED_EARNINGS = '110000';
+export const RETAINED_EARNINGS = DEFAULT_ACCOUNT_CODES.retainedEarnings;
 
 /**
  * Accounting class from the PCG code. Class 4 and 5 accounts sit on either side
@@ -207,14 +264,17 @@ export interface OpeningRow {
  * difference is carried to report à nouveau instead of being refused or, worse,
  * silently rounded into an account.
  */
-export function openingLines(rows: readonly OpeningRow[]): DraftLine[] {
+export function openingLines(
+  rows: readonly OpeningRow[],
+  accounts: AccountCodes = DEFAULT_ACCOUNT_CODES,
+): DraftLine[] {
   const lines = rows
     .filter((row) => Math.round(row.debit) > 0 || Math.round(row.credit) > 0)
     .map((row) => line(row.code, row.label || `Reprise ${row.code}`, row.debit, row.credit));
   const totals = totalsOf(lines);
   const difference = totals.debit - totals.credit;
-  if (difference > 0) lines.push(line(RETAINED_EARNINGS, 'Report à nouveau', 0, difference));
-  if (difference < 0) lines.push(line(RETAINED_EARNINGS, 'Report à nouveau', -difference, 0));
+  if (difference > 0) lines.push(line(accounts.retainedEarnings, 'Report à nouveau', 0, difference));
+  if (difference < 0) lines.push(line(accounts.retainedEarnings, 'Report à nouveau', -difference, 0));
   return lines;
 }
 

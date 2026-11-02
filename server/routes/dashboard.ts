@@ -1,5 +1,7 @@
 import { Hono } from 'hono';
 import { lastDailyRun } from '../services/daily-run';
+import { loadStockAlerts } from '../services/stock-alerts';
+import { alertCounts } from '../lib/stock-alerting';
 import { addMonths, monthStart, todayIn } from '../lib/dates';
 import { logActivity } from '../lib/audit';
 import { csvResponse } from '../lib/csv';
@@ -13,12 +15,48 @@ import {
   type ExemptRow,
   type TaxRow,
 } from '../lib/reports';
+import type { Permission } from '../../shared/domain';
 import { requireAuth, requirePermission } from '../middleware';
 import { ensureInvoiceTaxLines } from '../services/documents';
+import {
+  aggregateMargin,
+  marginSummary,
+  type CostLookup,
+  type MarginDocument,
+  type MarginGroup,
+  type MarginSourceLine,
+} from '../lib/margin';
 import type { AppEnv } from '../types';
+import { contractNotices, type NoticeContract } from '../lib/contracts';
 
 export const dashboardRoutes = new Hono<AppEnv>();
 dashboardRoutes.use('*', requireAuth);
+
+interface MarginDocumentRow {
+  id: string;
+  date: string;
+  discount_type: string | null;
+  discount_value: number | null;
+  line_items: string | null;
+}
+
+function toMarginDocument(row: MarginDocumentRow, kind: 'invoice' | 'credit'): MarginDocument {
+  let lines: MarginSourceLine[] = [];
+  try {
+    const parsed = row.line_items ? JSON.parse(row.line_items) : [];
+    if (Array.isArray(parsed)) lines = parsed as MarginSourceLine[];
+  } catch {
+    lines = [];
+  }
+  return {
+    id: String(row.id),
+    date: String(row.date),
+    kind,
+    discount_type: row.discount_type === 'amount' ? 'amount' : 'percent',
+    discount_value: Number(row.discount_value ?? 0),
+    lines,
+  };
+}
 
 function monthRange(reference: string, offset: number): { start: string; end: string; key: string } {
   const start = addMonths(monthStart(reference), offset);
@@ -97,10 +135,38 @@ dashboardRoutes.get('/', requirePermission('reports.read'), async (c) => {
       ORDER BY due_date ASC LIMIT 5`).all(),
   ]);
 
-  return c.json({
+  // Each role gets its own dashboard, and the shaping happens here as well as in
+  // the interface: the activity journal and the automation status are control
+  // evidence reserved for accounts holding `activity.read`. A sales or read-only
+  // account must not receive them just because the endpoint is shared.
+  const permissions = c.get('user')!.permissions;
+  const canRead = (permission: Permission) => permissions.includes(permission);
+  const internal = canRead('activity.read');
+
+  // C4: the alerts are the article thresholds read back, not a second rule.
+  const stockAlerts = await loadStockAlerts(db);
+  const alertSummary = alertCounts(stockAlerts);
+
+    // E4: a notice period is a deadline, so it belongs with the alerts a manager
+  // already reads every morning.
+  const noticeRows = await c.env.DB.prepare(
+    `SELECT r.id, c.display_name AS client_name, r.end_date, r.notice_days, r.renewal_mode, r.status
+       FROM recurring_invoices r JOIN clients c ON c.id = r.client_id
+      WHERE r.deleted_at IS NULL AND r.end_date IS NOT NULL`,
+  ).all<NoticeContract>();
+  const notices = contractNotices(noticeRows.results ?? [], todayIn(company.timezone));
+
+return c.json({
+    contract_notices: { count: notices.length, top: notices.slice(0, 5) },
     today,
+    stock_alerts: {
+      out: alertSummary.out,
+      low: alertSummary.low,
+      suggested_milli: alertSummary.suggested_milli,
+      top: stockAlerts.slice(0, 5),
+    },
     // T-104c: the dashboard says when the pass last ran, not only what it produced.
-    last_run: await lastDailyRun(db),
+    last_run: internal ? await lastDailyRun(db) : null,
     kpis: {
       invoiced_month: invoicedMonth,
       collected_month: collectedMonth,
@@ -120,8 +186,8 @@ dashboardRoutes.get('/', requirePermission('reports.read'), async (c) => {
       expenses: expenseMap[month.key] ?? 0,
     })),
     recent_invoices: recentInvoices.results ?? [],
-    top_clients: topClients.results ?? [],
-    activities: activities.results ?? [],
+    top_clients: canRead('clients.read') ? (topClients.results ?? []) : [],
+    activities: internal ? (activities.results ?? []) : [],
     upcoming: upcoming.results ?? [],
   });
 });
@@ -250,6 +316,78 @@ reportRoutes.get('/revenue-summary', requirePermission('reports.read'), async (c
       collected: periods.reduce((sum, row) => sum + row.collected, 0),
     },
   });
+});
+
+/**
+ * Revenue and margin by family, axis or item (F3).
+ *
+ * Revenue is read exclusive of VAT and at invoice date, credit notes are
+ * subtracted with the cost of the goods they take back, and the cost comes from
+ * the product's current average (B3). Lines that cannot be costed leave the
+ * margin null rather than pretending to a 100 % margin — the response says how
+ * many, and the cost itself stays behind the accounting permission.
+ */
+/** The full alert list (C4): the dashboard card shows five, the buyer needs all
+ * of them — a truncated list is how an article stays out of stock for a month. */
+dashboardRoutes.get('/stock-alerts', requirePermission('reports.read'), async (c) => {
+  const alerts = await loadStockAlerts(c.env.DB);
+  return c.json({ data: alerts, counts: alertCounts(alerts) });
+});
+
+reportRoutes.get('/margin', requirePermission('reports.read'), async (c) => {
+  const company = c.get('company')!;
+  const today = todayIn(company.timezone);
+  const from = c.req.query('from') ?? addMonths(monthStart(today), -11);
+  const to = c.req.query('to') ?? today;
+  const requested = c.req.query('group_by') ?? 'family';
+  const group: MarginGroup = requested === 'axis' || requested === 'product' ? requested : 'family';
+  const canSeeCost = c.get('user')!.permissions.includes('products.cost.read');
+
+  const [invoiceRows, creditRows, productRows] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT id, date, discount_type, discount_value, line_items FROM invoices
+       WHERE deleted_at IS NULL AND status IN ('sent','partial','paid') AND date >= ? AND date <= ?`,
+    ).bind(from, to).all<MarginDocumentRow>(),
+    c.env.DB.prepare(
+      `SELECT id, date, discount_type, discount_value, line_items FROM credits
+       WHERE deleted_at IS NULL AND status IN ('sent','partial','applied') AND date >= ? AND date <= ?`,
+    ).bind(from, to).all<MarginDocumentRow>(),
+    c.env.DB.prepare(`SELECT id, cost, analytic_axis, family FROM products WHERE deleted_at IS NULL`)
+      .all<{ id: string; cost: number; analytic_axis: string | null; family: string | null }>(),
+  ]);
+
+  const costs = new Map<string, CostLookup>(
+    (productRows.results ?? []).map((row) => [
+      row.id,
+      { cost: Number(row.cost ?? 0), axis: row.analytic_axis, family: row.family },
+    ]),
+  );
+
+  const documents: MarginDocument[] = [
+    ...(invoiceRows.results ?? []).map((row) => toMarginDocument(row, 'invoice')),
+    ...(creditRows.results ?? []).map((row) => toMarginDocument(row, 'credit')),
+  ];
+
+  const rows = aggregateMargin(documents, costs, group);
+  const summary = marginSummary(rows);
+
+  if (!canSeeCost) {
+    return c.json({
+      rows: rows.map((row) => ({ ...row, cost: null, margin: null, margin_bp: null })),
+      summary: {
+        revenue: summary.revenue,
+        cost: null,
+        margin: null,
+        margin_bp: null,
+        uncosted_lines: summary.uncosted_lines,
+      },
+      group_by: group,
+      documents: documents.length,
+      masked: true,
+    });
+  }
+
+  return c.json({ rows, summary, group_by: group, documents: documents.length, masked: false });
 });
 
 reportRoutes.get('/:type', requirePermission('reports.read'), async (c) => {

@@ -4,6 +4,7 @@ import { nowISO } from '../db';
 import { logActivity } from '../lib/audit';
 import { fail } from '../lib/errors';
 import { assertPermission } from '../lib/permissions';
+import { createProjectFromTemplate } from '../lib/project-templates';
 import { parseInput } from '../lib/validation';
 import { getExtra } from '../lib/settings-extra';
 import { clientIp, requireAuth, requirePermission } from '../middleware';
@@ -316,6 +317,36 @@ publicDocumentRoutes.post('/:token/accept', async (c) => {
     .run();
 
   if (!updated.meta.changes) return fail(409, 'INVALID_TRANSITION');
+
+  // Q10: whoever accepts — the client from a public link or the team from the app —
+  // the project opens the same way: planned, with the tasks of the version that was
+  // quoted. A second acceptance is already refused above, so no project is doubled.
+  const accepted = await c.env.DB.prepare(
+    `SELECT client_id, number, project_template_id, project_template_version FROM quotes WHERE id = ?`,
+  ).bind(link.entity_id).first<{
+    client_id: string; number: string | null;
+    project_template_id: string | null; project_template_version: number | null;
+  }>();
+  if (accepted?.project_template_id) {
+    const project = await createProjectFromTemplate(c.env.DB, {
+      templateId: accepted.project_template_id,
+      version: accepted.project_template_version ?? null,
+      clientId: accepted.client_id,
+      name: accepted.number ? `Projet ${accepted.number}` : null,
+      quoteId: link.entity_id,
+      userId: link.created_by ?? accepted.client_id,
+    });
+    if (project) {
+      await logActivity(c.env.DB, {
+        userId: link.created_by,
+        action: 'created',
+        entityType: 'project',
+        entityId: project.projectId,
+        summary: 'activity.project_created',
+        meta: { quote: accepted.number, template_version: project.version, tasks: project.taskCount },
+      });
+    }
+  }
 
   await logActivity(c.env.DB, {
     userId: link.created_by,

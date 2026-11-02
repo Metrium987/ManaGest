@@ -1,4 +1,4 @@
-import { ZERO_DECIMAL_CURRENCIES } from './domain';
+import { DEFAULT_LOCALE, ZERO_DECIMAL_CURRENCIES } from './domain';
 
 const EXTRA_DECIMALS: Record<string, number> = {
   BIF: 0, CLP: 0, DJF: 0, GNF: 0, ISK: 0, KMF: 0, KRW: 0, PYG: 0,
@@ -28,7 +28,7 @@ export function roundMinor(value: number): number {
   return value < 0 ? -Math.round(-value) : Math.round(value);
 }
 
-export function formatMoney(minor: number, currency = 'XPF', locale = 'fr-FR'): string {
+export function formatMoney(minor: number, currency = 'XPF', locale = DEFAULT_LOCALE): string {
   const value = fromMinor(minor, currency);
   const decimals = currencyDecimals(currency);
   try {

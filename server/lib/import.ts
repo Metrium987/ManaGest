@@ -134,6 +134,11 @@ export interface ValidationResult {
   invalidCount: number;
 }
 
+/** The only VAT rates French Polynesia applies (H4.4): a rate outside this set
+ * cannot be invoiced locally, so the row is refused instead of imported with a
+ * silently wrong tax. */
+export const LOCAL_TAX_RATES = [0, 1, 5, 13, 16] as const;
+
 const BOOLEAN_FIELDS = new Set(['is_tax_exempt', 'archived', 'track_quantity']);
 const INTEGER_FIELDS = new Set([
   'payment_terms', 'unit_price', 'cost', 'quantity_milli', 'tax_rate',
@@ -199,6 +204,12 @@ export function validateImport(entity: ImportEntity, parsed: ParsedCsv): Validat
 
     if (entity === 'clients' && record.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(record.email)) {
       issues.push({ row: rowNumber, field: 'courriel', code: 'invalid_email' });
+    }
+
+    // H4.4: the owner chose to refuse a row whose VAT rate matches no local rate,
+    // line by line, rather than importing it as exempt with a warning.
+    if (entity === 'products' && record.tax_rate && !LOCAL_TAX_RATES.includes(Number(record.tax_rate) as never)) {
+      issues.push({ row: rowNumber, field: 'tva', code: 'unknown_tax_rate' });
     }
 
     const key = entity === 'clients'

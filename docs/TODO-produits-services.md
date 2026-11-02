@@ -1,0 +1,1046 @@
+# TODO — modules Produit et Service
+
+Backlog unique et séquencé pour les deux faces du catalogue ManaGest. L'ordre n'est
+pas cosmétique : chaque phase débloque la suivante. Une phase peut être livrée
+partiellement, mais un item marqué **bloquant** doit passer avant les items qui en
+dépendent.
+
+Légende effort : **S** ≈ une demi-journée, **M** ≈ 1 à 2 jours, **L** ≈ 3 jours et plus.
+
+---
+
+## 0. État des lieux
+
+| Brique | État | Preuve / limite |
+| --- | --- | --- |
+| Fiche article ERP (9 rubriques) | **Fait** | `server/routes/products.ts`, `shared/product-erp.ts`, onglets de `ProductsPage` |
+| Fiche service (9 rubriques) | **Fait** | `shared/service.ts`, colonnes `products.*` service, onglets dédiés |
+| Journal de stock (entrée, sortie, ajustement) | **Fait** | table `stock_movements`, écriture à la création, à l'édition de quantité et à l'ajustement |
+| Masquage coût / marge hors comptabilité | **Fait** | `cost_masked` calculé côté serveur depuis `accounting.read` |
+| Kits : disponibilité et assemblage | **Fait (A4)** | `kitAvailability` en lecture, puis `POST /products/:id/assemble` et `/disassemble` : un seul lot, deux tables (composants sortis, kit entré), référence commune |
+| Temps facturable | **Fait (A5)** | relevé rattaché au service et au niveau, tarif résolu (TJM du niveau → taux de la ligne → prix du service), minimum facturable appliqué à l'intervention, majorations en ligne séparée |
+| Factures récurrentes | **Existe, non relié** | table `recurring_invoices`, `services/recurring.ts` génère les factures — aucun lien vers un contrat de service |
+| Bons de commande | **Fait (A2)** | la réception crée un mouvement `in` par ligne stockable, met à jour le stock et le prix d'achat, et refuse une double réception |
+| Lignes de devis / factures | **Fait (A1)** | `enrichLines` fige `product_id` + instantané (référence, nom, famille, type, unité) sur devis, factures et bons de commande ; une référence inconnue est refusée en 422 |
+| Sortie de stock | **Fait (A3)** | l'émission d'une facture (envoi ou encaissement d'un brouillon) sort les articles suivis, avec refus explicite `INSUFFICIENT_STOCK` sauf article autorisé en négatif |
+| Inventaire tournant | **Fait (B1)** | tables `stock_counts` / `stock_count_lines`, `POST /api/stock-counts`, écran « Inventaire » ; une seule session ouverte, quantités figées à l'ouverture, refus `COUNT_STALE` si le stock a bougé |
+| Valorisation CMP | **Fait (B3)** | table `stock_valuations`, `weightedAverageCost` appliqué aux réceptions et aux ajustements entrants valorisés, `GET /api/products/:id/valuation`, valeur du stock sur la fiche |
+| Marge par famille / axe | **Fait (F3)** | `server/lib/margin.ts`, `GET /api/reports/margin`, écran Rapports ; avoirs soustraits, marge nulle si coût inconnu, coût masqué sans `accounting.read` |
+| Lots et numéros de série | **Fait (B2)** | `stock_lots`, `server/lib/lots.ts` (FEFO), `POST/GET /products/:id/lots`, sortie par lot sur facture, retour au lot d'origine, écran « Lots » |
+| Emplacements et transferts | **Fait (B4)** | soldes par emplacement lus dans le journal, `POST /products/:id/transfer` (deux mouvements, référence `TRF-`), registre `stock_locations`, écran « Emplacements » |
+| Propositions d'achat (min/max, back-to-back) | **Fait (C1)** | `server/lib/replenishment.ts`, `GET /purchase-orders/suggestions`, `POST /purchase-orders/from-suggestions`, panneau « Propositions d'achat » |
+| Fournisseurs secondaires par article | **Fait (C2)** | `product_vendors`, `GET/POST/DELETE /products/:id/vendors`, prix appliqué à la commande du fournisseur choisi, écran « Fournisseurs » |
+| Reconnaissance du chiffre d’affaires | **Fait (E3)** | `revenue_schedules`, `revenue_recognitions`, compte 487000, `POST /api/revenue/schedules` et `/recognize` |
+| Révision tarifaire par index | **Fait (E2)** | `contract_revisions`, `reviseLines`, `POST /:id/revision`, `GET /:id/revisions` |
+| Alerte de préavis | **Fait (E4)** | `contractNotices`, `GET /api/recurring-invoices/notices`, `contract_notices` au tableau de bord |
+| Contrat depuis une fiche service | **Fait (E1)** | `POST /api/recurring-invoices/from-service`, `contractDraft`, colonnes préavis/reconduction |
+| CPS sur les documents | **Retiré (F1)** | Taxe supprimée au 1er octobre 2023 : calcul, écriture et ligne PDF retirés ; champ article conservé comme historique |
+| Permission dédiée au coût | **Fait (D4)** | `products.cost.read`, masquage coût dans produits et marge, migration des rôles |
+| Liens substituts et accessoires | **Fait (D3)** | `product_links`, `groupProductLinks`, `attachProductLinks`, modale produit |
+| Niveaux d'expertise sur ligne de service | **Fait (D2)** | `expertise_level` sur la ligne, `expertisePrice`, `applyExpertiseForLines` |
+| Grilles tarifaires par client | **Fait (D1)** | `clients.price_tier`, `linePriceFor`, `applyClientPricingForClient` |
+| Coût rendu Tahiti | **Fait (F4)** | `shared/landed-cost.ts`, table `landed_cost_sheets`, `POST/GET /products/:id/landed-cost`, modale « Calculer le coût rendu » |
+| Comptes par famille | **Fait (F2)** | table `family_accounts`, `resolveFamilyAccounts`, `effective_accounts` sur la fiche, modale « Comptes par famille » |
+| Alertes de stock (tableau de bord + digest) | **Fait (C4)** | `server/lib/stock-alerting.ts`, `stock_alerts` dans `/api/dashboard`, digest quotidien gardé par jour |
+| Réceptions partielles et reliquats | **Fait (C3)** | `purchase_order_receipts`, `POST /purchase-orders/:id/receive`, soldes par ligne dans le détail, écran de réception |
+| Historique des prix d'achat | **Absent** | aucun relevé daté : voir C2 (reste) |
+| Prévision de la demande, fabrication MRP | **Absent** | les seuils restent saisis ; pas de module de production | seuls `products.ts`, les services de stock et le comptage touchent `quantity_milli` |
+
+**Conséquence directe** : les deux fiches sont aujourd'hui descriptives et
+facturables à la main ; elles ne pilotent encore ni le stock, ni les coûts, ni la
+facturation. C'est exactement ce que les phases suivantes corrigent.
+
+---
+
+## Phase A — Socle : relier le catalogue aux documents et au stock
+
+Objectif : qu'une ligne de devis, une réception ou une facture produise enfin un
+effet mesurable sur le stock et la marge.
+
+- **A1 — Lignes de documents rattachées au catalogue** *(bloquant, M)* — **fait**
+  *Limite* : l'instantané et la référence sont posés ; le rapport de marge par
+  famille qui les consomme est livré en F3.
+  Renseigner `product_id` depuis l'écran de devis/facture, figer un instantané
+  (libellé, TVA, unité, prix) pour que l'historique ne change pas quand la fiche
+  évolue, et remonter les statistiques de vente par article et par famille.
+  *Acceptation* : une ligne de devis créée depuis un article conserve son
+  `product_id`, son prix d'alors, et apparaît dans les rapports par famille.
+- **A2 — Réception de bon de commande → stock** *(bloquant, M)* — **fait**
+  *Limite* : réception globale (pas de quantité reçue par ligne, voir C3) ; le
+  coût rendu n'est pas recalculé, seul le prix d'achat de référence est rafraîchi.
+  Au passage au statut `received` (ou réception partielle), créer un mouvement
+  `in` par ligne stockable, mettre à jour le coût d'achat réel et le coût rendu,
+  refuser une ligne de type service.
+  *Acceptation* : réceptionner 10 unités augmente le stock de 10 avec un mouvement
+  tracé à l'utilisateur et au bon de commande.
+- **A3 — Sortie de stock à la facturation** *(M, dépend de A1)* — **fait**
+  *Limite* : l'annulation est purement financière — elle ne rend pas la marchandise
+  (voir décision 2) ; la restitution est l'action de retour de A6. La rétention
+  (minimum 1 an) interdit par ailleurs d'annuler un document émis récemment.
+  Décrémenter le stock des articles stockables à l'émission de la facture (ou à la
+  validation, selon le réglage), avec mouvement `out` lié à la facture, et refus
+  explicite si le stock est insuffisant pour un article non géré en négatif.
+- **A4 — Assemblage de kit** *(M, dépend de A2/A3)* — **fait**
+  Action « assembler N kits » : contrôle de disponibilité, sortie des composants,
+  entrée du kit, mouvements liés entre eux par une référence commune.
+  *Décisions* : un kit **sur commande** n'est jamais stocké — il est éclaté en
+  composants à la vente, comme un kit fantôme Odoo ; seul un kit **en stock**
+  s'assemble, son coût devenant la somme de ce qui est entré ; le démontage est
+  un mouvement inverse daté, pas l'annulation de l'assemblage.
+  *Limite* : l'éclatement à la vente est couvert par le calcul pur et le code,
+  mais non rejoué en hébergé (cela aurait créé une facture verrouillée par la
+  rétention).
+- **A5 — Prestation en régie facturée au temps** *(L, dépend de A1)* — **fait**
+  *Décisions* : le service, le niveau, la date et la majoration sont portés par le
+  relevé ; les heures d'un même service/niveau/tarif forment une ligne ; le
+  **minimum facturable est un plancher pour l'intervention**, pas pour chaque
+  ligne (deux niveaux sur le même chantier partagent le plancher, réparti au
+  prorata des heures pour que le total ne dépende pas de l'ordre de lecture) ; la majoration
+  est une ligne à part au taux majoré ; les minutes facturées sont figées dans
+  `billed_minutes` et les heures d'un relevé facturé ne sont plus modifiables.
+  *Limite* : la correction d'un relevé facturé passe par un avoir, pas par une
+  édition ; aucune distinction heures travaillées / heures facturées n'est
+  exposée à l'écran (le minimum est appliqué au calcul, pas figé sur la ligne).
+  Saisie de temps rattachée au service (et au niveau d'expertise), validation du
+  relevé, génération d'une ligne de facture en appliquant la quantité minimale
+  facturable (`billableQuantity`), les majorations nuit/dimanche et le TJM du
+  niveau. Les tâches existantes servent de base : c'est un rattachement, pas un
+  nouveau module.
+- **A6 — Avoir et retour de marchandise** *(M, dépend de A3)* — **fait**
+  Décider et implémenter ce qu'un avoir fait au stock : un avoir commercial ne
+  rend pas forcément la marchandise, un retour si. Mouvement `in` motivé
+  `credit_return`, rattaché à l'avoir, avec contrôle de la quantité déjà rendue.
+  *Réalisé* : le retour est une action séparée (`GET/POST /invoices/:id/returns`),
+  mouvement `in` motivé `customer_return`, référence = numéro de facture, valorisé
+  au **coût** de l'article et non au prix de vente. Le plafond est calculé sur le
+  journal : quantité sortie (`invoice`) moins quantités déjà rendues — un article
+  non suivi ou une prestation n'a jamais bougé, donc n'est jamais retournable.
+  Un brouillon ou une facture annulée refuse un retour (`INVALID_TRANSITION`),
+  un dépassement est refusé en `RETURN_EXCEEDS_SOLD` en nommant la ligne. Écran :
+  action « Retour marchandise » sur la facture, quantités plafonnées à l'affichable.
+  *Limite* : la valorisation au coût utilise le coût courant de la fiche, pas le
+  coût de sortie historique (pas encore de couche de valorisation, voir B3).
+
+## Phase B — Stock exécutable
+
+- **B1 — Inventaire tournant** *(M)* — **fait**
+  Session de comptage par emplacement ou famille, écart calculé, mouvement
+  d'ajustement motivé, verrouillage pendant le comptage.
+  *Décisions* : le comptage est une **photographie** — la quantité attendue est
+  figée à l'ouverture de la ligne, la personne saisit ce qu'elle voit, seul
+  l'écart (`adjust`, motif `stock_count`) devient un mouvement ; une ligne vide
+  n'est **pas** un zéro (validation refusée en `COUNT_INCOMPLETE`, qui dit combien
+  de lignes manquent) ; une seule session ouverte à la fois (index unique
+  partiel, `COUNT_ALREADY_OPEN`) car deux feuilles pourraient revendiquer la même
+  étagère ; pendant le comptage, la quantité d'un article compté est **gelée**
+  pour la saisie manuelle (`STOCK_COUNT_IN_PROGRESS` sur l'édition de fiche et
+  l'ajustement, y compris assemblage/démontage de kit), mais une vente ou une
+  réception reste possible : elle rend la ligne **périmée** et la validation est
+  refusée (`COUNT_STALE`, article nommé) plutôt que d'écraser le mouvement réel ;
+  annuler ne touche pas au stock.
+  *Limite* : le périmètre « emplacement » s'appuie sur `products.warehouse_location`
+  (pas encore de stock par emplacement, voir B4) ; un comptage laissé ouvert
+  bloque toute saisie manuelle des articles concernés jusqu'à validation ou
+  annulation ; l'écran n'a pas été vérifié dans un navigateur (pas de navigateur
+  dans l'environnement), seulement son API.
+- **B2 — Lots et numéros de série** *(L)* — **fait**
+  Table `stock_lots` (lot, péremption, emplacement, quantité), mouvement par lot,
+  règle FEFO à la sortie, blocage d'une sortie sans lot quand le mode de gestion
+  l'exige.
+  *Décisions* : le suivi se choisit **par article** (`lot_tracking` : aucun, par
+  lot, par numéro de série) et non globalement, comme Odoo le fait sur la fiche ;
+  un numéro de série est un lot d'**exactement une unité**, réutilisable jamais ;
+  le lot n'est créé qu'à la **réception** (`POST /products/:id/lots`), jamais
+  deviné après coup ; la sortie prend le lot dont la **péremption est la plus
+  proche** (FEFO) et un lot **sans date ne passe jamais devant** un lot daté ;
+  une quantité répartie sur plusieurs lots laisse **un mouvement par lot**, pour
+  que la question « quel lot est parti chez ce client ? » ait une réponse ; le
+  stock de l'article et la somme de ses lots avancent dans le **même lot de
+  requêtes**, sans réconciliation différée ; le retour marchandise remet les
+  unités **dans le lot d'où elles sont sorties**, lu sur la facture, et refuse
+  (`lot: 'ambiguous'`) quand plusieurs lots ont été livrés sur la même ligne
+  plutôt que d'en inventer un ; un ajustement de stock sur un article loté exige
+  le lot.
+  *Limite* : pas de **quantité par emplacement** — `location` est une étiquette
+  d'information, pas une contrainte de picking ; l'**assemblage/démontage** de
+  kits est refusé (`LOT_ASSEMBLY_UNSUPPORTED`) tant qu'il ne sait pas nommer les
+  lots ; les articles lotés sont **exclus du comptage cyclique** (B1) plutôt que
+  comptés faux ; les **retours multi-lots** sont refusés au lieu d'être répartis ;
+  pas d'alerte de péremption planifiée ni de blocage à la vente d'un lot périmé
+  (le lot est signalé comme périmé, la vente n'est pas refusée) ; le formulaire
+  d'ajustement de stock de l'interface ne propose pas encore la liste des lots
+  (le champ reste libre, le serveur valide) ; l'écran des lots n'a pas été vu dans
+  un navigateur.
+- **B3 — Valorisation CMP réelle et coût rendu** *(L)* — **fait (partie stock)**
+  Recalcul du coût moyen à chaque entrée, journal de valorisation, exposition de
+  la valeur du stock.
+  *Décisions* : la moyenne ne bouge **qu'à l'entrée** et seulement si l'entrée
+  porte un coût — une sortie part au coût que le stock avait déjà, sinon la marge
+  et la valeur du stock se contrediraient ; une réception à coût nul n'écrase pas
+  la moyenne ; une quantité nulle ou négative fait repartir la moyenne du coût
+  d'entrée au lieu de moyenner contre un stock fantôme ; le **coût rendu** saisi
+  sur la fiche prime sur le prix d'achat (fret, assurance, douane et frais
+  d'approche font partie du coût des marchandises). Chaque entrée valorisée
+  laisse une ligne dans `stock_valuations` (quantité et coût avant, entrée, coût
+  et valeur après), lisible par `GET /api/products/:id/valuation` et dans
+  l'onglet Stock de la fiche, derrière le masquage du coût (`accounting.read`).
+  *Limite* : le coût rendu reste **un seul montant saisi** — le détail fret /
+  assurance / douane / frais d'approche et son calcul sont F4 ; aucune écriture
+  dans les comptes de stock 3xx (le journal comptable dérivé ignore encore le
+  stock) ; un écart d'inventaire ajuste la quantité au CMP courant sans
+  réévaluation comptable, donc aucun « écart de valorisation » n'est produit ;
+  les retours clients rentrent au coût courant, pas au coût historique de sortie.
+- **B4 — Emplacements multiples et transferts** *(M)* — **fait**
+  Stock par emplacement, mouvement `transfer` entre deux emplacements, contrôle
+  de cohérence.
+  *Décisions* : le solde par emplacement est une **lecture du journal**
+  (`stock_movements.location`), pas un compteur parallèle — un compteur
+  finirait par mentir, et Odoo lui-même tient ses quants du grand livre ; le
+  signe est appliqué en **un seul endroit** (`signedQuantity`) parce qu'une
+  vente est stockée positive avec le type `out` alors qu'un ajustement porte son
+  propre signe, piège qui ferait « remplir » un rayon qui se vide ; un
+  **transfert** écrit deux mouvements (sortie de la source, entrée à
+  destination) sous une même référence `TRF-`, sans toucher au stock total ni à
+  la valorisation, exactement la définition Odoo du transfert interne ; les
+  codes d'emplacement sont **enregistrés** dans `stock_locations` au premier
+  transfert, pour qu'une étiquette ne s'écrive pas de deux façons ; le transfert
+  refuse une source insuffisante (`INSUFFICIENT_LOCATION_STOCK`), un emplacement
+  identique (`same_as_source`), une quantité nulle, un article non suivi et un
+  article **loté** (`LOT_TRANSFER_UNSUPPORTED`) : un lot porte un seul
+  emplacement sur sa ligne, le scinder est un travail en soi.
+  *Limite* : pas d'**emplacement par défaut** obligatoire, donc les mouvements
+  anciens restent dans un seau « sans emplacement » ; la vente sort toujours de
+  l'emplacement de la **fiche article** (`warehouse_location`), pas d'un choix
+  par ligne de facture ; pas de croisement **lot × emplacement** ; le comptage
+  cyclique par emplacement filtre encore sur `warehouse_location` de la fiche et
+  non sur les soldes réels ; la réception d'achat écrit à l'emplacement de la
+  fiche ; l'écran des emplacements n'a pas été vu dans un navigateur.
+
+## Phase C — Réapprovisionnement et achats
+
+- **C1 — Propositions d'achat (MRP)** *(L, dépend de A2)* — **fait**
+  Calcul à partir du seuil, du stock de sécurité, du stock maxi, du MOQ, du
+  multiple et du délai ; regroupement par fournisseur en brouillon de bon de
+  commande ; mode back-to-back limité aux commandes client en attente.
+  *Décisions* : la quantité n'est **pas recalculée à la main** — la proposition
+  réutilise `suggestedReorder`, la même formule que la fiche article, sinon le
+  chiffre du rapport et celui de la fiche finiraient par se contredire ; la règle
+  suit Odoo : déclenchement au **seuil** (min), reconstitution jusqu'au **maxi**,
+  arrondi **au multiple supérieur** du fournisseur et jamais sous le **MOQ** ; un
+  article en mode **manuel** n'est jamais proposé (c'est une décision d'acheteur,
+  pas un oubli) ; un article **sans fournisseur** non plus, car un brouillon sans
+  destinataire n'est pas une action ; le mode **back-to-back** n'achète que la
+  **demande déjà vendue** (devis envoyé ou accepté non converti) moins le stock,
+  comme la route MTO d'Odoo, au lieu de remplir un rayon pour une vente déjà
+  conclue ; les **quantités sont recalculées côté serveur** au moment de créer le
+  brouillon — le client n'envoie que des identifiants, donc un brouillon ne peut
+  pas contenir un chiffre que le serveur n'a pas déduit ; la livraison prévue
+  prend le **délai le plus long** du groupe, pas la moyenne ; le prix de ligne est
+  le **prix d'achat** saisi, à défaut le coût.
+  *Limite* : pas de **prévision de demande** ni d'historique de ventes pour
+  proposer des seuils (le seuil reste saisi sur la fiche) ; pas de commande
+  groupée multi-fournisseurs en un seul document ; le mode `mrp` ne déclenche
+  aucune **fabrication** (pas de module de production : un kit s'assemble à la
+  main) ; la demande back-to-back lit les devis envoyés/acceptés non convertis et
+  ignore les commandes en cours de facturation ; pas de date de besoin par ligne ;
+  l'écran des propositions n'a pas été vu dans un navigateur.
+- **C2 — Fournisseurs secondaires et conditions** *(M)* — **fait (liaison, prix, historique)**
+  Table de liaison article-fournisseur (prix, devise, MOQ, délai, référence), choix
+  du fournisseur retenu et historique des prix.
+  *Décisions* : chaque fournisseur garde **sa propre ligne** (`product_vendors`) au
+  lieu d'écraser le prix d'achat de la fiche — un prix n'est vrai que pour celui
+  qui l'a proposé, c'est la "liste de prix fournisseur" d'Odoo ; un seul
+  fournisseur est **préféré** (le drapeau se déplace, il ne se cumule pas) et sert
+  de choix par défaut, à défaut le moins cher puis le plus rapide ; à la
+  commande, le prix du fournisseur choisi **remplit les lignes qui n'ont pas de
+  prix**, mais **n'écrase jamais** un prix négocié saisi sur la ligne — c'est la
+  seule règle qui évite une facture d'achat fausse ; le MOQ et le délai sont
+  stockés par fournisseur et lus par le panneau de propositions ; la référence
+  fournisseur est conservée telle quelle.
+  *Historique des prix* : table `product_vendor_prices`, alimentée **seulement quand
+  le prix ou la devise change** (réenregistrer le même prix n'invente aucun
+  mouvement), et renvoyée avec la liste des fournisseurs ; la modale affiche sous le
+  prix courant le **prix précédent et sa date**. Vérifié sur la preview : 12 000 →
+  19 000 laisse 12 000 dans le relevé, un second enregistrement identique n'ajoute
+  rien. *Décisions datées (2/11/2026)* : le MOQ reste une **information**, pas un
+  blocage à la commande — bloquer une commande sur un seuil fournisseur ferait
+  refuser une urgence pour une donnée que personne n'a validée ; la liste ne gère pas
+  d'**échelle de prix par quantité** ni de période de validité, il faudrait décider
+  comment deux échelles qui se chevauchent se départagent ; les propositions d'achat
+  (C1) gardent le fournisseur **principal de la fiche** plutôt que le moins cher, car
+  le moins cher n'est pas toujours celui qui livre ; la suppression d'un fournisseur
+  reste à l'API pour ne pas effacer un prix avec lequel une commande a été passée.
+- **C3 — Réceptions partielles et reliquats** *(M)* — **fait**
+  Quantités reçues par ligne, reliquat, écart de prix signalé, clôture
+  automatique quand tout est reçu.
+  *Décisions* : le **reliquat n'est pas un second document** — Odoo propose de
+  créer un reliquat séparé, ici la quantité due reste sur le même bon, ce qui
+  évite un objet de plus à rapprocher et rend l'état toujours lisible d'un coup
+  d'œil ; le reçu par ligne est **déduit de l'historique des réceptions**
+  (`purchase_order_receipts`) et non d'un compteur sur la ligne, donc une
+  réception ne peut pas être "à moitié" enregistrée ; la réception **refuse de
+  dépasser le reliquat** (`RECEIPT_EXCEEDS_ORDERED`) au lieu d'écrêter
+  silencieusement — trop recevoir veut dire erreur de saisie ou commande modifiée
+  sans trace, les deux méritent un regard ; le stock n'augmente que des quantités
+  cochées, et le bon **se clôt tout seul** quand plus rien n'est dû ; un écart
+  entre le prix payé et la valeur du stock au moment de l'entrée est
+  **enregistré** par réception et renvoyé à l'appelant (signalé en notification),
+  ce qui rend l'écart de valorisation visible au lieu de le noyer dans le CMP.
+  *Limite* : la réception physique et l'écriture des lignes de réception ne sont
+  pas dans **une seule transaction** (le stock bouge, puis l'historique s'écrit) ;
+  pas de **facture d'achat rapprochée** de la réception (pas encore de module
+  d'achat facturé) ; pas de réception partielle depuis un **scan** de code-barres ;
+  l'écart de prix est informatif, rien ne bloque la réception pour ce motif ;
+  l'écran de réception n'a pas été vu dans un navigateur.
+- **C4 — Alertes de stock** *(S)* — **fait**
+  Brancher le tableau de bord et l'e-mail quotidien sur les seuils réels
+  (rupture, stock faible, réappro suggéré).
+  *Décisions* : l'alerte n'est pas une **règle nouvelle**, c'est le seuil déjà
+  écrit sur la fiche relu (`reorder_point`, `safety_stock`, `max_stock`) — deux
+  règles finiraient par se contredire ; la quantité suggérée réutilise
+  `suggestedReorder`, la même formule que la fiche et les propositions d'achat ;
+  l'ordre est celui de l'**urgence** (rupture avant stock faible, puis le plus
+  gros manque), parce que les deux appellent des actions différentes ; un article
+  **non suivi** ou un service n'est jamais alerté ; le tableau de bord porte les
+  compteurs et les cinq premiers articles, la **liste complète** étant exposée par
+  `GET /api/dashboard/stock-alerts` (une carte tronquée à cinq laisserait un
+  article en rupture invisible), et le digest **nomme les articles** —
+  « 12 articles » sans dire lesquels oblige à ouvrir l'application pour
+  apprendre quelque chose ; le digest quotidien est limité à **un envoi par
+  jour** (clé `stock_alert_last_sent`) partagé entre le passage planifié et les deux déclenchements
+  manuels (`POST /api/runs/daily/manual`, `POST /api/runs/stock-alerts/digest`) ; une **configuration e-mail absente** n'échoue pas le passage :
+  l'alerte existe dans l'application et la raison est rapportée (`sent: false`,
+  `MAIL_NOT_CONFIGURED`).
+  *Limite* : l'e-mail n'est pas **traduit** (texte français codé côté serveur, pas
+  de i18n serveur) ; pas de **destinataire par rôle** (le digest part à l'adresse
+  de la société) ; pas d'abonnement par article ni de seuil d'alerte distinct du
+  seuil de réappro ; les **bons de commande en cours** ne sont pas déduits du
+  manque (une alerte peut donc recommander ce qui est déjà commandé) ; pas de
+  notification dans l'application (uniquement tableau de bord et e-mail) ; la
+  carte du tableau de bord n'a pas été vue dans un navigateur.
+
+## Phase D — Commercial et tarifs
+
+- **D1 — Grilles tarifaires et remises volumiques** *(M, dépend de A1)* — **fait**
+  Prix public / pro / adhérent par client, application automatique du palier
+  (`discountForQuantity`) sur la ligne de devis.
+  *Décisions* : la grille est un **champ du client** (`clients.price_tier`), pas une
+  table de règles — Odoo appelle cela une liste de prix, mais une matrice de règles
+  que personne ne remplit vaut moins que trois prix lus sur la fiche article ; les
+  trois prix existaient déjà (`unit_price`, `price_pro`, `price_member`), la grille
+  ne fait que choisir lequel s'applique ; un prix de grille **vide retombe sur le
+  prix public** au lieu de facturer zéro ; le palier volumique **se cumule** avec la
+  grille (prix pro puis remise de quantité) et **suit la quantité** tant que la
+  ligne porte encore ce prix — dès qu'un prix est négocié à la main, il n'est plus
+  jamais recalculé ; côté API, seules les lignes à **0** sont remplies, une ligne
+  tarifée est une décision ; la grille ne touche ni le coût ni la marge (F3 reste au
+  CMP).
+  *Limites* : pas de prix négocié **par article et par client** (seulement les trois
+  grilles générales de la fiche) ; pas de **dates d'effet** ni de devise par grille ;
+  pas de remise par **catégorie** ou par famille ; pas d'**historique** des grilles
+  (on ne sait pas quel prix s'appliquait il y a six mois) ; un devis existant garde
+  ses prix, la grille ne le reprixe pas ; l'écran client et la ligne de devis n'ont
+  pas été vus dans un navigateur.
+- **D2 — Niveau d'expertise sur ligne de service** *(S, dépend de A1)* — **fait**
+  Sélection du niveau dans le devis, tarif issu de `expertise_levels`.
+  *Décisions* : le niveau est un **attribut de la ligne** (`expertise_level`), pas un
+  second article — dupliquer la prestation en « Junior / Senior / Expert » multiplierait
+  les fiches et casserait l'historique de vente par service ; le prix vient de la
+  fiche, et un niveau **non publié est refusé** (422) au lieu d'être facturé au tarif
+  de base, parce qu'un devis qui annonce « Expert » et facture le tarif junior est
+  pire qu'une erreur ; un niveau à **0** est traité comme non publié ; le niveau
+  s'applique **avant** la grille client (D1) : la prestation décrit le travail, la
+  grille décrit le client, et la grille ne remplace jamais un prix de niveau ; une
+  ligne **déjà tarifée** n'est pas reprixée ; le sélecteur n'apparaît que pour les
+  services qui publient des niveaux.
+  *Limites* : pas de **taux horaire** ni de temps passé rattaché au niveau ; pas de
+  niveau **par défaut par client** ; pas d'**historique** des niveaux ; la marge (F3)
+  ne se détaille pas par niveau ; le niveau n'est pas repris dans le suivi des
+  tâches (il y reste indépendant) ; l'écran de devis n'a pas été vu dans un
+  navigateur.
+- **D3 — Substituts et accessoires suggérés** *(S)* — **fait**
+  Proposition en cas de rupture et lors de la saisie d'un devis.
+  *Décisions* : deux liens distincts, comme Odoo distingue l'**alternative** (elle
+  remplace un article épuisé) de l'**accessoire** (il accompagne l'article) — les
+  confondre ferait proposer du pain à la place du beurre ; les liens vivent dans
+  `product_links` (`substitute` / `accessory`), pas en texte libre sur la fiche, pour
+  rester des références vivantes qui suivent prix et stock ; les suggestions
+  **voyagent avec la liste d'articles** plutôt que par une requête par ligne, sinon
+  un devis de quinze lignes déclencherait quinze appels ; un substitut n'est proposé
+  que sur un article **suivi et à zéro**, un article non suivi n'étant jamais en
+  rupture ; l'ajout d'un accessoire crée une **ligne de plus** au lieu de modifier la
+  ligne d'origine, pour que le client voie ce qu'il paie ; un lien vers soi-même ou
+  vers un article inconnu est refusé (422) ; l'écriture remplace l'ensemble des liens
+  d'un article en une transaction.
+  *Limites* : pas de **priorité** entre substituts ni de substitut « par défaut » ;
+  un accessoire est proposé mais **jamais imposé** ; pas de suggestion croisée par
+  famille d'articles (le lien est explicite) ; pas de vérification que le substitut
+  est lui-même disponible au moment de la proposition au-delà du drapeau `in_stock` ;
+  les liens ne sont pas repris dans les **bons de commande** ni dans les alertes de
+  stock ; l'écran de gestion des liens et les suggestions dans le devis n'ont pas été
+  vus dans un navigateur.
+- **D4 — Permission dédiée au coût** *(S)* — **fait**
+  Remplacer `accounting.read` par `products.cost.read` pour ne plus donner accès aux
+  livres pour cacher un prix d'achat ; migration des rôles et de la matrice.
+  *Décisions* : le nom dit ce qu'il protège — `products.cost.read` protège une
+  **information d'achat**, pas la comptabilité ; la permission est **exclue** du
+  paquet de lecture opérationnelle, sinon lecteurs et commerciaux l'obtiendraient
+  implicitement et le masquage n'aurait rien changé ; le comptable la reçoit (il
+  chiffre les coûts), le propriétaire et l'administrateur aussi par construction ;
+  la migration **préserve l'accès existant** : un rôle personnalisé qui lisait le
+  journal reçoit `products.cost.read`, parce que le but est de pouvoir séparer les
+  deux droits, pas de rendre aveugle du jour au lendemain ; elle est idempotente et
+  ne touche pas les rôles système, qui se recalculent depuis la matrice.
+  *Limites* : le masquage reste **binaire** (voir ou ne pas voir) sans notion de coût
+  approximatif ; la permission n'est pas encore déclinée en écriture
+  (`products.cost.write`) ; les rôles personnalisés migrés gardent la permission
+  jusqu'à ce qu'un administrateur la retire à la main ; la matrice n'a pas été vue
+  dans un navigateur.
+
+## Phase E — Contrats de service et récurrence
+
+- **E1 — Contrat → facture récurrente** *(M, dépend de A1)* — **fait**
+  Depuis la fiche service (abonnement), créer et maintenir une `recurring_invoice`
+  avec la fréquence, la date de fin, le préavis et la tacite reconduction ;
+  prochaine échéance via `nextBillingDate`.
+  *Décisions* : le contrat **naît de la fiche service** (`POST /api/recurring-invoices/from-service`)
+  au lieu d'être retapé — une prestation vendue avec 30 jours de préavis ne peut pas
+  être facturée sans, si les termes voyagent avec l'offre ; la fréquence, le préavis
+  et le mode de reconduction sont **copiés** sur le contrat (`service_id`,
+  `notice_days`, `renewal_mode`, `contract_start`) pour rester lisibles même si la
+  fiche change ensuite ; un contrat créé ainsi démarre **actif**, pas en brouillon,
+  parce qu'un contrat signé n'attend pas une seconde validation ; un article qui
+  n'est pas un service est refusé (422) ; la prochaine échéance reste calculée par
+  `nextBillingDate`, qui conserve le jour du mois et le borne à la longueur du mois.
+  *Limites* : pas de **prorata** sur un premier mois partiel ; pas de facturation
+  d'avance paramétrable (le cycle est facturé à échéance) ; la date de fin n'est pas
+  déduite d'une durée contractuelle (elle se saisit) ; pas d'avenant ni de
+  suspension/reprise historisée ; le préavis n'est pas encore utilisé pour une
+  alerte (c'est E4) ; la modale n'a pas été vue dans un navigateur.
+- **E2 — Révision tarifaire par index** *(M)* — **fait**
+  Revalorisation programmée (index, pourcentage annuel), historique des révisions et
+  conservation du prix contractuel par période.
+  *Décisions* : le taux est saisi en **points de base** (`percent_bp`, 250 = 2,5 %)
+  parce que des pourcentages flottants sur des montants entiers finissent par dériver
+  d'un franc ; la révision s'applique **ligne par ligne** avec un arrondi unique, et
+  l'historique stocke les totaux **avant/après** plutôt qu'un taux à recalculer —
+  c'est ce qui permet de répondre à un client six mois plus tard ; le taux
+  effectivement appliqué est recalculé après arrondi (`effectiveRate`), pour qu'une
+  ligne d'historique ne prétende jamais un taux qu'elle n'a pas produit ; l'index
+  vient de la fiche service (`price_revision_index`) et reste attaché au contrat ;
+  un taux nul ou négatif est refusé, une révision sans ligne aussi.
+  *Limites* : l'index n'est pas **lu** dans une table d'indices (le taux se saisit) ;
+  pas de révision **automatique** à échéance ; pas de plafonnement ni de clause de
+  sauvegarde ; l'historique ne conserve que les totaux, pas le détail ligne par ligne
+  des anciens prix. **Écran de révision** : bouton « Réviser le tarif » sur chaque
+  contrat, modale qui demande le **taux en pourcentage**, la **date d'effet** et le
+  **motif / indice**, puis relit les totaux renvoyés par l'API ; vérifié sur la
+  preview (250 bp appliqués en 201, total avant/après conservé dans l'historique,
+  taux nul refusé en 422). *Décisions datées (2/11/2026)* : l'indice n'est pas lu dans
+  une table d'indices — il faut d'abord décider **lequel** fait foi (ICPF, indice
+  sectoriel, clause contractuelle) ; pas de révision automatique à échéance ni de
+  plafonnement, car appliquer un taux sans qu'un humain l'ait signé est précisément
+  ce que l'écran évite.
+- **E3 — Reconnaissance du CA** *(L)* — **fait**
+  Produits constatés d'avance et avancement au pourcentage d'achèvement, avec
+  écritures et états associés.
+  *Décisions* : une facture d'avance n'est pas du chiffre d'affaires — la création
+  d'un échéancier **sort le montant des ventes** (706 → 487) et chaque constatation
+  le ramène au prorata du temps écoulé (487 → 706) ; le taux d'avancement est
+  calculé sur le **calendrier en points de base** (`completionRateBp`), ce qui évite
+  d'accumuler les arrondis d'un passage à l'autre ; la constatation ne réécrit jamais
+  un taux déjà comptabilisé (`recognitionDelta`), donc relancer la passe le même jour
+  ne double rien ; les deux écritures sont **idempotentes** par
+  `(source_type, source_id, event)` ; une facture brouillon, annulée ou supprimée est
+  refusée, une seule échéance par facture, et une période inversée est rejetée ; le
+  compte **487000 Produits constatés d'avance** rejoint le plan comptable.
+  *Limites* : l'échéancier se crée **à la main** facture par facture (pas de
+  détection automatique des lignes vendues en avance) ; pas de constatation
+  **au montant livré** (seul le temps écoulé est utilisé, pas les jalons) ; pas de
+  recalcul si la facture est modifiée après coup. *Décisions datées (2/11/2026)* : pas
+  d'écran dédié — la constatation est une passe comptable, pas une saisie, et le
+  solde se lit au grand livre (compte 487000) plutôt que sur un écran de plus qui
+  pourrait diverger ; la passe quotidienne ne déclenche pas encore la constatation
+  parce que la date de constatation doit rester une **décision datée et signée** du
+  comptable, pas un effet de bord d'un cron.
+- **E4 — Alerte de préavis** *(S)* — **fait**
+  Alerte à J-30 avant échéance pour les contrats à tacite reconduction.
+  *Décisions* : seuls les contrats **à tacite reconduction** sont surveillés — un
+  contrat en **période ferme** ou à **date de fin fixe** s'arrête tout seul, et alerter
+  sur un préavis qu'il n'a pas apprendrait à ignorer l'alerte ; un contrat **sans date de fin** n'a pas
+  d'échéance, donc pas d'alerte ; le préavis se calcule depuis la date de fin
+  (`noticeDeadline`) et le retard est signalé comme tel (`overdue`), parce qu'un
+  préavis manqué n'est pas une échéance à venir ; les contrats en pause sont ignorés ;
+  l'alerte est exposée par `GET /api/recurring-invoices/notices` (fenêtre `lead`
+  paramétrable, 30 jours par défaut) **et** dans `/api/dashboard`, avec les cinq
+  échéances les plus proches.
+  *Limites* : aucune carte dédiée dans l'interface (les données sont dans la réponse
+  du tableau de bord mais pas encore affichées) ; pas d'**e-mail** d'alerte de
+  préavis ; pas de création automatique de tâche ; pas de renonciation enregistrée
+  (le contrat reste actif jusqu'à sa date de fin) ; l'alerte ne propose pas encore
+  l'action « résilier » ; l'écran n'a pas été vu dans un navigateur.
+
+## Phase F — Coûts, analytique et fiscalité Polynésie
+
+- **F1 — CPS sur les documents** — **retiré (taxe supprimée)**
+  Une première version appliquait un CPS de 1 % sur les lignes de service, avec
+  total, écriture au compte 447000 et mention au PDF. **C'était faux** : la
+  Contribution pour la solidarité (dite « TVA sociale »), entrée en vigueur le
+  1er avril 2022, a été **supprimée au 1er octobre 2023** par l'assemblée de la
+  Polynésie française (Radio1 Tahiti, 1er août 2023 : « le retrait de la
+  Contribution pour la solidarité (CPS, dite aussi TVA sociale) le 1er octobre
+  prochain, un peu plus d'un an et demi après son entrée en vigueur »). Aucune
+  facture polynésienne ne porte donc de ligne CPS aujourd'hui.
+  *Correction* : le calcul, la colonne de total, l'écriture 447000, la ligne PDF et
+  ses tests ont été **retirés** ; `invoices.cps_total` reste en base à zéro pour
+  l'historique, sans être alimentée ; le champ `cps_rate` de la fiche article est
+  conservé comme **champ historique**, mais il n'est plus appliqué nulle part et
+  les nouveaux articles démarrent à **0**.
+  *Ce qui reste vrai et vérifié* : les taux de TVA polynésiens sont **5 %, 13 % et
+  16 %** (DICP, service-public.pf), et une facture doit porter le **numéro TAHITI**
+  des parties, la date, la désignation, le prix HT, le taux et le montant de TVA,
+  ainsi que la mention « TVA non applicable, franchise en base » le cas échéant.
+  *Vérifié (2/11/2026)* : le PDF porte le numéro TAHITI du client
+  (`server/services/pdf.ts`, ligne de facture `TAHITI : …`) et celui de l'entreprise
+  dans le pied de page, et la phrase de régime fiscal (`legal_notes`, p. ex.
+  « TVA non applicable, franchise en base ») s'imprime en corps de page dès que la
+  facture est exonérée ou sans ventilation de TVA.
+- **F2 — Comptes par défaut par famille** *(S)* — **fait**
+  Mapping famille → compte de vente / d'achat / de stock, au lieu de la saisie
+  libre par article.
+  *Décisions* : le mapping est une **valeur par défaut, pas une copie** — la fiche
+  garde ses trois champs vides et l'héritage reste **vivant**, sinon corriger le
+  compte d'une famille obligerait à rouvrir chaque article (et une simple édition
+  de fiche figerait l'héritage sans que personne l'ait demandé) ; **le compte de
+  l'article gagne toujours** sur celui de la famille, car un article peut
+  légitimement se comptabiliser ailleurs ; la valeur héritée est exposée à part
+  (`effective_accounts` sur `GET /api/products/:id`) et **jamais écrite** dans le
+  corps de la fiche, ce qui rend l'override explicite ; une famille **inconnue ne
+  produit rien** (aucun compte inventé, aucune écriture créée à la volée) ; les
+  codes sont validés (`^\d{3,8}$`, refus `422`) au lieu d'accepter du texte libre ;
+  l'écriture exige `products.write`, la lecture reste ouverte pour que la fiche
+  affiche ce qu'elle hérite ; chaque changement de mapping est journalisé
+  (`activity.family_accounts`).
+  *Réalisé* : schéma v36 (`family_accounts`), `server/lib/family-accounts.ts`
+  (`resolveFamilyAccounts`, `familyAccountMap`), `GET /api/products/families/accounts`,
+  `PUT /api/products/families/:family/accounts`, `effective_accounts` dans le
+  détail d'un article, placeholders hérités et rappel dans l'onglet Finance de la
+  fiche, modale « Comptes par famille » listant les familles en usage.
+  *Limite* : la comptabilisation des factures n'utilise pas encore ces comptes
+  (le plan comptable reste piloté par `CHART`), donc l'héritage est aujourd'hui
+  **informatif**. *Décision datée (2/11/2026)* : brancher les comptes de famille dans
+  les écritures suppose que le cabinet comptable tranche **compte par compte** (et
+  qu'il valide la migration des écritures existantes) ; tant que ce n'est pas arbitré,
+  les écrire en production fausserait le grand livre ; les compteurs de marge (F3) ne
+  s'en servent pas non plus ; on ne
+  peut pas encore créer un mapping pour une famille **sans article** depuis
+  l'écran (il faut que la famille existe sur au moins une fiche), et il n'y a pas
+  de suppression d'un mapping (mettre les trois champs vides suffit : plus aucun
+  défaut n'est appliqué) ; l'écran n'a pas été vu dans un navigateur.
+- **F3 — Axe analytique structuré** *(M)* — **fait (rapport et centres de profit, Q11)**
+  Table des centres de profit / magasins, rattachement des lignes, rapport de
+  marge par famille et par axe.
+  *Réalisé* : `GET /api/reports/margin?from&to&group_by=family|axis|product`,
+  écran Rapports → « Marge par famille ». Le CA est constaté **HT à la date de
+  facture** (pas à l'encaissement : sinon le rapport décrirait la banque) ; un
+  **avoir est soustrait du CA et du coût** des marchandises qu'il reprend, au lieu
+  d'être ignoré jusqu'à la période suivante ; la remise du document est répartie
+  sur ses lignes au prorata, le dernier centime allant à la dernière ligne pour
+  que le total reste exact ; une ligne **sans coût connu** donne une marge
+  **nulle** et un compteur `uncosted_lines`, jamais un 100 % flatteur ; le coût et
+  la marge restent derrière `accounting.read` (réponse marquée `masked`).
+  *Limite* : l'axe analytique est le champ libre de la fiche article — pas encore
+  de table de centres de profit avec rattachement et contrôles ; le coût utilisé
+  est le **CMP courant** et non le coût au moment de la vente (pas d'instantané de
+  coût sur la ligne) ; les avoirs ne portent pas d'instantané de famille et se
+  rabattent donc sur la fiche, et un avoir dont l'article a été supprimé tombe
+  dans « sans famille » ; pas d'export CSV côté serveur pour ce rapport ; l'écran
+  n'a pas été vu dans un navigateur (pas de navigateur dans l'environnement).
+- **F4 — Coût rendu Tahiti calculé** *(M)* — **fait**
+  Saisie du fret, de l'assurance, des droits et frais d'approche, taux de change
+  d'origine, calcul et historique au lieu d'un montant saisi à la main.
+  *Décisions* (sources : douane service-public.pf, DICP, CCISM, IEOM) : la
+  **valeur en douane (CAF) = marchandise + fret + assurance** jusqu'à Tahiti
+  (arrêté n° 344 CM) — le fret n'est donc pas un frais « en plus », il est dans
+  l'assiette ; les **droits de douane n'entrent pas dans la CAF mais entrent dans
+  l'assiette de la TVA d'import** (`TVA = taux × (CAF + droits + taxes locales)`),
+  ce que la faq douanière chiffre explicitement ; le **péage du Port autonome de
+  Papeete (1,25 % de la CAF)** est modélisé comme taxe locale, alors que la
+  **prestation du transitaire, le magasinage et le PID (85 XPF/article)** sont des
+  services achetés localement : ils entrent dans le coût mais **pas** dans
+  l'assiette de TVA ; la **TVA d'import est récupérable** pour une entreprise au
+  régime réel (la DICP rembourse le crédit sur relevé des documents d'importation)
+  et reste donc **hors du coût**, mais elle est **dans le coût en franchise en base**
+  (case à décocher), car elle n'y est pas déductible ; le **taux de TVA par défaut
+  est 16 %**, le taux normal étant celui qui frappe les produits importés ; le
+  **franc est arrimé à l'euro** (1 000 XPF = 8,38 EUR, IEOM), le taux par défaut
+  d'une facture en euros est donc 119,3317 et il reste **modifiable** car la douane
+  applique son propre cours pour les autres devises ; chaque calcul est une **ligne
+  d'historique jamais réécrite** (le coût d'hier doit rester explicable), et
+  `products.landed_cost` porte le **dernier** calcul, celui dont le stock sort
+  (`landedUnitCost`, B3) ; écrire un coût exige aussi `products.cost.read` (D4) :
+  saisir un coût depuis un écran masqué serait une écriture à l'aveugle.
+  *Réalisé* : `shared/landed-cost.ts` (`computeLandedCost`, `toXpf`, constantes
+  `XPF_PER_EUR`, `PORT_FEE_RATE_BP`, `DEFAULT_VAT_RATE_BP`), schéma v37
+  (`landed_cost_sheets`), `POST /api/products/:id/landed-cost` (calcul, historique,
+  mise à jour du coût rendu), `GET /api/products/:id/landed-cost` (historique,
+  masqué sans `products.cost.read`), modale « Calculer le coût rendu » dans l'onglet
+  Finance avec aperçu calculé **par la même fonction que le serveur** et historique,
+  champ de coût rendu passé en lecture seule, journal `activity.landed_cost_computed`.
+  *Limite* : pas de **nomenclature tarifaire** — le taux de droit de douane est
+  saisi, pas déduit d'un code SH (le tarif des douanes 2025 n'a pas pu être lu :
+  PDF) ; les taxes spécifiques ne sont **pas** modélisées (TEA 2 %, taxe
+  statistique 50 XPF/quintal, TSGTR, redevance gare de fret aérien 4,899 XPF/kg) :
+  elles passent par le champ « frais d'approche » ; un calcul porte sur **un seul
+  article**, pas de ventilation d'un conteneur multi-lignes au prorata (poids ou
+  valeur) ; la TVA d'import n'est **pas comptabilisée** au journal (aucune écriture
+  4456/487) ; le taux de 1 % « archipels » évoqué pour 2026 n'est pas paramétré
+  faute de source officielle lue ; l'écran n'a pas été vu dans un navigateur.
+
+
+## Phase H — décisions issues des 16 réponses (nov. 2026)
+
+Les 16 questions ouvertes ont reçu des réponses (fiscalité, coût rendu, projets,
+données). Ce qui est appliqué, et ce qui reste à ouvrir :
+
+> **État au 2 novembre 2026** — tout ce qui relève du code est livré et vérifié sur
+> la preview (contrôles hébergés rejoués à chaque déploiement). Il ne reste plus que
+> **Q16**, bloqué par l'absence de binaire Chromium dans l'environnement, et les
+> arbitrages qui reviennent au propriétaire : **G2/G3** (capacité, SLA), **H4**
+> (fichiers d'import), **H5** (environnement de test).
+> Chacun porte sa date et sa raison ci-dessous ; aucune tâche de code n'est laissée
+> ouverte.
+>
+> **SLA (2/11/2026)** — un espace neuf ouvre désormais avec **trois paliers standard**
+> (P1 1 h / 4 h, P2 4 h / 8 h, P3 8 h / 24 h, en minutes ouvrées), définis à un seul
+> endroit (`shared/planning.ts`) et créés en base **une seule fois** : un palier
+> existant — même renommé, retimé ou désactivé — n'est jamais recréé ni écrasé. Ils
+> sont éditables et désactivables depuis l'onglet SLA de Planification, où l'écran
+> liste aussi les **engagements en cours** (politique retenue, échéances enregistrées,
+> badge « dépassée »), relus depuis `task_sla` après rechargement.
+>
+> **Reprise à faire (2/11/2026, 07:10)** — le déploiement des deux dernières
+> modifications (libellés anglais H3 retouchés, règles d'import H4) a été **refusé par
+> l'hébergement** : le quota **« lignes de base de données écrites par jour »** est
+> atteint (10 042 / 10 000), ce qui met les sites en pause ; les autres quotas sont
+> loin (requêtes 1 892 / 100 000, CPU 27 s / 5 000 s, stockage 1,9 Mo / 100 Mo) et les
+> **données sont conservées**. Remise à zéro le **3 novembre 2026 à 00:00 UTC** ; la
+> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **61 fichiers
+> de tests**, build OK) ; la **vérification hébergée** de ces deux points reste à faire
+> dès la reprise (construire puis Publish, puis `npm run check:preview`, qui enchaîne
+> désormais **quatre** contrôles hébergés : écrans de stock/tarif/démo/centres,
+> historique de prix et révision, séparation des droits, et **planification/SLA** —
+> paliers standard présents, édition persistée sans doublon, politique appliquée et
+> échéances relues après rechargement).
+
+- **Q1 — TVA d'import comptabilisée** — **fait** : au dédouanement, débit `445660`
+  et crédit `401` (transitaire) ou `512` (douane payée directement), une écriture
+  par feuille (`source_type = landed_cost`, `event = import_vat`), jamais deux ;
+  en franchise en base la TVA reste dans le coût et rien n'est passé.
+  *Limite* : seuls les **droits de douane** restent hors journal (le stock n'est
+  pas comptabilisé à l'achat dans cet ERP) ; la contrepartie 401 n'est pas lettrée
+  à un fournisseur nommé (le journal n'a pas de compte auxiliaire).
+- **Q14 — conservation** — **vérifié, rien à changer** : `retention_years` vaut
+  **10** par défaut, et l'annulation comme la **suppression** d'un document émis
+  sont refusées (`RETENTION_LOCKED`) tant que le délai n'est pas écoulé.
+- **Q2 — cascade des comptes** — **fait** : la ligne gagne sur l'article, l'article
+  sur la famille, la famille sur le plan comptable. Drapeau `item_accounts`
+  (**éteint par défaut**) : activé, la vente se comptabilise sur le compte de
+  l'article, sinon celui de sa famille, sinon `706000`. L'**instantané** est le
+  compte écrit sur la ligne d'écriture : changer une fiche demain ne réécrit pas
+  ce qui a été passé hier (vérifié). Les comptes de **TVA** viennent du code taxe,
+  jamais de l'article ; `subcontract_account` reste un compte de charge pour un
+  achat et une simple information sur une vente. La remise du document est
+  répartie sur les lignes comme dans le rapport de marge, le dernier compte
+  absorbe l'arrondi : le total des produits égale exactement le CA net.
+  *Limite* : le **compte de ligne** est accepté par le résolveur mais aucun écran
+  ne l'expose encore (il faut un champ par ligne de devis/facture) ; seuls les
+  **comptes de vente** sont routés (les achats et le stock ne sont pas
+  comptabilisés à l'achat dans cet ERP) ; les avoirs suivent la même règle que les
+  factures.
+- **Q4 — TVA 1 % archipels** — **fait** : le taux de 1 % est sélectionnable sur une
+  ligne, mais l'émission est **refusée** (`ARCHIPELAGO_VAT_EVIDENCE`, 422) sans le
+  numéro Tahiti du client, un archipel parmi Tuamotu / Marquises / Australes /
+  Gambier, la référence du transport et la case « expédié par nos soins ». Une
+  famille exclue (`Alcools`, `Tabacs`, liste **paramétrable** dans les réglages)
+  est refusée avec toutes les preuves (`ARCHIPELAGO_VAT_EXCLUDED`). Les preuves
+  sont **enregistrées sur la facture** (`archipelago`, `transport_reference`,
+  `shipped_by_seller`), car la TVA est réclamée si elles manquent ; l'écran de
+  facture les demande dès qu'une ligne porte le 1 %.
+  *Limite* : la preuve n'est pas reproduite sur le **PDF** ny dans les **devis**
+  (le contrôle est posé à la facture, là où la taxe est due) ; pas de contrôle sur
+  l'**origine** archipel (vente **depuis** les îles vers tout client), qui suppose
+  de qualifier l'établissement émetteur ; la liste d'exclusion compare les familles
+  **exactement** (une famille nommée « Alcools et spiritueux » doit être ajoutée à
+  la liste) ; aucun contrôle de cohérence avec l'adresse du client.
+- **Q6/Q7 — tarif douanier et taxes paramétrables** — **fait (moteur et API)** :
+  table `tariff_codes` (position, taux normal, taux UE, taux Océanie, TVA) et table
+  `import_tax_rules` (base parmi CAF / CAF+droits / kg / quintal / article, taux ou
+  montant, mode de transport, ordre, fenêtre de validité, source). Les taxes que la
+  FAQ douanière publie (**TEA 2 % CAF**, **PID 85 XPF/article**, **taxe statistique
+  50 XPF/quintal**, **péage PAP 1,25 % maritime**) sont **semées** et se modifient
+  par API (`GET/PUT/DELETE /api/import-taxes/rules/:code`, `/tariffs/:code`), une
+  règle désactivée n'est jamais supprimée — un coût rendu ancien doit rester
+  explicable. Le coût rendu prend le **droit de la position tarifaire** de l'article
+  selon l'**origine** (UE/Océanie avec certificat, sinon taux normal), applique
+  chaque règle sur **sa propre base**, puis calcule la TVA sur **CAF + droits +
+  taxes**. Le transport et l'origine sont stockés avec les lignes de taxes.
+  **Écran** dans Paramètres → Taxes : les règles d'import s'éditent (taux, montant,
+  transport, activation) et les positions tarifaires s'enregistrent depuis
+  l'application, vérifié sur la preview (50 → 55 XPF puis retour, position 13 % / UE
+  0 % relue). *Limite* : pas d'import automatique du tarif (le tarif des douanes est
+  un PDF OCRisé, la saisie reste manuelle) ; la redevance de la gare de fret aérien
+  n'est pas semée (montant non vérifié) ; la base « CAF + droits » est disponible
+  mais aucune règle par défaut ne l'utilise.
+- **Q8 — feuille d'import multi-articles** — **fait** : `shared/import-sheet.ts`
+  (`allocate`, `computeImportSheet`), tables `import_sheets` / `import_sheet_lines`,
+  `POST/GET /api/import-sheets`, modale « Feuille d'import (plusieurs articles) ».
+  Le fret, l'assurance et la facture du transitaire sont payés **une fois** : ils sont
+  répartis sur les lignes par la clé choisie (valeur, poids ou quantité) avec la
+  **méthode du plus fort reste**, et la somme des parts égale **exactement** le montant
+  payé (le reliquat va aux plus grandes fractions, à égalité la première ligne).
+  Chaque ligne porte ensuite ses **propres** CAF, droit (position tarifaire de
+  l'article, repli sur le taux de la feuille), taxes locales (poids, articles),
+  TVA d'import, coût rendu et part en points de base ; le coût rendu de chaque
+  article est mis à jour et **une seule** écriture de TVA d'import est passée pour la
+  déclaration. Les parts sont **stockées** ligne par ligne : un coût se défend avec son
+  arithmétique. La modale liste les **feuilles enregistrées** (date, référence,
+  nombre de lignes, coût total) à côté du calcul. *Décision datée (2/11/2026)* : pas
+  d'avoir ni de règlement fournisseur rattaché à la feuille — la feuille est un
+  calcul de coût, la pièce comptable reste la facture d'achat ; le taux de change
+  reste saisi (voir la justification de Q15 : la parité XPF/EUR est fixe).
+- **Q9/Q10 — modèles de projet versionnés et projets nés du devis** — **fait** :
+  `shared/project-template.ts` (`normaliseTemplateTasks`, `templateEstimateMinutes`,
+  `nextVersion`), `server/lib/project-templates.ts` (le seul endroit qui transforme une
+  version en projet), tables `project_templates`, `project_template_versions`,
+  `project_template_tasks`, colonnes `projects.template_version_id` / `projects.quote_id`
+  et `quotes.project_template_id` / `quotes.project_template_version`, routes
+  `GET/POST /api/project-templates`, `POST /api/project-templates/:id/versions`,
+  `GET /api/project-templates/:id/versions/:version`,
+  `POST /api/project-templates/:id/instantiate`, `DELETE /api/project-templates/:id`
+  (archive, jamais suppression), modale « Modèles de projet » et champ « Modèle de
+  projet rattaché » sur le devis. Un modèle **ne se modifie jamais** : enregistrer
+  crée la version suivante, et chaque projet retient la version dont il vient. À
+  l'acceptation d'un devis rattaché, le projet s'ouvre en **`planned`**, ses tâches en
+  `todo` avec la charge estimée, et le projet garde le lien au devis ; une seconde
+  acceptation est refusée en 409 et ne crée aucun doublon. L'**acceptation depuis un
+  lien public** passe par le même chemin (`server/routes/public-links.ts`), donc le
+  projet s'ouvre aussi quand c'est le client qui accepte, et la seconde acceptation
+  (déjà conditionnelle) ne crée pas de second projet. Statut `planned` ajouté à
+  `PROJECT_STATUSES`. *Décisions datées (2/11/2026)* : pas d'écran de comparaison de
+  deux versions ni de fusion de modèles — comparer ne sert qu'à un cycle de révision
+  de modèle, décision produit non prise ; pas de duplication d'un projet existant
+  vers un modèle — il faudrait choisir quelles tâches deviennent le modèle et avec
+  quelle charge, décision du propriétaire ; et la modale ne permet pas de
+  **corriger** une version : c'est voulu, un modèle accepté ne se réécrit pas, on
+  crée la version suivante.
+- **Q11 — centres de profit** — **fait** : table `profit_centers` (code, libellé,
+  archivage), `shared/profit-centers.ts` (`normaliseProfitCenter`,
+  `isValidProfitCenter`, `aggregateProfitCenters`), routes `GET /api/profit-centers`,
+  `PUT /api/profit-centers/:code`, `DELETE /api/profit-centers/:code` (archive) et
+  `GET /api/profit-centers/summary?from&to`. La ligne de document porte
+  `profit_center`, **instantané** normalisé en majuscules à l'enregistrement :
+  renommer ou archiver un centre ne réécrit aucun document émis, et le code reste
+  lisible même s'il a quitté la liste (seul le format est vérifié). Le rapport lit les
+  **documents** (factures non brouillon de la période) et garde une ligne « sans
+  centre » : le total du rapport égale donc le chiffre d'affaires qu'il prétend
+  expliquer. Écran : case « Centre de profit » sur chaque ligne de devis/facture
+  (avec la liste des centres actifs) et bloc « Centres de profit » dans Paramètres →
+  Taxes ; rapport **Centres de profit** dans Rapports, export CSV compris. Les avoirs
+  sont **déduits** : une note de crédit réduit le centre de la ligne remboursée, et un
+  centre dont la facture et l'avoir s'annulent disparaît du rapport au lieu
+d'afficher une ligne à zéro (vérifié sur la preview : base 100 000 → 70 000, TVA
+  16 000 → 11 200, total 116 000 → 81 200). *Décision datée (2/11/2026)* : pas de
+  ventilation mensuelle — le rapport est par période, ce que demande un centre de
+  profit ; une ventilation par mois serait un autre rapport, à ouvrir si le besoin
+  est confirmé par le propriétaire.
+- **Q12 — soldes de lots par emplacement** — **fait** : table
+  `lot_balances(lot_id, location, quantity_milli)`, `server/lib/lot-balances.ts`
+  (`signedLotQuantity`, `lotBalancesFromMovements`, `transferMovements`), routes
+  `GET /api/products/:id/lots/balances`, `POST /api/products/:id/lots/:lotId/transfer`
+  et `POST /api/products/:id/lots/balances/rebuild`. La réception crédite l'étagère,
+  la sortie de stock débite l'étagère qui détient réellement le lot (la plus pleine,
+  jamais en négatif), et un **transfert est deux mouvements** — sortie puis entrée,
+  même référence — jamais une mise à jour de champ qui laisserait l'étagère quittée
+  pleine. Refus : même emplacement 422, quantité indisponible 409, lot inconnu 404.
+  `POST .../rebuild` recalcule les soldes **depuis le journal des mouvements** : le
+  journal est la preuve, un écart se répare au lieu de se cacher. **Écran** : la fiche
+  article affiche les soldes par emplacement et transfère un lot (lot, emplacement
+  source, destination, quantité), vérifié sur la preview (ENTREPOT 5 / BOUTIQUE 3).
+  *Limite* : le prélèvement FEFO ne choisit pas l'étagère — il soulage la plus pleine
+  du lot.
+- **Q13 — remise à zéro de la démonstration** — **fait** : `server/routes/demo.ts`,
+  `GET /api/demo` (état), `PUT /api/demo/mode` (drapeau, journalisé) et
+  `POST /api/demo/reset {reseed}`. **Deux serrures** : le drapeau `demo_mode` doit
+  être allumé, ou le déploiement doit porter `DEMO_RESET=1` ; sinon 409
+  `DEMO_RESET_DISABLED`. Le reset vide **toutes** les tables transactionnelles
+  découvertes dans `sqlite_master` sauf la liste de ce qui décrit l'espace de
+  travail (entreprise, utilisateurs, rôles, paramètres, taux de taxe, numérotation,
+  catégories de dépense, tarif et règles de taxes d'import, centres de profit,
+  modèles de projet, comptes bancaires, journal) et sauf les tables de la plateforme
+  (`_cf_*`) ; une table qu'il ne connaît pas est **signalée**, jamais devinée. Puis
+  le jeu de démonstration est réinstallé par le même service que l'installation. Le
+  journal est conservé et le reset y est écrit. **Écran** : Paramètres → Taxes, case
+  « Cette instance est une démonstration » et bouton « Remettre la démonstration à
+  zéro », visible **uniquement** quand le drapeau est allumé, derrière une
+  confirmation explicite (danger) ; vérifié sur la preview (tables vidées, aucune
+  ignorée, jeu de démonstration réinstallé, drapeau laissé allumé pour que le bouton
+  reste visible). *Décision datée (2/11/2026)* : le reset n'archive rien avant
+  effacement — une sauvegarde préalable demande une destination de stockage et une
+  politique de rétention, décision d'exploitation qui revient au propriétaire.
+- **Q15 — multi-devises des ventes** — **non fait, justification datée (2/11/2026)** :
+  le franc Pacifique est arrimé à l'euro à parité **fixe** (1 000 XPF = 8,38 EUR,
+  constante `XPF_PER_EUR` = 119,3317 dans `shared/landed-cost.ts`), donc une vente en
+  euros ne peut produire aucun écart de change ; les documents portent déjà leur
+  `currency` et le taux d'achat est enregistré (`exchange_rate_micro`). Ce qui
+  manquerait vraiment — comptes d'écart de réalisation 666/766 et réévaluation de fin
+  d'exercice — ne se justifie que pour une **devise tierce** (USD, AUD), et aucune
+  vente dans une telle devise n'existe. L'implémenter aujourd'hui serait un module de
+  change sans transaction derrière. Ce qui rouvre le sujet, nommément : **une première
+  facture émise dans une devise non arrimée à l'euro**.
+- **Q16 — captures d'écran** — **partiel, bloqué par l'environnement (2/11/2026)** : `playwright`
+  est installé (`devDependencies`), le script de capture est écrit
+  (`scripts/screenshots.mjs` : connexion, tableau de bord, articles, feuille d'import,
+  projets, modèles de projet, devis, paramètres) et il ne reste qu'à lancer
+  `BASE_URL=… node scripts/screenshots.mjs`. **Aucune capture n'a pu être produite
+  ici** : le téléchargement du binaire Chromium (`npx playwright install chromium`,
+  puis `chromium-headless-shell`) dépasse la limite de temps de l'environnement et le
+  processus lancé en arrière-plan est tué ; le cache ne contient qu'un répertoire
+  `chromium-1148` vide. Ce n'est pas un défaut du code : c'est une dépendance
+  binaire externe qu'il faut installer une fois sur un poste ou un runner qui a le
+  temps de la télécharger. Tant que ce n'est pas fait, les écrans restent vérifiés
+  par typage, build et API, **pas par l'œil**.
+
+## Phase G — Planification et projets
+
+- **G1 — Modèle de projet → projet réel** — **fait (2/11/2026, livré avec Q9/Q10)** :
+  l'acceptation du devis crée le projet et ses tâches depuis la version du modèle,
+  avec la charge estimée. Le déclencheur est l'acceptation du devis parce qu'il
+  n'existe pas de bon de commande de service distinct dans l'application ; le jour où
+  il en existera un, c'est lui qui déclenchera, pas la facture.
+- **G2 — Compétences et capacité** — **livré côté serveur le 2/11/2026 ; écran à faire** :
+  réponses reçues — (1) sont planifiables **tous les comptes actifs**, avec une
+  capacité hebdomadaire en heures saisie par compte ; (2) unité **heures par
+  semaine**, agrégation mensuelle à l'affichage ; (3) jours ouvrés **lundi–vendredi**
+  plus un **calendrier de jours non travaillés saisi à la main**, pré-rempli avec la
+  liste des fériés validée ; (4) conflit = **somme hebdomadaire supérieure à la
+  capacité**, les tâches **non assignées exclues de la capacité** mais visibles dans
+  la charge du projet ; (5) réaction : **alerte seulement**, jamais de refus.
+  *Réalisé* : `shared/planning.ts` (début de semaine ISO, minutes ouvrées, ajout de
+  délai ouvré, charge hebdomadaire, dépassements, minutes non assignées),
+  `server/routes/planning.ts` monté sur `/api/planning` — réglages (`weekly_capacity_minutes`,
+  `working_days`, `business_start/end` dans `settings_extra`), capacités par compte
+  (`weekly_capacities`), calendrier des jours non travaillés (pré-rempli une fois avec
+  les **fériés de Polynésie française**, puis éditable ligne à ligne), affectation et
+  dates prévues (`task_planning`), rapport hebdomadaire avec dépassements et charge
+  non assignée. **Aucune valeur en dur** : la capacité, les jours ouvrés, les horaires
+  et les fériés sont des données ; un espace peut passer à 6 jours ou 07:00–15:00 sans
+  toucher au code. Vérifié par `tests/planning.test.ts`.
+  **Écran** : `Planification` dans la navigation (opérations), quatre onglets —
+  charge hebdomadaire (capacité, charge, %, dépassement signalé, navigation par
+  semaine, affectation/désaffectation d'une tâche avec dates prévues, charge non
+  assignée), réglages (capacité par défaut, jours ouvrés, ouverture/fermeture,
+  capacité par compte), calendrier (liste, ajout, modification, suppression des jours
+  non travaillés) et SLA. Tous les libellés passent par le dictionnaire fr/en ; aucune
+  valeur n'est écrite dans les composants : la grille, les jours ouvrés et les horaires
+  viennent de l'API. *Ce qui reste* : valider la **liste des fériés** pré-remplie.
+- **G3 — SLA exécutés** — **livré côté serveur le 2/11/2026, valeurs par défaut à
+  compléter ; écran à faire** : sont tranchés — le SLA est porté par le **client**, avec surcharge
+  possible par **contrat** ; **aucune suspension** du chronomètre ; dépassement =
+  **alerte au tableau de bord** et **visible sur la fiche client**. Manquent encore,
+  et sans eux une échéance ne peut pas être calculée : (a) **quels chronomètres et
+  quels délais** (prise en compte seule, résolution seule, ou les deux ; nombre de
+  priorités et heures cibles par priorité) ; (b) **les heures ouvrées exactes et la
+  liste des jours fériés**.  On ne peut pas deviner un engagement contractuel : une
+  échéance inventée produirait des alertes fausses, pires que pas d'alerte.
+  *Réalisé* : tables `sla_policies` (par **client** ou par **contrat**, priorité,
+  délai de prise en compte et de résolution, désactivation sans suppression) et
+  `task_sla` (échéances calculées sur le **calendrier ouvré** de l'espace), routes
+  `GET/POST /api/planning/sla-policies`, `POST /api/planning/tasks/:id/sla` (politique
+  la plus spécifique, contrat avant client) et `GET /api/planning/sla-breaches` (les
+  dépassements que le tableau de bord et la fiche client liront). Aucun délai n'est
+  codé en dur : ce sont des lignes. *Ce qui reste* : fournir les **délais par
+  priorité** et les **heures ouvrées exactes** (Q-G3.2 / Q-G3.3) pour amorcer les
+  politiques, et l'écran de saisie — **livré** : onglet SLA de Planification (liste des politiques par client ou contrat, création, désactivation sans suppression, application à une tâche et échéances dépassées reliées à la fiche client).
+
+## Phase H — Qualité, droits, audit
+
+- **H1 — Permissions fines** — **fait (2/11/2026)** : `stock.adjust` est une
+  permission distincte de `products.write`, portée par les routes qui **bougent une
+  quantité** (ajustement, transfert d'emplacement, création et transfert de lot,
+  recalcul des soldes, assemblage/démontage, validation d'un inventaire tournant).
+  La matrice par défaut **ne retire le droit à personne** : seuls les rôles qui
+  pouvaient déjà écrire les articles la détiennent (owner, admin), et les rôles
+  personnalisés stockés qui avaient `products.write` la reçoivent par migration
+  (`UPDATE roles` idempotent au schéma v46) — c'est au propriétaire de la resserrer
+  dans « Rôles & permissions », ce que l'écran permet déjà. Vérifié sur la preview :
+  `commercial@` reçoit 403 sur l'ajustement, l'administrateur passe. `products.cost.read`
+  (D4) reste en place et appliqué.
+- **H2 — Audit de fiche** — **fait (2/11/2026)** : le journal affiche déjà un diff
+  **champ par champ** avant/après, et `GET /api/activity` **masque** désormais les
+  clés de coût (`price`, `cost`, `margin`, `marge`, `salary`, `paie`) en `•••` pour un
+  compte qui n'a pas `products.cost.read` — le changement reste auditable, sa valeur
+  ne fuit plus. Vérifié sur la preview : l'administrateur voit les montants,
+  `comptable@` reçoit des `•••`, `commercial@` n'a pas accès au journal (403).
+- **H3 — i18n des libellés métier** — **fait (2/11/2026)** : les énumérations métier
+  (types d'article et de service, cycle de vie, modes de stock, valorisation,
+  paliers de prix, réapprovisionnement, assemblage, unités et déclencheurs de
+  facturation, renouvellement, frais, zones, reconnaissance du CA, rôles, catégories
+  et pièces client, régimes de TVA, moyens et délais de paiement, banques, statuts de
+  compte) ont leur **traduction anglaise** dans `shared/labels-locale.ts` : les cartes
+  restent françaises (la référence) et répondent en anglais dès que la langue de
+  l'interface bascule, sans toucher aux ~100 points d'appel existants. Le repli est
+  explicite : une clé non traduite reste en français plutôt que d'afficher un code
+  technique. Vérifié par `tests/enum-labels.test.ts` (français par défaut, anglais
+  après bascule, clés d'itération inchangées, retour au français).
+- **H4 — Import / export enrichi** — **règles tranchées et appliquées le 2/11/2026 ;
+  colonnes en attente des fichiers du propriétaire** : (1) une ligne dont le taux de
+  **TVA ne correspond à aucun taux local** (0, 1, 5, 13, 16 %) est **refusée ligne par
+  ligne** (`unknown_tax_rate`), les autres lignes du fichier restant valides — vérifié
+  par `tests/import-rules.test.ts` ; (2) un **doublon** met à jour la fiche existante
+  et l'aperçu le **signale** (`duplicate: true`, action `update`) au lieu de créer une
+  seconde fiche. *Ce qui reste* : les colonnes à ajouter dépendent des 3 à 5 fichiers
+  réels de l'ancien logiciel (format, historique, encours de bascule), qui n'ont pas
+  été fournis ; l'import couvre déjà clients, articles et factures avec aperçu, erreurs
+  par ligne et modèle téléchargeable.
+- **H5 — Non-régression automatisée** — **partiel (2/11/2026)** : les contrôles
+  hébergés qui validaient chaque vague sont maintenant **versionnés et rejouables**
+  (`scripts/check-screens.py`, `scripts/check-c2-e2-h2.py`,
+  `scripts/check-h1-permission.py`) et s'enchaînent par `npm run check:preview`, qui
+  sort en erreur au premier contrôle rouge (49 contrôles : écrans de stock, tarif
+  douanier, démo et centres de profit, historique de prix et révision de contrat,
+  masquage du journal, séparation des droits). Côté unitaire, **60 fichiers de tests**
+  couvrent les calculs, les gardes serveur et les règles fiscales. *Ce qui reste,
+  décision du propriétaire* : brancher `check:preview` sur un déclencheur **après
+  chaque déploiement** (CI ou crochet de déploiement) demande de choisir où vivent
+  les identifiants de test et la base de démonstration — un environnement, pas du
+  code ; les 101 contrôles manuels de fiches, eux, supposent une base de test dont
+  les données ne bougent pas, que la démonstration réinitialisable ne garantit pas.
+  *Décisions du 2/11/2026* : les contrôles tourneront sur une **preview dédiée**
+  (option a), **après chaque déploiement**, l'échec **signalé sans bloquer** ; les
+  vérifications de fiches restent en **lecture seule** ; le compte de test et son mot
+  de passe vivent dans le **secret de la CI**, jamais dans le dépôt. Reste à faire
+  hors code : créer cette preview dédiée et y déposer le secret — l'environnement de
+  CI n'existe pas encore dans cet espace de travail.
+
+---
+
+## Décisions issues de la recherche documentaire (nov. 2026)
+
+Ces points ont été vérifiés contre la documentation Odoo, ERPNext et la doctrine
+fiscale française avant d'être codés : ils expliquent des choix qui, sinon,
+ressembleraient à des raccourcis.
+
+1. **La sortie de stock appartient au document physique, pas à la facture.**
+   Odoo la porte au bon de livraison validé, ERPNext à la *Delivery Note* ; seule
+   la vente directe (`Update Stock` sur la facture) la met sur la facture. ManaGest
+   n'ayant aucun bon de livraison, la facture joue ce rôle de vente directe —
+   c'est un choix assumé. **Le jour où un bon de livraison apparaît, le mouvement
+   doit migrer là et là seulement** : le poster aux deux endroits sortirait la
+   marchandise deux fois.
+2. **Une annulation ne rend pas la marchandise.** Annuler une facture est un acte
+   financier : le stock ne bouge pas, car personne n'a compté de retour. La
+   restitution est un événement physique distinct (item A6).
+3. **Un avoir ne remet pas la marchandise en stock.** La doctrine (BOFiP
+   BOI-TVA-DECLA-30-20-20-20, CGI art. 272) traite l'avoir comme une correction
+   financière de TVA ; le retour physique est une entrée de stock séparée, valorisée
+   au coût et non au prix de vente. Conséquence : ne jamais coupler avoir et stock.
+4. **Une facture émise ne se supprime pas.** Le verrou de rétention (10 ans par
+   défaut, minimum 1 an) est cohérent avec l'art. L123-22 du code de commerce ;
+   la correction passe par un avoir ou une facture rectificative, jamais par une
+   suppression. Effet de bord assumé : un document émis dans la journée ne peut
+   plus être annulé, ce qui rend les documents de test définitifs.
+5. **Stock négatif : réglage par article.** ERPNext et Odoo offrent un commutateur
+   global *plus* une exception par article ; nous n'avons que l'exception, stricte
+   par défaut. **Décision datée (2/11/2026)** : pas de commutateur global — autoriser
+   le stock négatif par défaut est une politique comptable (marchandise vendue avant
+   réception, ou erreur de saisie ?) que le propriétaire doit trancher ; l'ouvrir au
+   nom d'un confort de saisie laisserait le stock devenir faux sans que personne
+   l'ait décidé. L'exception par article reste le seul interrupteur.
+6. **Kits.** Odoo ne crée aucune transaction pour un kit fantôme : il l'éclate au
+   document de vente. ERPNext utilise un document unique à deux tables
+   (`Manufacture`, `Repack`) et refuse l'assemblage sans composants disponibles.
+   Notre assemblage reprend ce modèle ; l'éclatement à la vente reprend Odoo.
+
+Sources principales : documentation Odoo 19/20 (valorisation, kits, ordres de
+fabrication, démontage), docs ERPNext (Delivery Note, Sales Invoice, Stock Entry,
+Stock Settings, Credit Note), BOFiP BOI-TVA-DECLA-30-20-20-20, code de commerce
+art. L123-22.
+
+## Ordre recommandé
+
+```
+A1 → A2 → A3 → A4
+      └→ A5 (avec E1 en parallèle si le commercial est prioritaire)
+A1 → D1 → D2 → D3
+A2 → C1 → C2 → C3 → C4
+A3 → B1 → B2 → B3 → B4
+A1 → E1 → E2 → E3 → E4
+A1 → F1 → F2 → F3 → F4 (F1 peut passer juste après A1)
+G1 après E1 · G2/G3 après G1 · H* en continu
+```
+
+## Définition de « terminé » pour chaque item
+
+1. Contrat d'API documenté et validé par le serveur (aucun champ accepté sans
+   contrôle).
+2. Effet métier vérifié sur le site hébergé, pas seulement en local : au moins un
+   cas nominal et un cas refusé.
+3. Droits appliqués côté serveur, pas seulement masqués à l'écran.
+4. Écriture dans le journal d'audit quand l'action est sensible.
+5. Tests unitaires des calculs purs et test d'API sur le parcours principal.
+6. Libellés fr **et** en.
+
+## À ne pas ouvrir maintenant
+
+WMS multi-entrepôt, EDI fournisseur, GPAO, multi-devises complet sur le stock,
+gestion des lots réglementaires par pays, portail client de suivi de commande. Ces
+sujets supposent A à C stabilisés ; les ouvrir avant ferait doublon avec la
+refonte du stock.
+
+---
+
+## 2026-11-02 — Balayage « aucune valeur métier en dur » (code d'exécution)
+
+- **Locale d'affichage** : `DEFAULT_LOCALE` passe à `fr-PF` ; `src/lib/format.ts` applique la locale et le fuseau de la société (Paramètres → Société → « Format des dates et des nombres »). Plus aucun `fr-FR` en dur dans les écrans, le serveur ni la page publique.
+- **Montants et quantités** : `formatMoney`/`currencyDecimals` restent la seule source des décimales (XPF = 0, EUR = 2) ; tableaux de bord, produits, achats, inventaire et page publique passent par la locale configurée.
+- **Taxes** : les taux proposés viennent de la table `tax_rates` (Paramètres → Taxes) et non plus de la constante `TVA_RATES` ; `DEFAULT_TAX_RATE` centralise la valeur par défaut utilisée avant le chargement des réglages.
+- **Serveur** : `server/lib/dates.ts`, `server/lib/money.ts` et le digest d'alertes de stock reçoivent la locale configurée (défaut `fr-PF`).
+- **Preuve exécutée** : `tests/config-driven-format.test.ts` — changer le fuseau change le jour calculé (Tahiti vs Marquesas vs Paris), Tahiti reste à UTC−10 en janvier comme en juillet, changer la devise change les décimales, changer la locale change le rendu des dates.
+- **Décisions client encore ouvertes** : paliers SLA par priorité, horaires 07:30–16:30, liste des jours fériés — inchangés.
+
+---
+
+## 2026-11-02 — Planning/SLA : réglages livrés au lieu de décisions bloquantes
+
+- **Paliers SLA** : `sla_policies` (déjà persistée) est semée avec P1 60/240, P2 240/480, P3 480/1440 min ouvrées ; édition dans Planification → SLA. Refus serveur si la résolution précède la prise en charge (`resolution_before_response`) ou si deux paliers actifs partagent la même priorité sur la même cible (`duplicate`).
+- **Horaires ouvrés** : jours travaillés + plage persistés dans `settings_extra` (`planning`), défaut lundi–vendredi 07:30–16:30 ; édition dans Planification → Réglages. Refus si la plage est vide (`empty_range`), mal formée (`invalid_time`) ou si un jour est dupliqué.
+- **Jours fériés** : table `non_working_days`, semée pour 2026 et 2027 (jours fixes + Vendredi saint, lundi de Pâques, Ascension, Pentecôte calculés depuis Pâques) ; édition dans Planification → Calendrier. Refus hors 2000–2100 (`year_out_of_range`) ou date inexistante (`invalid_date`).
+- **Calculs** : `shared/planning.ts` ne contient plus que les valeurs par défaut partagées ; les fonctions reçoivent le calendrier et les paliers lus en base. Les messages d'erreur de champ sont affichés dans l'écran (toast traduit via `validation.*`).
+- **Preuve** : `tests/planning-sla.test.ts` couvre les paliers par défaut, les fériés semés 2026/2027 (dont Pâques calculée), les rejets (année hors plage, date impossible, plage vide, résolution avant prise en charge) et un même délai calculé différemment selon les horaires configurés.
+
+---
+
+## 2026-11-02 — Le plan comptable est un réglage (fin du balayage « rien en dur »)
+
+Les neuf codes qui portaient la comptabilité étaient des constantes de
+`server/lib/accounting.ts`, `server/routes/revenue.ts` et `server/lib/import-vat.ts`.
+Ils sont désormais des `settings_extra` (Paramètres → Fiscalité → « Plan comptable
+utilisé »), avec les mêmes défauts partagés (`shared/accounts.ts`) : 706000 ventes,
+487000 produits constatés d'avance, 411000 clients, 401000 fournisseurs, 512000
+banque, 606000 achats, 445710 TVA collectée, 445660 TVA déductible, 110000 report à
+nouveau.
+
+- Les règles pures (`invoiceLines`, `creditLines`, `paymentLines`, `expenseLines`,
+  `openingLines`, `importVatLines`, `groupRevenue`) reçoivent les codes effectifs ;
+  le service de comptabilisation les lit une fois par passe (`getAccountCodes`) et
+  les transmet. Aucune route ne porte plus de code en dur.
+- `ensureChart` sème aussi les comptes configurés (libellé + type déduits du code),
+  pour qu'un compte personnalisé apparaisse dans la balance générale.
+- Refus explicites : code non numérique ou trop court (`invalid_code`), et deux
+  rôles partageant le même code (`duplicate`) — vérifié sur l'état stocké plus la
+  requête, en écriture groupée comme en écriture d'une clé.
+- Les écritures déjà passées gardent leur compte : le changement ne réécrit jamais
+  le journal, il s'applique aux écritures suivantes.
+- Preuve : `tests/account-codes.test.ts` (facture, règlement, dépense, reprise de
+  balance, TVA à l'import et ventilation sur des codes personnalisés).

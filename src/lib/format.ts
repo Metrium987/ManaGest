@@ -1,11 +1,54 @@
+import { DEFAULT_LOCALE, DEFAULT_TIMEZONE } from '@shared/domain';
 import { currencyDecimals, fromMinor } from '@shared/money';
 
 export { currencyDecimals };
 
+/**
+ * Rendering configuration. These two values come from the company row
+ * (`locale`, `timezone`), editable in Paramètres → Société; the defaults are
+ * French Polynesia. Nothing here decides the format on its own.
+ */
+let displayLocale = DEFAULT_LOCALE;
+let displayTimezone = DEFAULT_TIMEZONE;
+
+export function setFormatLocale(locale?: string | null): void {
+  const next = (locale ?? '').trim();
+  displayLocale = next || DEFAULT_LOCALE;
+}
+
+export function formatLocale(): string {
+  return displayLocale;
+}
+
+export function setFormatTimezone(timezone?: string | null): void {
+  const next = (timezone ?? '').trim();
+  displayTimezone = next || DEFAULT_TIMEZONE;
+}
+
+export function formatTimezone(): string {
+  return displayTimezone;
+}
+
+function numberFormat(options?: Intl.NumberFormatOptions): Intl.NumberFormat {
+  try {
+    return new Intl.NumberFormat(displayLocale, options);
+  } catch {
+    return new Intl.NumberFormat(DEFAULT_LOCALE, options);
+  }
+}
+
+function dateTimeFormat(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  try {
+    return new Intl.DateTimeFormat(displayLocale, options);
+  } catch {
+    return new Intl.DateTimeFormat(DEFAULT_LOCALE, options);
+  }
+}
+
 export function formatMoney(minor: number | null | undefined, currency = 'XPF'): string {
   const value = fromMinor(Number(minor ?? 0), currency);
   const decimals = currencyDecimals(currency);
-  const formatted = new Intl.NumberFormat('fr-FR', {
+  const formatted = numberFormat({
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   }).format(value);
@@ -16,7 +59,7 @@ export function formatMoneyParts(minor: number | null | undefined, currency = 'X
   const value = fromMinor(Number(minor ?? 0), currency);
   const decimals = currencyDecimals(currency);
   return {
-    value: new Intl.NumberFormat('fr-FR', {
+    value: numberFormat({
       minimumFractionDigits: decimals,
       maximumFractionDigits: decimals,
     }).format(value),
@@ -24,40 +67,60 @@ export function formatMoneyParts(minor: number | null | undefined, currency = 'X
   };
 }
 
+/** Plain quantity/number rendering that follows the configured locale. */
+export function formatNumber(value: number, maximumFractionDigits = 3): string {
+  return numberFormat({ maximumFractionDigits }).format(value);
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
-  const date = value.length === 10 ? new Date(`${value}T12:00:00Z`) : new Date(value);
+  const dateOnly = value.length === 10;
+  const date = dateOnly ? new Date(`${value}T12:00:00Z`) : new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
+  // A date without time is a calendar day: render it in UTC so no timezone can
+  // move it to the previous or next day.
+  return dateTimeFormat({
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: dateOnly ? 'UTC' : displayTimezone,
+  }).format(date);
 }
 
 export function formatDateShort(value: string | null | undefined): string {
   if (!value) return '—';
-  const date = value.length === 10 ? new Date(`${value}T12:00:00Z`) : new Date(value);
+  const dateOnly = value.length === 10;
+  const date = dateOnly ? new Date(`${value}T12:00:00Z`) : new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short' }).format(date);
+  return dateTimeFormat({
+    day: '2-digit',
+    month: 'short',
+    timeZone: dateOnly ? 'UTC' : displayTimezone,
+  }).format(date);
 }
 
 export function formatDateTime(value: string | null | undefined): string {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '—';
-  return new Intl.DateTimeFormat('fr-FR', {
+  return dateTimeFormat({
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    timeZone: displayTimezone,
   }).format(date);
 }
 
 export function formatLongDate(value: string): string {
   const date = new Date(`${value}T12:00:00Z`);
-  return new Intl.DateTimeFormat('fr-FR', {
+  return dateTimeFormat({
     weekday: 'long',
     day: 'numeric',
     month: 'long',
     year: 'numeric',
+    timeZone: 'UTC',
   }).format(date);
 }
 

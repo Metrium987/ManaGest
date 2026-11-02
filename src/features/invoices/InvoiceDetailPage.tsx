@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  ArrowLeft, Ban, BellRing, CheckCircle2, Copy, Download, FileMinus, Pencil, Send, Trash2, Wallet,
+  ArrowLeft, Ban, BellRing, CheckCircle2, Copy, Download, FileMinus, Pencil, RotateCcw, Send, Trash2, Wallet,
 } from 'lucide-react';
 import { PAYMENT_METHODS } from '@shared/domain';
 import { api, downloadPdf } from '@/lib/api';
@@ -10,13 +10,22 @@ import { ShareButton } from '@/components/domain/ShareLinkDialog';
 import { errorMessage } from '@/lib/errors';
 import { t } from '@/lib/i18n';
 import { useSession } from '@/lib/session';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate, formatLocale, formatMoney } from '@/lib/format';
 import type { Invoice } from '@/lib/types';
 import { EmptyState, PageHeader, SectionCard, Skeleton, StatusBadge } from '@/components/ui/Layout';
 import { Button } from '@/components/ui/Button';
 import { Modal, useConfirm } from '@/components/ui/Modal';
 import { Field, Select, Input, Textarea } from '@/components/ui/Form';
 import { useToast } from '@/components/ui/Toast';
+
+/** What may still come back into stock for this invoice (A6). */
+interface InvoiceReturnLine {
+  product_id: string;
+  name: string | null;
+  sold: number;
+  returned: number;
+  remaining: number;
+}
 
 export function InvoiceDetailPage() {
   const { id = '' } = useParams();
@@ -32,6 +41,9 @@ export function InvoiceDetailPage() {
   const [refundOpen, setRefundOpen] = useState(false);
   const [refundAmount, setRefundAmount] = useState('');
   const [refundNote, setRefundNote] = useState('');
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [returnQty, setReturnQty] = useState<Record<string, number>>({});
+  const [returnReason, setReturnReason] = useState('');
 
   const invoice = useQuery({
     queryKey: ['invoice', id],
@@ -110,6 +122,33 @@ export function InvoiceDetailPage() {
       setPaymentOpen(false);
       setReference('');
       invalidate();
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  // A return is the physical half of a correction: the credit note moves the
+  // money, this moves the goods. The ledger knows what is still returnable.
+  const returns = useQuery({
+    queryKey: ['invoice-returns', id],
+    queryFn: () => api.get<{ status: string; data: InvoiceReturnLine[] }>(`/invoices/${id}/returns`),
+    enabled: returnOpen && Boolean(id),
+  });
+
+  const registerReturn = useMutation({
+    mutationFn: () => api.post(`/invoices/${id}/returns`, {
+      lines: Object.entries(returnQty)
+        .map(([product_id, quantity]) => ({ product_id, quantity }))
+        .filter((line) => line.quantity > 0),
+      reason: returnReason.trim() || null,
+    }),
+    onSuccess: () => {
+      toast.success(t('invoices.returned'));
+      setReturnOpen(false);
+      setReturnQty({});
+      setReturnReason('');
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ['invoice-returns', id] });
+      queryClient.invalidateQueries({ queryKey: ['products'] });
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
@@ -319,6 +358,16 @@ export function InvoiceDetailPage() {
                 {t('invoices.cancelInvoice')}
               </Button>
             ) : null}
+            {['sent', 'partial', 'paid'].includes(data.status) && can('invoices.write') ? (
+              <Button
+                variant="secondary"
+                className="w-full justify-start"
+                onClick={() => setReturnOpen(true)}
+                icon={<RotateCcw className="h-4 w-4" aria-hidden="true" />}
+              >
+                {t('invoices.returnStock')}
+              </Button>
+            ) : null}
             {can('invoices.delete') && data.paid_total === 0 ? (
               <Button
                 variant="ghost"
@@ -400,6 +449,62 @@ export function InvoiceDetailPage() {
           <p className="rounded-lg bg-surface px-3 py-2 text-xs text-muted">
             {t('invoices.creditNoteHint')}
           </p>
+        </div>
+      </Modal>
+
+      <Modal
+        open={returnOpen}
+        onClose={() => setReturnOpen(false)}
+        title={t('invoices.returnStock')}
+        description={t('invoices.returnStockHint')}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setReturnOpen(false)}>{t('common.cancel')}</Button>
+            <Button
+              loading={registerReturn.isPending}
+              disabled={!Object.values(returnQty).some((quantity) => quantity > 0)}
+              onClick={() => registerReturn.mutate()}
+              icon={<RotateCcw className="h-4 w-4" aria-hidden="true" />}
+            >
+              {t('common.confirm')}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {returns.isLoading ? (
+            <Skeleton className="h-24" />
+          ) : !(returns.data?.data ?? []).length ? (
+            <p className="text-sm text-muted">{t('invoices.noReturnable')}</p>
+          ) : (
+            <div className="space-y-3">
+              {(returns.data?.data ?? []).map((line) => (
+                <div key={line.product_id} className="flex items-end gap-3">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-ink-900">{line.name ?? line.product_id}</p>
+                    <p className="text-xs text-muted">
+                      {t('invoices.returnRemaining')} : {line.remaining.toLocaleString(formatLocale())}
+                    </p>
+                  </div>
+                  <Field label={t('invoices.returnQuantity')} htmlFor={`return_${line.product_id}`} className="w-32">
+                    <Input
+                      id={`return_${line.product_id}`}
+                      type="number"
+                      min={0}
+                      max={line.remaining}
+                      step="0.001"
+                      value={returnQty[line.product_id] ?? ''}
+                      onChange={(event) => setReturnQty({ ...returnQty, [line.product_id]: Number(event.target.value) })}
+                    />
+                  </Field>
+                </div>
+              ))}
+            </div>
+          )}
+          <Field label={t('invoices.returnReason')} htmlFor="return_reason">
+            <Textarea id="return_reason" rows={2} value={returnReason} onChange={(event) => setReturnReason(event.target.value)} />
+          </Field>
         </div>
       </Modal>
 
