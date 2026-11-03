@@ -191,7 +191,7 @@ Le port 25 reste bloqué : utiliser 465 ou 587.
 npm run build          # une fois
 npm run dev:api        # terminal 1 — API + base locale sur 8787
 npx playwright install chromium   # une fois
-npm run test:ui        # terminal 2 — 27 contrôles dans un vrai navigateur
+npm run test:ui        # terminal 2 — 28 contrôles dans un vrai navigateur
 ```
 
 Le script se connecte à l'instance locale, exporte et réimporte un CSV, vérifie l'historique
