@@ -571,8 +571,8 @@ effet mesurable sur le stock et la marge.
   l'assiette de TVA ; la **TVA d'import est récupérable** pour une entreprise au
   régime réel (la DICP rembourse le crédit sur relevé des documents d'importation)
   et reste donc **hors du coût**, mais elle est **dans le coût en franchise en base**
-  (case à décocher), car elle n'y est pas déductible ; le **taux de TVA par défaut
-  est 16 %**, le taux normal étant celui qui frappe les produits importés ; le
+  (case à décocher), car elle n'y est pas déductible ; le **taux normal est 16 %**, celui qui frappe les produits importés (le taux par défaut
+  d'une société neuve est 13 %, celui des services) ; le
   **franc est arrimé à l'euro** (1 000 XPF = 8,38 EUR, IEOM), le taux par défaut
   d'une facture en euros est donc 119,3317 et il reste **modifiable** car la douane
   applique son propre cours pour les autres devises ; chaque calcul est une **ligne
@@ -1458,7 +1458,7 @@ aucun secret écrit.
 - Odoo, import/export : <https://www.odoo.com/documentation/20.0/applications/essentials/export_import_data.html> et `addons/base_import/models/base_import.py` — .xlsx lu nativement (openpyxl), mapping par en-têtes, commit atomique.
 - Odoo, sauvegarde : <https://www.odoo.com/documentation/20.0/administration/odoo_sh/getting_started/branches.html> — archive base + fichiers + journaux, restauration par import.
 - Odoo, multi-devises : <https://www.odoo.com/documentation/20.0/applications/finance/accounting/get_started/multi_currency.html> — devise principale, taux datés, écarts de conversion automatiques (confirme le plan Q15).
-- DICP, taux de TVA : <https://www.service-public.pf/dicp/faq-items/quels-sont-les-principaux-taux-de-tva/> — **5 % réduit, 13 % services, 16 % biens** ; un taux **1 %** pour les archipels hors Société est annoncé au 1/7/2026. Les taux locaux du code (`LOCAL_TAX_RATES` = 0, 1, 5, 13, 16) sont donc exacts ; le taux par défaut de la société reste **paramétrable** (16 = taux normal, à passer à 13 pour une activité de services).
+- DICP, taux de TVA : <https://www.service-public.pf/dicp/faq-items/quels-sont-les-principaux-taux-de-tva/> — **5 % réduit, 13 % services, 16 % biens** ; un taux **1 %** pour les archipels hors Société est annoncé au 1/7/2026. Les taux locaux du code (`LOCAL_TAX_RATES` = 0, 1, 5, 13, 16) sont donc exacts ; depuis le 2/11/2026, une **installation neuve** part sur **13 %** (services) et le taux reste **paramétrable** société par société.
 - IEOM : <https://www.ieom.fr/> — **1 000 XPF = 8,38 EUR**, parité fixe.
 - Chorus Pro, Polynésie : <https://portail.chorus-pro.gouv.fr/aife_documentation?id=kb_article_view&sysparm_article=KB0012182> — obligation **uniquement pour les marchés publics** (loi du pays 2025-22), pas en B2B.
 

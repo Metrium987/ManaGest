@@ -4,7 +4,8 @@
 
 ManaGest réunit la facturation, les devis, les encaissements, la trésorerie et le pilotage
 d'activité dans une interface unique, en français, pensée pour les usages locaux :
-franc Pacifique (XPF, sans décimale), TVA polynésienne (5 %, 13 %, 16 %), numéro TAHITI,
+franc Pacifique (XPF, sans décimale), TVA polynésienne (5 %, 13 %, 16 %, plus 1 % pour les
+archipels au 1/7/2026), numéro TAHITI, RIDET et NIF,
 fuseau `Pacific/Tahiti` (UTC−10) et mentions légales adaptées.
 
 > Le code source est intégralement en anglais (identifiants, tables, API).
@@ -50,9 +51,9 @@ Pour le XPF, l'unité mineure est le franc : `1 500` représente 1 500 F CFP.
 | Élément | Valeur retenue |
 |---|---|
 | Devise | `XPF` — 0 décimale |
-| TVA | 16 % (normal), 13 % (intermédiaire), 5 % (réduit), exonération |
+| TVA | **13 % (services, défaut d'une installation neuve)**, 16 % (biens), 5 % (réduit), 1 % (archipels hors Société, au 1/7/2026), exonération |
 | Régime | Assujetti ou **franchise en base** (mention automatique sur les documents) |
-| Identifiant | **Numéro TAHITI** : une lettre + 5 chiffres (ex. `T12345`) |
+| Identifiants | **Numéro TAHITI** (une lettre + 5 chiffres, ex. `T12345`), **RIDET**, **NIF** — distincts et tous facultatifs |
 | Registre | RCS Papeete |
 | Fuseau | `Pacific/Tahiti` (UTC−10), stockage UTC |
 | Format de date | JJ/MM/AAAA à l'affichage, ISO en base |

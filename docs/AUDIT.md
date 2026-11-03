@@ -187,7 +187,7 @@ Le socle actuel est un **suite de facturation et de gestion commerciale solide**
 
 ## 8. Ce qui n'a pas été vérifié
 
-- **Interface dans un navigateur réel** : les parcours ont été validés par l'API et par les tests HTTP, pas par clic ni par lecteur d'écran. Les règles d'accessibilité sont implémentées (libellés, focus, contrastes, annonces) mais non auditées formellement (RGAA/WCAG).
+- **Interface dans un navigateur réel** : trois écrans (Bilan, Reprise de balance, Approbations) ont été parcourus par un script navigateur sur une base locale migrée le 2/11/2026 (27 contrôles, commit `7ff2e9b`), qui a fait corriger quatre défauts réels. Le reste de l'interface n'a pas été cliqué écran par écran, et aucun lecteur d'écran n'a été utilisé. Les règles d'accessibilité sont implémentées (libellés, focus, contrastes, annonces) mais non auditées formellement (RGAA/WCAG).
 - **Concurrence** : pas de test de deux utilisateurs modifiant le même document simultanément.
 - **Charge** : aucun test au-delà de quelques centaines de documents ; les limites D1 et le coût du rapport de TVA en JavaScript restent à mesurer.
 - **E-mails et PDF visuel** : l'envoi est simulé (statut), le rendu PDF n'a pas été inspecté visuellement.

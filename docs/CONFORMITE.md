@@ -14,15 +14,19 @@ Il ne remplace pas l'avis d'un comptable.
 
 | Taux | Usage |
 |---|---|
-| **16 %** | Taux normal : produits et services non soumis aux autres taux |
-| **13 %** | Taux intermédiaire : services non taxés à 5 % et non exonérés |
+| **16 %** | Taux normal : **biens** et opérations non soumises aux autres taux |
+| **13 %** | Taux **des prestations de service** ; c'est le défaut d'une installation neuve |
 | **5 %** | Taux réduit : produits alimentaires, transport de personnes, électricité, hôtellerie |
+| **1 %** | Archipels hors îles de la Société, **à compter du 1/7/2026** (ligne datée, non appliquée avant) |
 | **Exonéré** | Opérations expressément exonérées (santé, export, fret inter-îles, etc.) |
 
 La **franchise en base** dispense de TVA en dessous du seuil légal (généralement
 10 millions de F CFP de chiffre d'affaires). La mention
 « TVA non applicable, franchise en base » est alors ajoutée automatiquement en pied
 de document.
+
+Une installation neuve crée les cinq lignes ci-dessus, avec **13 %** marqué par défaut ;
+chaque société peut ensuite changer son taux par défaut et ses lignes.
 
 ManaGest permet de saisir un taux par ligne, de cumuler plusieurs taux sur un même
 document et d'exonérer un client. Le détail par taux figure sur la facture et dans

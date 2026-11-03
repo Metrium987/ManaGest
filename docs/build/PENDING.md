@@ -24,7 +24,7 @@ est livré (c'est [`../AUDIT.md`](../AUDIT.md) §10).
 | # | Sujet | Statut | Pourquoi c'est en suspens | Où c'est écrit |
 |---|---|---|---|---|
 | D-01 | **Soldes de reprise** (balance d'ouverture) | **RÉGLÉ** (2/11/2026) | Aucun chiffre communiqué : la reprise reste **à zéro**, sans valeur inventée. Le bilan reste vide tant que rien n'est saisi, et la saisie reste ouverte à tout moment (Comptabilité → Reprise de balance). | T-304 |
-| D-02 | **Valeurs fiscales par défaut** | **RÉGLÉ** (2/11/2026) | Conservées telles quelles : ce sont des réglages ordinaires, modifiables sans code (rétention, franchise, régime). Décision du propriétaire : on n'y revient plus. | `settings_extra`, Paramètres → Société / Taxes |
+| D-02 | **Valeurs fiscales par défaut** | **RÉGLÉ** (2/11/2026) | Conservées telles quelles : ce sont des réglages ordinaires, modifiables sans code (rétention, franchise, régime). Décision du propriétaire : on n'y revient plus. | `settings_extra`, Paramètres → Société / Taxes ; depuis le 2/11/2026 les défauts d'installation sont polynésiens |
 | D-03 | **Seuils d'approbation** | **RÉGLÉ** (2/11/2026) | Les trois seuils sont livrés **à 0**, c'est-à-dire règle désactivée : un avoir, une dépense ou une remise passe sans blocage par défaut. L'approbation reste **optionnelle** et paramétrable (Paramètres → Sécurité), pour les cas où vous la voulez. | `server/lib/settings-extra.ts`, Paramètres → Sécurité |
 | D-04 | **Déclencheur du passage quotidien** | DÉCISION + PLATEFORME (reporté par le propriétaire) | L'endpoint `POST /api/runs/daily` existe et est protégé ; l'appelant externe (cron) sera branché plus tard. **Aucun jeton GitHub n'est nécessaire** : il faut un **jeton d'API ManaGest** (Paramètres → Sécurité, créé par vous) et un planificateur qui appelle l'endpoint avec ce jeton. | T-104a, [`../SECURITE.md`](../SECURITE.md) §11 |
 
@@ -95,8 +95,8 @@ Ce ne sont pas des bugs ouverts : ce sont des comportements assumés, écrits po
 
 | # | Sujet | État réel |
 |---|---|---|
-| V-01 | **Écrans dans un navigateur** | Je n'en ai ouvert **aucun**. Vous avez validé certains écrans (rôles, comptabilité, jetons), jamais les plus récents : **Bilan**, **Reprise de balance**, **Approbations**. |
-| V-02 | **Tests navigateur automatisés** | Inexistants. Les 245 tests sont unitaires ; la compilation ne remplace pas un clic. |
+| V-01 | **Écrans dans un navigateur** | Les trois écrans livrés (Bilan, Reprise de balance, Approbations) ont été parcourus par un **script navigateur** sur une base locale migrée le 2/11/2026 (27 contrôles, commit `7ff2e9b`), qui a révélé et fait corriger quatre défauts réels. Restent non vérifiés : le rendu visuel écran par écran et un lecteur d'écran. |
+| V-02 | **Tests navigateur automatisés** | Toujours absents de la suite : les **671 tests** (79 fichiers) couvrent l'API et les fonctions partagées, et la vérification navigateur du 2/11/2026 était un script ponctuel, non rejoué automatiquement. |
 | V-03 | **Concurrence** | Jamais éprouvée : deux utilisateurs modifiant le même document en même temps. |
 | V-04 | **Charge** | Jamais mesurée au-delà de quelques centaines de documents ; les limites D1 et le coût des rapports ne sont pas connus. |
 | V-05 | **Rendu PDF** | Jamais inspecté visuellement ; seule la validité du fichier (`%PDF`, type MIME) a été constatée. |
