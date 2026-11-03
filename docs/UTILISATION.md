@@ -144,3 +144,42 @@ et n'est jamais réaffichée ; laissez le champ vide pour la conserver.
 
 Tant que le domaine n'est pas vérifié, les factures envoyées aux clients seront refusées
 par Resend : ManaGest vous le dira explicitement et **laissera la facture en brouillon**.
+
+
+## Essayer ManaGest sur votre machine (sans Cloudflare)
+
+Wrangler émule la base D1 en local : aucun compte Cloudflare n'est nécessaire.
+
+```bash
+npm ci          # une fois
+npm run build   # une fois : le Worker sert aussi les fichiers de dist/client
+# Terminal 1 : API + base locale (port 8787)
+npm run dev:api
+# Terminal 2 : interface (port 3000, proxy /api vers 8787)
+npm run dev
+```
+
+Ouvrir <http://localhost:3000> : l'assistant d'installation crée la société et le compte.
+Les données locales vivent dans `.wrangler/` ; supprimer ce dossier remet la base à zéro.
+Les secrets locaux vont dans `.dev.vars` (ignoré par Git), par exemple :
+
+```
+MAIL_CONFIG_ENCRYPTION_KEY=une-phrase-de-32-caracteres-minimum
+```
+
+## Tester les e-mails avec Gmail (SMTP, sans domaine à vérifier)
+
+Pour un essai, le SMTP de Gmail évite toute vérification de domaine chez Resend.
+
+1. Activer la **validation en deux étapes** sur le compte Google.
+2. Google Account → Sécurité → **Mots de passe des applications** → en créer un
+   (« Autre », nom libre). Google affiche **16 caractères** ; les saisir **sans espaces**.
+3. Dans ManaGest : Paramètres → Livraison des e-mails → prestataire **SMTP personnalisé**,
+   nom d'expéditeur libre, adresse d'expédition = votre adresse Gmail complète.
+4. Serveur **`smtp.gmail.com`**, port **587**, **STARTTLS**, identifiant = votre adresse Gmail
+   complète, mot de passe = le **mot de passe d'application** (pas celui du compte).
+5. Enregistrer, puis « Envoyer un test » vers une adresse que vous relevez.
+
+Limites : Gmail plafonne les envois (de l'ordre de 500 destinataires par jour) et l'expéditeur
+apparaît comme une adresse Gmail ; c'est parfait pour essayer, moins propre pour facturer.
+Le port 25 reste bloqué : utiliser 465 ou 587.
