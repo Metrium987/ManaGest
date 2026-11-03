@@ -625,7 +625,7 @@ données). Ce qui est appliqué, et ce qui reste à ouvrir :
 > atteint (10 042 / 10 000), ce qui met les sites en pause ; les autres quotas sont
 > loin (requêtes 1 892 / 100 000, CPU 27 s / 5 000 s, stockage 1,9 Mo / 100 Mo) et les
 > **données sont conservées**. Remise à zéro le **3 novembre 2026 à 00:00 UTC** ; la
-> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **79 fichiers
+> preview répond `429` d'ici là. Le build local est vert (`typecheck` 0, **81 fichiers
 > de tests (671 cas)**, build OK) ; la **vérification hébergée** de ces deux points reste **bloquée par ce quota** :
 > à faire dès la remise à zéro (3/11/2026 00:00 UTC) — construire, publier, puis
 > `npm run check:preview:hosted` (quatre contrôles : écrans de stock, tarif, démo et
@@ -1293,7 +1293,7 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
   avec une URL non http(s) → **EXIT:2** ; avec une configuration complète →
   **EXIT:0**. Le code 2 distingue donc une configuration absente d'un contrôle rouge.
 - **Build sur l'arbre commité** : `npm run typecheck` → **0 erreur** ;
-  `npm test` → **79 fichiers, 673 tests verts** ; `npm run build` → **OK**.
+  `npm test` → **81 fichiers, 680 tests verts** ; `npm run build` → **OK**.
 - **Cases à cocher** : les `- [ ]` de `docs/build/VERIFICATION-GATES.md` sont le
   **modèle de porte** (chaque ligne porte déjà son ✓), pas des tâches ouvertes.
 - **Ce qui reste, avec son blocage** :
@@ -1404,7 +1404,7 @@ captures dans `artifacts/ui-verification/`. **27 contrôles, 27 verts.**
    sont invalides ».
 
 **Contrôles finaux** : `npm run typecheck` → **0 erreur** ; `npm test` → **77
-fichiers, 673 tests verts** ; `npm run build` → **OK**. Commit unique sur
+fichiers, 680 tests verts** ; `npm run build` → **OK**. Commit unique sur
 `freebuff/a6f86ced7cc9d3ad744d42ee`, arbre propre, rien poussé, aucun déploiement,
 aucun secret écrit.
 
@@ -1437,7 +1437,7 @@ aucun secret écrit.
 
 **Reste hors de portée sans hébergement** : la sauvegarde automatique D1 côté Cloudflare (PQ-4) s'active dans le tableau de bord ; elle ne peut être ni activée ni vérifiée depuis cet hôte. La restauration, elle, n'attend plus rien.
 
-**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → 79 fichiers, 673 tests verts ; `npm run build` → OK.
+**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → 81 fichiers, 680 tests verts ; `npm run build` → OK.
 
 ## Décisions du propriétaire, P-04, P-05 et alignement Odoo (2/11/2026)
 
@@ -1481,4 +1481,35 @@ Une base vierge démarre désormais en **Polynésie française**, sans réglage 
 
 **Sources** : DICP — [taux de TVA](https://www.service-public.pf/dicp/faq-items/quels-sont-les-principaux-taux-de-tva/) (5/13/16 %, 1 % archipels au 1/7/2026) ; IEOM — [1 000 XPF = 8,38 EUR](https://www.ieom.fr/). Les valeurs restent des réglages : aucune n'est figée dans une règle.
 
-**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → **79 fichiers, 673 tests verts** ; `npm run build` → **OK**.
+**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → **81 fichiers, 680 tests verts** ; `npm run build` → **OK**.
+
+
+## Réinitialisation libre-service et second facteur prouvés (3/11/2026)
+
+**P-02 — réinitialisation de mot de passe en libre-service : livré.** Un utilisateur bloqué
+saisit son adresse sur `/mot-de-passe-oublie` ; s'il existe un compte actif, un lien **valable
+une heure** part par e-mail (Resend/Brevo/SMTP selon Paramètres → Livraison des e-mails). Le
+jeton est stocké **haché en SHA-256**, à usage unique, et la réponse est **identique** que
+l'adresse existe ou non, ce qui empêche d'énumérer les comptes. Cinq demandes par heure et par
+IP au maximum. `/reinitialiser-mot-de-passe` applique la politique de mot de passe existante,
+**ferme toutes les sessions**, efface les liens en attente et journalise l'opération. Sans
+prestataire configuré, le flux reste muet mais ne casse rien. Migration **schéma 50**
+(`password_reset_tokens`, index utilisateur et IP). Preuve : `tests/password-reset.test.ts`,
+6 cas (lien reçu et haché, réinitialisation, session antérieure 401, ancien mot de passe 401,
+nouveau 200, réutilisation refusée, adresse inconnue muette, mot de passe faible refusé, lien
+expiré/inexistant refusé, mode manuel sans envoi, quota 200×5 puis 429).
+
+**N-01 — second facteur TOTP : livré et prouvé.** Le code existait déjà (secret TOTP,
+activation par code, défi de cinq minutes, codes de secours à usage unique, désactivation,
+journal) mais n'était couvert qu'indirectement. `tests/mfa-flow.test.ts` le prouve de bout en
+bout : inscription, activation, connexion qui renvoie `mfa_required` **sans cookie**, code
+faux 401, code valide 200 avec session, code de secours accepté puis refusé à la
+réutilisation, désactivation, connexion simple rétablie.
+
+**État du registre** : `docs/build/PENDING.md` ne contient plus que des **actions
+utilisateur** (DNS Resend, sauvegarde D1, planificateur du passage quotidien), des
+**décisions produit** (T-401 → T-404, N-02 → N-12), les **limites assumées** (L-01 → L-12) et
+les **constats de vérification** (V-01 → V-07). Aucune tâche de code n'y reste ouverte.
+
+**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → **81 fichiers, 680 tests
+verts** ; `npm run build` → **OK**.

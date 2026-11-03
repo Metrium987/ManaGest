@@ -48,7 +48,16 @@ export const CLIENT_ROUTES: ClientRoute[] = [
 ];
 
 /** Public screens: no session and no permission. */
-export const PUBLIC_ROUTES = ['/connexion', '/installation', '/p/:token', '*'] as const;
+export const PUBLIC_ROUTES = [
+  '/connexion',
+  '/installation',
+  // A locked-out user has no session: these two screens are reached from the
+  // reset e-mail and consume a single-use token, not a login.
+  '/mot-de-passe-oublie',
+  '/reinitialiser-mot-de-passe',
+  '/p/:token',
+  '*',
+] as const;
 
 /** True when a set of permissions opens the screen declared at `path`. */
 export function canOpenPath(permissions: readonly string[], path: string): boolean {

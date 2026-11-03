@@ -15,6 +15,7 @@ import { resolveUserPermissions } from '../services/roles';
 import { parseInput } from '../lib/validation';
 import { clientIp, loadCompany, requireAuth } from '../middleware';
 import { createSession, destroySession } from '../services/session';
+import { readMailConfig } from '../services/email';
 import type { AppEnv, CompanyRow, UserRow } from '../types';
 
 const MAX_ATTEMPTS = 8;
@@ -438,6 +439,148 @@ authRoutes.post('/change-password', requireAuth, async (c) => {
     entityType: 'user',
     entityId: user.id,
     summary: 'activity.password_changed',
+  });
+
+  return c.json({ ok: true });
+});
+
+/* ------------------------------------------------------- password reset */
+
+const forgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(190),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().trim().min(20).max(200),
+  password: z.string().min(1).max(200),
+});
+
+const RESET_TTL_MINUTES = 60;
+const RESET_MAX_PER_HOUR = 5;
+
+/**
+ * Public by design: a locked-out user has no session. The answer is the same
+ * whether or not the address exists, so the route cannot be used to discover
+ * accounts; only the mailbox holder learns anything, by receiving the link.
+ * Without a configured provider the flow stays silent but successful.
+ */
+authRoutes.post('/forgot-password', async (c) => {
+  const company = await loadCompany(c.env.DB);
+  if (!company) return fail(409, 'SETUP_REQUIRED');
+
+  const body = parseInput(forgotPasswordSchema, await c.req.json().catch(() => ({})));
+  const ip = clientIp(c);
+  const cutoff = new Date(Date.now() - 60 * 60_000).toISOString();
+  const recent = await c.env.DB.prepare(
+    `SELECT COUNT(*) AS count FROM password_reset_tokens WHERE requested_ip = ? AND created_at >= ?`,
+  )
+    .bind(ip, cutoff)
+    .first<{ count: number }>();
+  if ((recent?.count ?? 0) >= RESET_MAX_PER_HOUR) return fail(429, 'TOO_MANY_ATTEMPTS');
+
+  const user = await c.env.DB.prepare(
+    `SELECT id, email, first_name FROM users
+     WHERE email = ? AND deleted_at IS NULL AND is_active = 1`,
+  )
+    .bind(body.email)
+    .first<{ id: string; email: string; first_name: string }>();
+  if (!user) return c.json({ ok: true });
+
+  const config = await readMailConfig(c.env.DB);
+  if (config.provider === 'manual') return c.json({ ok: true });
+
+  const token = randomToken(32);
+  const now = nowISO();
+  const expiresAt = new Date(Date.now() + RESET_TTL_MINUTES * 60_000).toISOString();
+  await c.env.DB.batch([
+    // Previous links stop working, but the rows stay for the hourly quota.
+    c.env.DB.prepare(`UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL`).bind(now, user.id),
+    c.env.DB.prepare(`DELETE FROM password_reset_tokens WHERE created_at < ?`)
+      .bind(new Date(Date.now() - 24 * 60 * 60_000).toISOString()),
+    c.env.DB.prepare(
+      `INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at, requested_ip, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).bind(crypto.randomUUID(), user.id, await sha256Hex(token), expiresAt, ip, now),
+  ]);
+
+  const link = `${new URL(c.req.url).origin}/reinitialiser-mot-de-passe?token=${token}`;
+  try {
+    const { dispatchMail } = await import('../services/email');
+    await dispatchMail(config, {
+      to: user.email,
+      subject: `Réinitialisation de votre mot de passe — ${company.name}`,
+      text: `Bonjour ${user.first_name},\n\nUne réinitialisation de mot de passe a été demandée pour votre compte ${company.name}.\n\nOuvrez ce lien pour choisir un nouveau mot de passe :\n${link}\n\nCe lien expire dans ${RESET_TTL_MINUTES} minutes et ne sert qu'une fois. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message : votre mot de passe reste inchangé.`,
+    }, c.env);
+  } catch {
+    // A delivery failure must not change the answer: that would reveal the
+    // address, and the user can simply ask again.
+  }
+
+  await logActivity(c.env.DB, {
+    userId: user.id,
+    action: 'requested',
+    entityType: 'user',
+    entityId: user.id,
+    summary: 'activity.password_reset_requested',
+    ip,
+  });
+
+  return c.json({ ok: true });
+});
+
+/**
+ * Consumes the link once, applies the password policy, revokes every existing
+ * session and clears the other pending links of that account.
+ */
+authRoutes.post('/reset-password', async (c) => {
+  const body = parseInput(resetPasswordSchema, await c.req.json().catch(() => ({})));
+  const row = await c.env.DB.prepare(
+    `SELECT r.id, r.user_id, r.expires_at, r.used_at,
+            u.email, u.first_name, u.last_name, u.is_active, u.deleted_at
+     FROM password_reset_tokens r JOIN users u ON u.id = r.user_id
+     WHERE r.token_hash = ?`,
+  )
+    .bind(await sha256Hex(body.token))
+    .first<{
+      id: string;
+      user_id: string;
+      expires_at: string;
+      used_at: string | null;
+      email: string;
+      first_name: string;
+      last_name: string;
+      is_active: number;
+      deleted_at: string | null;
+    }>();
+
+  if (!row || row.used_at || row.expires_at <= nowISO() || !row.is_active || row.deleted_at) {
+    return fail(422, 'INVALID_RESET_TOKEN');
+  }
+
+  validatePassword({
+    password: body.password,
+    email: row.email,
+    firstName: row.first_name,
+    lastName: row.last_name,
+  });
+
+  const hashed = await hashPassword(body.password);
+  const now = nowISO();
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`).bind(hashed, now, row.user_id),
+    c.env.DB.prepare(`DELETE FROM sessions WHERE user_id = ?`).bind(row.user_id),
+    c.env.DB.prepare(`DELETE FROM mfa_challenges WHERE user_id = ?`).bind(row.user_id),
+    c.env.DB.prepare(`UPDATE password_reset_tokens SET used_at = ? WHERE id = ?`).bind(now, row.id),
+    c.env.DB.prepare(`DELETE FROM password_reset_tokens WHERE user_id = ? AND id <> ?`).bind(row.user_id, row.id),
+  ]);
+
+  await logActivity(c.env.DB, {
+    userId: row.user_id,
+    action: 'updated',
+    entityType: 'user',
+    entityId: row.user_id,
+    summary: 'activity.password_reset_completed',
+    ip: clientIp(c),
   });
 
   return c.json({ ok: true });

@@ -167,7 +167,12 @@ export function LoginPage() {
         {!challenge ? (
         <div className="mt-5 flex items-start gap-2 rounded-xl bg-surface px-3.5 py-3 text-xs text-muted">
           <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          <p>{t('auth.forgotHint')}</p>
+          <p>
+            <Link to="/mot-de-passe-oublie" className="font-semibold text-brand-700 underline underline-offset-2">
+              {t('auth.forgot')}
+            </Link>{' '}
+            {t('auth.forgotHint')}
+          </p>
         </div>
         ) : null}
 

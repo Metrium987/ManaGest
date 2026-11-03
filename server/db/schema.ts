@@ -10,7 +10,7 @@ import {
 } from '../../shared/company-defaults';
 import { SLA_DEFAULT_POLICIES } from '../../shared/planning';
 
-export const SCHEMA_VERSION = 49;
+export const SCHEMA_VERSION = 50;
 
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS expense_categories (
@@ -641,6 +641,20 @@ export const SCHEMA_STATEMENTS: string[] = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_mfa_challenges_user ON mfa_challenges(user_id)`,
+
+  // Single-use password reset links: only the SHA-256 of the token is stored,
+  // so a database read cannot be replayed against a real account.
+  `CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    used_at TEXT,
+    requested_ip TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_ip ON password_reset_tokens(requested_ip, created_at)`,
 
   // Closed accounting periods: no document dated inside may be written.
   `CREATE TABLE IF NOT EXISTS period_locks (

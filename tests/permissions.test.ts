@@ -30,6 +30,10 @@ const ROUTES_DIR = 'server/routes';
 const ALLOWLIST = new Set([
   'auth.ts /login',
   'auth.ts /mfa/verify',
+  // Password reset is public by definition (the user is locked out). The token
+  // itself is the credential: 256-bit, hashed at rest, single-use, one hour.
+  'auth.ts /forgot-password',
+  'auth.ts /reset-password',
   'setup.ts /status',
   'setup.ts /install',
   'dashboard.ts /',

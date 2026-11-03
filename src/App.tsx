@@ -9,6 +9,8 @@ import { Spinner } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/Layout';
 import { LoginPage } from '@/features/auth/LoginPage';
 import { SetupPage } from '@/features/auth/SetupPage';
+import { ForgotPasswordPage } from '@/features/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from '@/features/auth/ResetPasswordPage';
 import { DashboardPage } from '@/features/dashboard/DashboardPage';
 import { ClientsPage } from '@/features/clients/ClientsPage';
 import { ClientDetailPage } from '@/features/clients/ClientDetailPage';
@@ -112,6 +114,9 @@ export default function App() {
   return (
     <Routes>
       <Route path="/connexion" element={<PublicOnly><LoginPage /></PublicOnly>} />
+      <Route path="/mot-de-passe-oublie" element={<PublicOnly><ForgotPasswordPage /></PublicOnly>} />
+      {/* The link arrives by e-mail; no session is needed to consume it. */}
+      <Route path="/reinitialiser-mot-de-passe" element={<PublicOnly><ResetPasswordPage /></PublicOnly>} />
       <Route path="/installation" element={<SetupPage />} />
       {/* T-103: a client opens this page from a public link; no session needed. */}
       <Route path="/p/:token" element={<PublicDocumentPage />} />

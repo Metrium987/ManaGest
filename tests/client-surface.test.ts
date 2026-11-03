@@ -29,7 +29,9 @@ describe('client surface inventory', () => {
 
   it('imports no page component that is not routed', () => {
     const block = elementBlock();
-    const publicPages = new Set(['LoginPage', 'SetupPage', 'PublicDocumentPage']);
+    const publicPages = new Set([
+      'LoginPage', 'SetupPage', 'PublicDocumentPage', 'ForgotPasswordPage', 'ResetPasswordPage',
+    ]);
     const imported = [...app.matchAll(/import \{ (\w+Page) \} from '@\/features\//g)]
       .map((match) => match[1])
       .filter((page) => !publicPages.has(page));
