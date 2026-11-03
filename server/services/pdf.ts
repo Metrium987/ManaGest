@@ -28,6 +28,13 @@ export function money(minor: number, currency: string): string {
   return `${grouped}${fraction ? `,${fraction}` : ''} ${currency}`;
 }
 
+/** ISO dates stay in the database; a client reads day/month/year. */
+export function displayDate(value: unknown): string {
+  const text = String(value ?? '');
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : text;
+}
+
 export function wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const words = text.split(/\s+/);
   const lines: string[] = [];
@@ -132,26 +139,34 @@ export async function buildInvoicePdf(
     String(invoice.client_address1 ?? ''),
     [invoice.client_postal_code, invoice.client_city].filter(Boolean).join(' '),
     String(invoice.client_country ?? ''),
-    ...identifierMentions({
-      tax_id: invoice.client_tax_id ? String(invoice.client_tax_id) : null,
-      ridet: (invoice as unknown as { client_ridet?: string | null }).client_ridet,
-      nif: (invoice as unknown as { client_nif?: string | null }).client_nif,
-    }),
   ].filter((value) => value && value !== 'null');
+  // One compact identifier line instead of three lines: with a five-line box,
+  // a long address used to push the client's RIDET and NIF off the page. Found
+  // by rendering the PDF, not by reading the code.
+  const clientIdentifiers = identifierLine({
+    tax_id: invoice.client_tax_id ? String(invoice.client_tax_id) : null,
+    ridet: (invoice as unknown as { client_ridet?: string | null }).client_ridet,
+    nif: (invoice as unknown as { client_nif?: string | null }).client_nif,
+  });
 
   ctx.page.drawRectangle({ x: MARGIN, y: ctx.y - 100, width: boxWidth, height: 100, color: SOFT });
   ctx.page.drawText('FACTURÉ À', { x: MARGIN + 12, y: ctx.y - 20, size: 8, font: bold, color: MUTED });
   let clientY = ctx.y - 36;
-  for (const value of clientLines.slice(0, 5)) {
+  for (const value of clientLines.slice(0, 4)) {
     ctx.page.drawText(value.slice(0, 52), { x: MARGIN + 12, y: clientY, size: 9.5, font: regular, color: INK });
     clientY -= 13;
+  }
+  if (clientIdentifiers) {
+    ctx.page.drawText(clientIdentifiers.slice(0, 120), {
+      x: MARGIN + 12, y: ctx.y - 88, size: 8, font: regular, color: MUTED,
+    });
   }
 
   const metaX = MARGIN + boxWidth + 24;
   ctx.page.drawRectangle({ x: metaX, y: ctx.y - 100, width: boxWidth, height: 100, color: SOFT });
   const metaRows: [string, string][] = [
-    ['Date de facture', String(invoice.date ?? '')],
-    ['Échéance', String(invoice.due_date ?? '—')],
+    ['Date de facture', displayDate(invoice.date)],
+    ['Échéance', invoice.due_date ? displayDate(invoice.due_date) : '—'],
     ['Bon de commande', String(invoice.po_number ?? '—')],
     ['Devise', currency],
   ];
@@ -171,7 +186,8 @@ export async function buildInvoicePdf(
   const colQty = PAGE_W - MARGIN - 250;
   const colUnit = PAGE_W - MARGIN - 170;
   const colTax = PAGE_W - MARGIN - 95;
-  const colTotal = PAGE_W - MARGIN;
+  // Padding keeps the right-aligned header and amounts inside the band.
+  const colTotal = PAGE_W - MARGIN - 8;
 
   const tableHeader = () => {
     const headColor = style.tableHeaderFill ? rgb(1, 1, 1) : ACCENT;
@@ -236,10 +252,12 @@ export async function buildInvoicePdf(
   for (const [label, value, strong] of totalRows) {
     if (strong) {
       if (style.totalsBlock) {
-        ctx.page.drawRectangle({ x: totalsX, y: ctx.y - 6, width: 230, height: 26, color: ACCENT });
-        ctx.page.drawText(label, { x: totalsX + 8, y: ctx.y + 2, size: 10.5, font: bold, color: rgb(1, 1, 1) });
+        // Below the previous row: starting at y - 6 covered the VAT line with
+        // the total band (found by rendering the PDF).
+        ctx.page.drawRectangle({ x: totalsX, y: ctx.y - 20, width: 230, height: 26, color: ACCENT });
+        ctx.page.drawText(label, { x: totalsX + 8, y: ctx.y - 8, size: 10.5, font: bold, color: rgb(1, 1, 1) });
         ctx.page.drawText(value, {
-          x: PAGE_W - MARGIN - 8 - bold.widthOfTextAtSize(value, 10.5), y: ctx.y + 2, size: 10.5, font: bold, color: rgb(1, 1, 1),
+          x: PAGE_W - MARGIN - 8 - bold.widthOfTextAtSize(value, 10.5), y: ctx.y - 8, size: 10.5, font: bold, color: rgb(1, 1, 1),
         });
       } else {
         ctx.page.drawLine({ start: { x: totalsX, y: ctx.y + 12 }, end: { x: PAGE_W - MARGIN, y: ctx.y + 12 }, thickness: 1, color: ACCENT });
@@ -248,7 +266,7 @@ export async function buildInvoicePdf(
           x: PAGE_W - MARGIN - 8 - bold.widthOfTextAtSize(value, 11), y: ctx.y, size: 11, font: bold, color: INK,
         });
       }
-      ctx.y -= 34;
+      ctx.y -= style.totalsBlock ? 42 : 34;
     } else {
       ctx.page.drawText(label, { x: totalsX + 8, y: ctx.y, size: 9.5, font: regular, color: MUTED });
       ctx.page.drawText(value, {

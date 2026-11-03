@@ -100,7 +100,7 @@ Ce ne sont pas des bugs ouverts : ce sont des comportements assumés, écrits po
 | V-02 | **Tests navigateur automatisés** | Absents du dépôt : la suite (API + fonctions partagées) ne remplace pas un clic. Ce serait un choix d'outillage (Playwright + navigateur en CI), non planifié. |
 | V-03 | **Concurrence** | Deux utilisateurs modifiant le même document simultanément ne sont pas éprouvés ; demande un environnement à deux clients. |
 | V-04 | **Charge** | Non mesurée au-delà de quelques centaines de documents ; demande un jeu de données et un hébergement disponibles. |
-| V-05 | **Rendu PDF visuel** | Seule la validité du fichier (`%PDF`, type MIME) est constatée ; l'inspection visuelle est humaine. |
+| V-05 | **Rendu PDF visuel** | **VÉRIFIÉ le 3/11/2026.** Une facture réaliste (prestation de service à 13 %, deux parties identifiées) a été rendue en image 2× puis inspectée. Quatre défauts réels ont été trouvés et corrigés : le **RIDET et le NIF du client** étaient poussés hors du cadre par la limite de cinq lignes (identifiants désormais sur une ligne compacte dédiée) ; la ligne **« TVA 13 % » était recouverte** par le bandeau « Total TTC » (bandeau décalé sous la ligne précédente) ; l'en-tête **« TOTAL HT » touchait le bord** (marge de 8 pt) ; les **dates s'affichaient en ISO** (désormais JJ/MM/AAAA). La page corrigée montre l'en-tête société avec TAHITI/RIDET/NIF, le bloc client avec ses trois identifiants, 100 000 HT, TVA 13 % = 13 000 et 113 000 XPF. |
 | V-06 | **Restauration de sauvegarde** | Prouvée en local sur SQLite réel ; non rejouée sur D1 hébergé (dépend du quota et de votre base). |
 | V-07 | **Accessibilité formelle** | Règles implémentées, aucun audit RGAA/WCAG : demande un auditeur. |
 

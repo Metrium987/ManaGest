@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildDocumentPdf } from '../server/services/pdf-documents';
-import { buildInvoicePdf } from '../server/services/pdf';
+import { buildInvoicePdf, displayDate } from '../server/services/pdf';
 import { resolveLayout, styleFor } from '../server/services/pdf-style';
 import type { CompanyRow } from '../server/types';
 
@@ -45,6 +45,18 @@ const doc = {
     tax_id: '54321',
   },
 };
+
+describe('invoice dates (visual check V-05)', () => {
+  it('prints ISO dates in the French order a client reads', () => {
+    expect(displayDate('2026-11-03')).toBe('03/11/2026');
+    expect(displayDate('2026-11-03T10:00:00.000Z')).toBe('03/11/2026');
+  });
+
+  it('leaves an empty or already formatted value untouched', () => {
+    expect(displayDate(null)).toBe('');
+    expect(displayDate('03/11/2026')).toBe('03/11/2026');
+  });
+});
 
 describe('document layout choice (T-108)', () => {
   it('lets the per-document request win over the workspace default', () => {

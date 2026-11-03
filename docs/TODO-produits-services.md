@@ -1293,7 +1293,7 @@ valeurs appliquées ; les libellés de statut viennent de `shared/*` et de l'i18
   avec une URL non http(s) → **EXIT:2** ; avec une configuration complète →
   **EXIT:0**. Le code 2 distingue donc une configuration absente d'un contrôle rouge.
 - **Build sur l'arbre commité** : `npm run typecheck` → **0 erreur** ;
-  `npm test` → **81 fichiers, 680 tests verts** ; `npm run build` → **OK**.
+  `npm test` → **81 fichiers, 682 tests verts** ; `npm run build` → **OK**.
 - **Cases à cocher** : les `- [ ]` de `docs/build/VERIFICATION-GATES.md` sont le
   **modèle de porte** (chaque ligne porte déjà son ✓), pas des tâches ouvertes.
 - **Ce qui reste, avec son blocage** :
@@ -1404,7 +1404,7 @@ captures dans `artifacts/ui-verification/`. **27 contrôles, 27 verts.**
    sont invalides ».
 
 **Contrôles finaux** : `npm run typecheck` → **0 erreur** ; `npm test` → **77
-fichiers, 680 tests verts** ; `npm run build` → **OK**. Commit unique sur
+fichiers, 682 tests verts** ; `npm run build` → **OK**. Commit unique sur
 `freebuff/a6f86ced7cc9d3ad744d42ee`, arbre propre, rien poussé, aucun déploiement,
 aucun secret écrit.
 
@@ -1437,7 +1437,7 @@ aucun secret écrit.
 
 **Reste hors de portée sans hébergement** : la sauvegarde automatique D1 côté Cloudflare (PQ-4) s'active dans le tableau de bord ; elle ne peut être ni activée ni vérifiée depuis cet hôte. La restauration, elle, n'attend plus rien.
 
-**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → 81 fichiers, 680 tests verts ; `npm run build` → OK.
+**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → 81 fichiers, 682 tests verts ; `npm run build` → OK.
 
 ## Décisions du propriétaire, P-04, P-05 et alignement Odoo (2/11/2026)
 
@@ -1481,7 +1481,7 @@ Une base vierge démarre désormais en **Polynésie française**, sans réglage 
 
 **Sources** : DICP — [taux de TVA](https://www.service-public.pf/dicp/faq-items/quels-sont-les-principaux-taux-de-tva/) (5/13/16 %, 1 % archipels au 1/7/2026) ; IEOM — [1 000 XPF = 8,38 EUR](https://www.ieom.fr/). Les valeurs restent des réglages : aucune n'est figée dans une règle.
 
-**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → **81 fichiers, 680 tests verts** ; `npm run build` → **OK**.
+**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → **81 fichiers, 682 tests verts** ; `npm run build` → **OK**.
 
 
 ## Réinitialisation libre-service et second facteur prouvés (3/11/2026)
@@ -1511,5 +1511,5 @@ utilisateur** (DNS Resend, sauvegarde D1, planificateur du passage quotidien), d
 **décisions produit** (T-401 → T-404, N-02 → N-12), les **limites assumées** (L-01 → L-12) et
 les **constats de vérification** (V-01 → V-07). Aucune tâche de code n'y reste ouverte.
 
-**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → **81 fichiers, 680 tests
+**Contrôles** : `npm run typecheck` → 0 erreur ; `npm test` → **81 fichiers, 682 tests
 verts** ; `npm run build` → **OK**.
