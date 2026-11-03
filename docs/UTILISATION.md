@@ -183,3 +183,17 @@ Pour un essai, le SMTP de Gmail évite toute vérification de domaine chez Resen
 Limites : Gmail plafonne les envois (de l'ordre de 500 destinataires par jour) et l'expéditeur
 apparaît comme une adresse Gmail ; c'est parfait pour essayer, moins propre pour facturer.
 Le port 25 reste bloqué : utiliser 465 ou 587.
+
+
+## Vérification navigateur automatisée
+
+```bash
+npm run build          # une fois
+npm run dev:api        # terminal 1 — API + base locale sur 8787
+npx playwright install chromium   # une fois
+npm run test:ui        # terminal 2 — 27 contrôles dans un vrai navigateur
+```
+
+Le script se connecte à l'instance locale, exporte et réimporte un CSV, vérifie l'historique
+des prix d'achat et les réglages d'achat, et écrit des captures dans `artifacts/`.
+Dans un conteneur sans espaces de noms utilisateur, ajouter `PW_SINGLE_PROCESS=1`.

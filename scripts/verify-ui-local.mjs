@@ -1,7 +1,9 @@
 /**
- * Temporary browser verification for the three screens delivered in 8996180.
- * Drives the real UI on a local instance: import export/re-import, product price
- * history, and the purchasing settings (save, reload, invalid value).
+ * Browser smoke check for the delivered screens (npm run test:ui).
+ * Drives the real UI on a local instance: sign-in, CSV export, import
+ * export/re-import, unknown column, product price history and purchasing
+ * settings. Needs the API on :8787 and `npx playwright install chromium`; a
+ * container without user namespaces can set PW_SINGLE_PROCESS=1.
  */
 import fs from 'node:fs';
 import { chromium } from 'playwright';
@@ -25,7 +27,12 @@ const header = (file) => fs.readFileSync(file, 'utf8').replace(/^\uFEFF/, '').sp
 
 const browser = await chromium.launch({
   executablePath: process.env.PW_CHROME_PATH || undefined,
-  args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu'],
+  // A container without user namespaces may need one process; a desktop run
+  // keeps the normal multi-process browser.
+  args: [
+    '--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu',
+    ...(process.env.PW_SINGLE_PROCESS === '1' ? ['--single-process'] : []),
+  ],
 });
 const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'fr-FR', acceptDownloads: true });
 const page = await context.newPage();
