@@ -87,6 +87,7 @@ const TABS = [
   { value: 'income', label: 'accounting.income' },
   { value: 'chart', label: 'accounting.chart' },
   { value: 'opening', label: 'accounting.opening' },
+  { value: 'vat', label: 'accounting.vatReturn' },
 ];
 
 /**
@@ -128,6 +129,20 @@ export function AccountingPage() {
     queryFn: () => api.get<BalanceSheet>(`/accounting/balance-sheet${range}`),
     enabled: tab === 'bilan',
   });
+  const vat = useQuery({
+    queryKey: ['accounting', 'vat'],
+    queryFn: () =>
+      api.get<{
+        rows: { rate: number; base: number; tax: number }[];
+        total_base: number;
+        total_tax: number;
+        exempt_base: number;
+        documents: number;
+        credits: number;
+      }>('/accounting/vat-return'),
+    enabled: tab === 'vat',
+  });
+
   const opening = useQuery({
     queryKey: ['accounting', 'opening'],
     queryFn: () => api.get<{ date: string | null; rows: { code: string; label: string; debit: number; credit: number }[] }>(
@@ -229,6 +244,57 @@ export function AccountingPage() {
           ) : null}
         </div>
       </div>
+
+      {tab === 'vat' ? (
+        <SectionCard
+          title={t('accounting.vatReturn')}
+          subtitle={t('accounting.vatHint')}
+        >
+          {vat.isLoading ? (
+            <Skeleton />
+          ) : vat.data && vat.data.rows.length > 0 ? (
+            <div className="space-y-3">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+                      <th className="py-2">{t('accounting.vatRate')}</th>
+                      <th className="py-2 text-right">{t('accounting.vatBase')}</th>
+                      <th className="py-2 text-right">{t('accounting.vatTax')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vat.data.rows.map((row) => (
+                      <tr key={row.rate} className="border-b border-slate-100">
+                        <td className="py-2">{row.rate} %</td>
+                        <td className="py-2 text-right tabular-nums">{formatMoney(row.base, currency)}</td>
+                        <td className="py-2 text-right tabular-nums">{formatMoney(row.tax, currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td className="py-2 font-semibold">{t('accounting.total')}</td>
+                      <td className="py-2 text-right font-semibold tabular-nums">{formatMoney(vat.data.total_base, currency)}</td>
+                      <td className="py-2 text-right font-semibold tabular-nums">{formatMoney(vat.data.total_tax, currency)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+              {vat.data.exempt_base ? (
+                <p className="text-sm text-slate-600">
+                  {t('accounting.vatExempt')} : {formatMoney(vat.data.exempt_base, currency)}
+                </p>
+              ) : null}
+              <p className="text-xs text-slate-500">
+                {vat.data.documents} {t('accounting.vatDocuments')} · {vat.data.credits} {t('accounting.vatDocuments')}
+              </p>
+            </div>
+          ) : (
+            <EmptyState title={t('accounting.vatReturn')} description={t('accounting.vatHint')} />
+          )}
+        </SectionCard>
+      ) : null}
 
       {tab === 'balance' ? (
         <SectionCard

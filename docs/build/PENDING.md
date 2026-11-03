@@ -106,6 +106,33 @@ Ce ne sont pas des bugs ouverts : ce sont des comportements assumés, écrits po
 
 ---
 
+## 5 bis. TVA (1010), rubrique Comptabilité et multi-devises
+
+**Livré le 2026-11-03 — TVA (1010) et regroupement comptable.**
+
+- La section de navigation « Finance » devient **« Comptabilité »** : banque, comptabilité et
+  approbations y sont regroupées, avec les rapports et le journal d'audit déjà accessibles au rôle.
+- `GET /api/accounting/vat-return?from=&to=` agrège **par taux** les buckets TVA enregistrés sur
+  les factures émises (`invoice_tax_lines`) et **déduit les avoirs** de la période ; le CA exonéré
+  est isolé. Aucun recalcul parallèle : le récapitulatif suit le journal.
+- Onglet **« TVA (1010) »** dans Comptabilité : base et TVA par taux, total, exonéré, nombre de
+  documents et d'avoirs, avec la mention explicite que ManaGest ne transmet pas le formulaire.
+- Preuve : `tests/vat-return.test.ts` (5 cas : agrégation multi-taux, avoir qui réduit le taux,
+  taux annulé, exonéré, permissions du comptable), **82 fichiers / 687 tests** verts, typecheck et
+  build verts.
+- **Chorus Pro : aucune intégration** (décision du propriétaire : facture normale aux organismes
+  publics locaux). Rien à construire.
+- **Limite assumée :** le récapitulatif est en devise du document ; tant que le multi-devises n'est
+  pas livré, toutes les factures sont en XPF.
+
+**Multi-devises — spécifié, non construit (décision produit ouverte).** Le registre Q15 reste
+valable : convertir seulement l'affichage produirait un journal faux. Le lot cohérent demande :
+devises libres + taux saisis à la main (aucune API bancaire locale), taux **figé par document**,
+totaux XPF stockés, conversion du journal, de la TVA, des règlements partiels, des avoirs, des
+rapports et des PDF, écarts de change 666/766. **Une décision manque** : les règlements d'une
+facture en devise se font-ils dans cette devise (écart constaté au paiement) ou en XPF au taux
+figé ? Répondre à cette question débloque le lot ; le livrer à moitié corromprait la comptabilité.
+
 ## 6. Ce qui est terminé, pour éviter la confusion
 
 Toutes les tâches du plan sont fermées : T-000 → T-009, T-010, T-100 → T-108,

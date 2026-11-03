@@ -1,3 +1,12 @@
+## 2026-11-03 — VAT recap (1010) in the accounting hub
+
+- **The 1010 pre-fill, from the ledger.** `GET /api/accounting/vat-return` sums the VAT buckets already stored on issued invoices (`invoice_tax_lines`), subtracts the credit notes of the period and reports exempt turnover separately. No second calculation: the recap follows the journal.
+- **A visible place for it.** The navigation section « Finance » becomes **« Comptabilité »** and the Accounting screen gains a **« TVA (1010) »** tab: base and VAT per rate, totals, exempt base, document counts, and a plain statement that ManaGest does not file the form.
+- **Accountant access is proven, not assumed.** A test pins what the role opens (books, reports, bank, periods, approvals, audit) and what it must not (user administration, settings writes, deletions).
+- **Chorus Pro: not integrated, by decision.** Public bodies are invoiced with an ordinary invoice locally; nothing to build.
+- 5 tests; gate: typecheck clean, **687/687 tests over 82 files**, production build clean.
+- **Not claimed:** multi-currency is specified but not built — a partial conversion would silently falsify the journal; one settlement-model decision is still open (see PENDING §5 bis).
+
 ## 2026-10-29 — Opening balances and the balance sheet (AUDIT §7 P0.1–P0.2, T-304)
 
 - **The last missing accounting block.** `PUT /api/accounting/opening-balances` records the opening trial balance as an ordinary `AN` journal entry, so it is keyed, journalled and idempotent like every other entry; `GET /api/accounting/balance-sheet` derives the statement and says whether it balances.
