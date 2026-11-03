@@ -3,6 +3,12 @@ import { fail } from '../lib/errors';
 import { dispatchMail, expandMailTemplate, readMailConfig, type MailProvider, type MailSecrets } from './email';
 import type { CompanyRow } from '../types';
 
+/** Configuration and provider codes the screen can explain; anything else is a 502. */
+export const MAIL_FAILURE_CODES = [
+  'EMAIL_NOT_CONFIGURED', 'MAIL_ENCRYPTION_KEY_MISSING', 'EMAIL_SMTP_PORT_BLOCKED',
+  'EMAIL_PROVIDER_AUTH', 'EMAIL_PROVIDER_DOMAIN', 'EMAIL_PROVIDER_SENDER', 'EMAIL_PROVIDER_QUOTA',
+];
+
 export type EmailedDocumentKind = 'invoice' | 'quote' | 'credit';
 
 export async function sendDocumentEmail(input: {
@@ -42,7 +48,7 @@ export async function sendDocumentEmail(input: {
       },
     }, input.secrets);
   } catch (error) {
-    if (error instanceof Error && ['EMAIL_NOT_CONFIGURED', 'MAIL_ENCRYPTION_KEY_MISSING', 'EMAIL_SMTP_PORT_BLOCKED'].includes(error.message)) {
+    if (error instanceof Error && MAIL_FAILURE_CODES.includes(error.message)) {
       return fail(409, error.message);
     }
     return fail(502, 'EMAIL_DELIVERY_FAILED');

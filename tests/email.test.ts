@@ -5,6 +5,7 @@ import {
   dispatchMail,
   encryptMailSecret,
   expandMailTemplate,
+  providerFailureCode,
   publicMailConfig,
   validateSmtpHost,
   type StoredMailConfig,
@@ -254,7 +255,30 @@ describe('provider dispatch (payload, credentials, failure)', () => {
     }), { to: 'client@example.pf', subject: 's', text: 't' }, {
       MAIL_CONFIG_ENCRYPTION_KEY: SECRET,
       RESEND_API_KEY: 're_env_key',
-    }, failing)).rejects.toThrowError('EMAIL_PROVIDER_422');
+    }, failing)).rejects.toThrowError('EMAIL_PROVIDER_SENDER');
+  });
+
+  it('names the fixable cause behind a provider rejection', () => {
+    expect(providerFailureCode(401, 'resend')).toBe('EMAIL_PROVIDER_AUTH');
+    expect(providerFailureCode(403, 'resend')).toBe('EMAIL_PROVIDER_DOMAIN');
+    expect(providerFailureCode(403, 'brevo')).toBe('EMAIL_PROVIDER_AUTH');
+    expect(providerFailureCode(422, 'resend')).toBe('EMAIL_PROVIDER_SENDER');
+    expect(providerFailureCode(400, 'brevo')).toBe('EMAIL_PROVIDER_SENDER');
+    expect(providerFailureCode(429, 'resend')).toBe('EMAIL_PROVIDER_QUOTA');
+    expect(providerFailureCode(500, 'resend')).toBe('EMAIL_DELIVERY_FAILED');
+  });
+
+  it('reports an unverified Resend sender as a domain problem, not a generic failure', async () => {
+    const rejected = (async () => jsonResponse({ message: 'The example.pf domain is not verified' }, 403)) as unknown as typeof fetch;
+    await expect(dispatchMail(stored({
+      provider: 'resend',
+      sender_email: 'facture@example.pf',
+      api_key_ciphertext: 'v1.iv.body',
+      api_key_provider: 'resend',
+    }), { to: 'client@example.pf', subject: 's', text: 't' }, {
+      MAIL_CONFIG_ENCRYPTION_KEY: SECRET,
+      RESEND_API_KEY: 're_env_key',
+    }, rejected)).rejects.toThrowError('EMAIL_PROVIDER_DOMAIN');
   });
 
   it('refuses a provider whose key belongs to another provider', async () => {

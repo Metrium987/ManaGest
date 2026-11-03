@@ -111,3 +111,36 @@ Choisissez le rapport et la période, puis exportez en CSV :
 - Sauvegardez régulièrement la base de données.
 - Créez un utilisateur par personne, avec le rôle minimal nécessaire.
 - En cas de doute sur un taux de TVA, consultez la DICP ou votre comptable.
+
+
+## Envoi des e-mails avec Resend
+
+Resend fonctionne en deux modes, et c'est ce qui surprend au début.
+
+**1. Compte créé et clé API seuls = mode test.** Resend n'autorise alors qu'un seul
+expéditeur, `onboarding@resend.dev`, et un seul destinataire : l'adresse e-mail de votre
+propre compte Resend. C'est suffisant pour vérifier que ManaGest sait envoyer, pas pour
+écrire à un client.
+
+**2. Domaine vérifié = envoi réel.** Ajoutez votre domaine dans Resend → **Domains**,
+recopiez chez votre hébergeur les enregistrements DNS affichés (SPF et DKIM), attendez le
+statut **Verified**, puis utilisez une adresse de ce domaine comme expéditeur dans
+ManaGest.
+
+Dans ManaGest : **Paramètres → Livraison des e-mails** → prestataire **Resend** → nom
+d'expéditeur, adresse d'expédition (celle du domaine vérifié), clé API → **Enregistrer**,
+puis **Envoyer un test** vers une adresse que vous relevez. La clé est chiffrée au repos
+et n'est jamais réaffichée ; laissez le champ vide pour la conserver.
+
+**Messages d'erreur et ce qu'ils demandent**
+
+| Message | Cause | Correction |
+|---|---|---|
+| « Le prestataire refuse la clé API » | clé incomplète, révoquée ou d'un autre compte | recréer une clé dans Resend → API Keys et la recoller |
+| « Le prestataire refuse l'expéditeur : son domaine n'est pas vérifié » | adresse d'envoi hors domaine vérifié, ou mode test visant un autre destinataire | vérifier le domaine, ou passer à `onboarding@resend.dev` vers votre adresse de compte |
+| « Le prestataire refuse l'adresse d'envoi ou le message » | adresse ou pièce jointe refusée | utiliser une adresse valide d'un domaine vérifié |
+| « Quota d'envoi atteint » | limite de l'offre atteinte | attendre ou changer d'offre |
+| « La clé de chiffrement des e-mails doit être configurée » | secret de plateforme `MAIL_CONFIG_ENCRYPTION_KEY` absent (32 caractères minimum) | le définir dans les secrets de l'hébergeur, puis réenregistrer la clé |
+
+Tant que le domaine n'est pas vérifié, les factures envoyées aux clients seront refusées
+par Resend : ManaGest vous le dira explicitement et **laissera la facture en brouillon**.

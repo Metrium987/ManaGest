@@ -205,8 +205,12 @@ settingsRoutes.post('/email/test', requirePermission('settings.write'), async (c
       summary: 'activity.email_test_sent', meta: { provider: config.provider, recipient: body.recipient },
     });
     return c.json({ ok: true, message_id: result.messageId });
-  } catch {
-    return fail(502, 'EMAIL_DELIVERY_FAILED');
+  } catch (error) {
+    // Keep the actionable cause (bad key, unverified sender, quota) visible.
+    const { MAIL_FAILURE_CODES } = await import('../services/email-documents');
+    return fail(502, error instanceof Error && MAIL_FAILURE_CODES.includes(error.message)
+      ? error.message
+      : 'EMAIL_DELIVERY_FAILED');
   }
 });
 

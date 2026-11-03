@@ -163,6 +163,20 @@ function escapeHtml(value: string): string {
   })[character]!);
 }
 
+/**
+ * A provider rejection carries a status that names the fixable cause. Forwarding
+ * that distinction lets the screen say "verify the domain" instead of the
+ * unhelpful "delivery failed" that hides an unverified sender.
+ */
+export function providerFailureCode(status: number, provider: MailProvider): string {
+  if (status === 401) return 'EMAIL_PROVIDER_AUTH';
+  if (status === 403) return provider === 'resend' ? 'EMAIL_PROVIDER_DOMAIN' : 'EMAIL_PROVIDER_AUTH';
+  if (status === 422) return 'EMAIL_PROVIDER_SENDER';
+  if (status === 400 && provider === 'brevo') return 'EMAIL_PROVIDER_SENDER';
+  if (status === 429) return 'EMAIL_PROVIDER_QUOTA';
+  return 'EMAIL_DELIVERY_FAILED';
+}
+
 export async function dispatchMail(
   config: StoredMailConfig,
   mail: OutgoingMail,
@@ -207,7 +221,7 @@ export async function dispatchMail(
         attachment: attachments,
       }),
     });
-    if (!response.ok) throw new Error(`EMAIL_PROVIDER_${response.status}`);
+    if (!response.ok) throw new Error(providerFailureCode(response.status, config.provider));
     const body = await response.json().catch(() => ({})) as { id?: string; messageId?: string };
     return { messageId: body.id ?? body.messageId ?? null };
   }

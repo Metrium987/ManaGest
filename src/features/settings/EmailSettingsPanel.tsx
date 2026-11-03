@@ -95,7 +95,7 @@ export function EmailSettingsPanel() {
               <Field label={t('email.senderName')} htmlFor="mail_sender_name" required>
                 <Input id="mail_sender_name" value={form.sender_name} onChange={(event) => update('sender_name', event.target.value)} required />
               </Field>
-              <Field label={t('email.senderAddress')} htmlFor="mail_sender_email" required>
+              <Field label={t('email.senderAddress')} htmlFor="mail_sender_email" hint={form.provider === 'resend' ? t('email.resendSenderHint') : undefined} required>
                 <Input id="mail_sender_email" type="email" value={form.sender_email} onChange={(event) => update('sender_email', event.target.value)} required />
               </Field>
               <Field label={t('email.replyTo')} htmlFor="mail_reply_to">
