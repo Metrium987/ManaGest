@@ -218,7 +218,8 @@ Cet audit reste la référence datée du 28 octobre. Les manques listés au §6 
 | Approbations par seuil / séparation des tâches | **Comblé** — seuils paramétrables (avoir, dépense, remise), auto-approbation refusée, séparation création/encaissement activable, file d'approbation journalisée | T-302, 6 tests de règles, marche HTTP |
 | Réinitialisation de mot de passe en libre-service | **Absent** — dépend de l'envoi d'e-mail (PQ-2) | dépendance |
 | Jetons d'API nommés et révocables | **Comblé** — jetons liés à un compte, portée limitée à ses permissions, expiration et nombre paramétrables, valeur affichée une fois, révocation immédiate et journalisée | T-303, marche réelle : `clients 200`, `invoices 403`, jeton révoqué `401` |
-| Multi-devises, PWA, portail client | **Absent / spécifié** — portail et paiements en attente spécifiés en R4, pas construits | R4 |
+| Multi-devises | **Livré** — devises et taux saisis par le propriétaire, taux figé par document, journal/TVA/règlements en XPF avec écarts 666/766 (3/11/2026) | — |
+| PWA, portail client | **Spécifié, non construit** — portail et paiements en attente spécifiés en R4 | R4 |
 | Sauvegarde et restauration testées | **Comblé en local** — export complet JSON versionné et restauration vers une base neuve, comparés ligne à ligne | `tests/backup-restore.test.ts`, `GET /api/backup` / `POST /api/backup/restore` ; sauvegarde automatique D1 : PQ-4 |
 
 **Ce que cela change à la conclusion du §9.** Le socle n'est plus seulement « facturation et gestion commerciale » : il tient la partie double, produit une balance, un résultat et désormais un **bilan** dès que la reprise de balance est importée, et il contrôle qui approuve quoi. Les cinq briques du §7 qui manquaient sont donc comblées : la **MFA** sur les comptes administrateurs reste le seul manque, la **restauration de sauvegarde** étant désormais éprouvée en local.
