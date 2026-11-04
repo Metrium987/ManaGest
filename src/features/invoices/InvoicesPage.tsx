@@ -155,8 +155,8 @@ export function InvoicesPage() {
                     <td className={invoice.overdue ? 'font-medium text-danger-600' : 'text-muted'}>
                       {formatDate(invoice.due_date)}
                     </td>
-                    <td className="text-right tabular-nums">{formatMoney(invoice.total, currency)}</td>
-                    <td className="text-right font-medium tabular-nums">{formatMoney(invoice.balance, currency)}</td>
+                    <td className="text-right tabular-nums">{formatMoney(invoice.total, invoice.currency ?? currency)}</td>
+                    <td className="text-right font-medium tabular-nums">{formatMoney(invoice.balance, invoice.currency ?? currency)}</td>
                     <td>
                       <div className="flex flex-wrap items-center gap-1">
                         <StatusBadge status={invoice.status} />

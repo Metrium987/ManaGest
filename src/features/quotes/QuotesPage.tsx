@@ -78,7 +78,7 @@ export function QuotesPage() {
                   <td>{quote.client_name}</td>
                   <td className="text-muted">{formatDate(quote.date)}</td>
                   <td className="text-muted">{formatDate(quote.valid_until)}</td>
-                  <td className="text-right font-medium tabular-nums">{formatMoney(quote.total, currency)}</td>
+                  <td className="text-right font-medium tabular-nums">{formatMoney(quote.total, quote.currency ?? currency)}</td>
                   <td><StatusBadge status={quote.status} />{quote.expired ? <StatusBadge status="expired" /> : null}</td>
                 </tr>
               ))}

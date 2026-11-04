@@ -47,6 +47,11 @@ export function CreditsPage() {
     enabled: Boolean(applyCredit),
   });
 
+  const currencies = useQuery({
+    queryKey: ['currencies'],
+    queryFn: () => api.get<{ data: { code: string; label: string; active: number }[] }>('/currencies'),
+  });
+
   const create = useMutation({
     mutationFn: () =>
       api.post('/credits', {
@@ -209,9 +214,9 @@ export function CreditsPage() {
           <FormGrid>
             <Field label={t('currencies.title')} htmlFor="credit_currency">
               <Select id="credit_currency" value={creditCurrency} onChange={(event) => setCreditCurrency(event.target.value)}>
-                <option value="XPF">XPF</option>
-                <option value="EUR">EUR</option>
-                <option value="USD">USD</option>
+                {(currencies.data?.data ?? [{ code: 'XPF', label: 'Franc Pacifique', active: 1 }])
+                  .filter((item) => item.active)
+                  .map((item) => <option key={item.code} value={item.code}>{item.code} — {item.label}</option>)}
               </Select>
             </Field>
             <Field label={t('common.date')} htmlFor="credit_date">

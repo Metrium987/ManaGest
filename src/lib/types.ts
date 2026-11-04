@@ -205,6 +205,7 @@ export type DocumentStatus = 'draft' | 'sent' | 'partial' | 'paid' | 'cancelled'
 
 export interface InvoiceSummary {
   id: string;
+  currency?: string;
   number: string | null;
   client_id: string;
   client_name: string;
@@ -257,6 +258,7 @@ export type QuoteStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'converte
 
 export interface QuoteSummary {
   id: string;
+  currency?: string;
   number: string | null;
   client_id: string;
   client_name: string;
