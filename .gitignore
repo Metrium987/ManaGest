@@ -9,6 +9,10 @@ dist/
 coverage/
 *.tsbuildinfo
 
+# Python bytecode from scripts/check-*.py
+__pycache__/
+*.pyc
+
 # Upstream reference clone (Invoice Ninja), not part of the project
 reference/
 .tmp/

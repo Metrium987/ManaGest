@@ -1,6 +1,6 @@
 # ManaGest — registre de ce qui reste suspendu
 
-**3 novembre 2026.** Ce document est le **registre unique** de tout ce qui n'est pas livré,
+**4 novembre 2026.** Ce document est le **registre unique** de tout ce qui n'est pas livré,
 pas terminé, pas vérifié ou volontairement écarté. Il remplace les listes dispersées : si une
 chose est repoussée, elle est écrite ici et nulle part ailleurs.
 
@@ -58,7 +58,6 @@ attendent une donnée externe.
 | T-402 | États de paiement `pending` / `failed` + registre des moyens | Sans passerelle de paiement, aucun producteur : rouvrir avec une passerelle. |
 | T-403 | « Lieux » (un lieu, pas une location) | Spécification écrite, construction non commandée. Rouvrir sur demande explicite. |
 | T-404 | Palette de commandes | Confort d'usage, aucun besoin métier. |
-| N-02 | Multi-devises avec taux et écarts de conversion | DIFFÉRÉ : livré à moitié, il produirait un journal faux. Plan complet en `TODO-produits-services.md` Q15 ; rouvrir avec un besoin réel de facturation en devise tierce. |
 | N-03 | PWA et lecture hors ligne | Confort terrain, aucun impact comptable. |
 | N-04 | Formulaire de déclaration de TVA 1010 | Le récapitulatif de TVA existe ; la déclaration se remplit à la main. Rouvrir si vous voulez la pré-remplir (le taux 1 % daté est déjà modélisé). |
 | N-05 | Export CST-S (4010) et échéances DICP/CPS | Obligations déclaratives locales hors périmètre. |
@@ -99,8 +98,8 @@ Ce ne sont pas des bugs ouverts : ce sont des comportements assumés, écrits po
 |---|---|---|
 | V-01 | **Écrans dans un navigateur** | Couverture **automatisée partielle** : `scripts/verify-ui-local.mjs` (28 contrôles sur 3 écrans) et `scripts/screenshots.mjs` (8 écrans) sont livrés ; le premier a déjà fait corriger quatre défauts réels le 2/11/2026. **Reste une action utilisateur** : la revue humaine écran par écran et un lecteur d'écran pour l'accessibilité — un script ne juge ni le rendu ni l'ergonomie. |
 | V-02 | **Tests navigateur automatisés** | **Les scripts existent** (`scripts/verify-ui-local.mjs`, `npm run test:ui` ; `scripts/screenshots.mjs`) et Playwright est une dépendance du projet. Ils n'ont pas pu être exécutés dans l'environnement de développement cloud : Chromium démarre puis le moteur de rendu se ferme faute de configuration de fontes (libs système non installables sans root). **Action utilisateur** : `npm run build`, `npm run dev:api`, `npx playwright install chromium`, puis `npm run test:ui` — la sortie attendue est « 28/28 contrôles verts ». |
-| V-03 | **Concurrence** | Deux utilisateurs modifiant le même document simultanément ne sont pas éprouvés ; demande un environnement à deux clients. |
-| V-04 | **Charge** | Non mesurée au-delà de quelques centaines de documents ; demande un jeu de données et un hébergement disponibles. |
+| V-03 | **Concurrence** | **Outil livré, mesure à faire.** `scripts/concurrency-check.mjs` (`npm run check:concurrency`) crée ses propres données puis lance réellement deux écritures en même temps : deux factures simultanées (deux numéros distincts, les deux créées) et deux rapprochements de la même ligne bancaire (un seul règlement, la facture ne doit pas être payée deux fois). Il n'a pas encore été exécuté : il demande un `BASE_URL`, un compte de test (`CHECK_EMAIL`/`CHECK_PASSWORD`) et une base jetable, puisqu'il écrit. |
+| V-04 | **Charge** | **Outil livré, mesure à faire.** `scripts/load-test.mjs` (`npm run load:test`) rejoue en lecture seule les écrans d'une session (tableau de bord, clients, factures, devis, recherche) depuis N sessions concurrentes et sort p50/p95/max par écran avec le taux de 5xx. Aucune mesure n'a encore été prise : il faut un jeu de données et un hébergement (`LOAD_USERS`, `LOAD_DURATION`). |
 | V-06 | **Restauration de sauvegarde** | Prouvée en local sur SQLite réel ; non rejouée sur D1 hébergé (dépend du quota et de votre base). |
 | V-07 | **Accessibilité formelle** | Règles implémentées, aucun audit RGAA/WCAG : demande un auditeur. |
 
