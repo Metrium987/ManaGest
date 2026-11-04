@@ -30,6 +30,21 @@ async function seedSystemRoles(database: D1Database): Promise<void> {
   await ensureSystemRoles(database, nowISO());
 }
 
+/**
+ * Documents created before schema 51 are XPF documents. Their base equivalent is
+ * their own total, so the new columns start truthful instead of at zero. The
+ * pass is idempotent and runs only when the schema version changes.
+ */
+async function backfillBaseTotals(database: D1Database): Promise<void> {
+  await database.batch([
+    database.prepare(`UPDATE invoices SET subtotal_xpf = subtotal, tax_total_xpf = tax_total, total_xpf = total WHERE total_xpf = 0 AND total <> 0`),
+    database.prepare(`UPDATE quotes SET subtotal_xpf = subtotal, tax_total_xpf = tax_total, total_xpf = total WHERE total_xpf = 0 AND total <> 0`),
+    database.prepare(`UPDATE credits SET subtotal_xpf = subtotal, tax_total_xpf = tax_total, total_xpf = total WHERE total_xpf = 0 AND total <> 0`),
+    database.prepare(`UPDATE payments SET amount_xpf = amount WHERE amount_xpf = 0 AND amount <> 0`),
+    database.prepare(`UPDATE payment_allocations SET amount_xpf = amount WHERE amount_xpf = 0 AND amount <> 0`),
+  ]);
+}
+
 async function provision(database: D1Database): Promise<void> {
   const existing = await database
     .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'app_meta'`)
@@ -44,6 +59,7 @@ async function provision(database: D1Database): Promise<void> {
 
   await database.batch(SCHEMA_STATEMENTS.map((statement) => database.prepare(statement)));
   await applyColumnMigrations(database);
+  await backfillBaseTotals(database);
   await grantCostPermission(database);
 
   await database
@@ -61,6 +77,33 @@ async function provision(database: D1Database): Promise<void> {
  * carry them in CREATE TABLE, which makes these a no-op there.
  */
 const COLUMN_MIGRATIONS: { table: string; column: string; definition: string }[] = [
+  // Schema 51: multi-currency. Existing documents are in XPF, so their frozen
+  // rate is 1 and their base totals equal their own totals (backfilled below).
+  { table: 'invoices', column: 'exchange_rate', definition: 'REAL NOT NULL DEFAULT 1' },
+  { table: 'invoices', column: 'currency_decimals', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'invoices', column: 'subtotal_xpf', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'invoices', column: 'tax_total_xpf', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'invoices', column: 'total_xpf', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'quotes', column: 'exchange_rate', definition: 'REAL NOT NULL DEFAULT 1' },
+  { table: 'quotes', column: 'currency_decimals', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'quotes', column: 'subtotal_xpf', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'quotes', column: 'tax_total_xpf', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'quotes', column: 'total_xpf', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'credits', column: 'exchange_rate', definition: 'REAL NOT NULL DEFAULT 1' },
+  { table: 'credits', column: 'currency_decimals', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'credits', column: 'subtotal_xpf', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'credits', column: 'tax_total_xpf', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'credits', column: 'total_xpf', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'payments', column: 'currency', definition: "TEXT NOT NULL DEFAULT 'XPF'" },
+  { table: 'payments', column: 'exchange_rate', definition: 'REAL NOT NULL DEFAULT 1' },
+  { table: 'payments', column: 'amount_xpf', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'payments', column: 'fx_difference', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'payment_allocations', column: 'amount_xpf', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'payment_allocations', column: 'exchange_rate', definition: 'REAL NOT NULL DEFAULT 1' },
+  { table: 'payment_allocations', column: 'fx_difference', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'journal_lines', column: 'currency', definition: 'TEXT' },
+  { table: 'journal_lines', column: 'original_amount', definition: 'INTEGER' },
+  { table: 'journal_lines', column: 'exchange_rate', definition: 'REAL' },
   // Schema 49: Polynesian legal identifiers and the date a tax rate starts to
   // apply. Every column is nullable, so an existing workspace keeps working and
   // the fields are filled when the owner edits the company or a client.

@@ -26,7 +26,7 @@ function QuoteEditor({ quote }: { quote?: Quote }) {
   const navigate = useNavigate();
   const toast = useToast();
   const { company } = useSession();
-  const currency = company?.currency ?? 'XPF';
+  const [currency, setCurrency] = useState(quote?.currency ?? company?.currency ?? 'XPF');
   const [clientId, setClientId] = useState(quote?.client_id ?? '');
   const [date, setDate] = useState(quote?.date ?? todayISO());
   const [validUntil, setValidUntil] = useState(quote?.valid_until ?? addDaysISO(todayISO(), 30));
@@ -42,6 +42,10 @@ function QuoteEditor({ quote }: { quote?: Quote }) {
   const [terms, setTerms] = useState(quote?.terms ?? company?.invoice_terms ?? '');
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const currencies = useQuery({
+    queryKey: ['currencies'],
+    queryFn: () => api.get<{ data: { code: string; label: string; active: number }[] }>('/currencies'),
+  });
   const clients = useQuery({
     queryKey: ['clients', 'options'],
     queryFn: () => api.get<ListResponse<Client>>('/clients?per_page=100'),
@@ -90,6 +94,16 @@ function QuoteEditor({ quote }: { quote?: Quote }) {
 
   return (
     <form onSubmit={submit} noValidate>
+      <div className="mb-4 max-w-xs">
+        <Field label={t('currencies.title')} htmlFor="quote_currency">
+          <Select id="quote_currency" value={currency} onChange={(event) => setCurrency(event.target.value)}>
+            {(currencies.data?.data ?? [{ code: 'XPF', label: 'Franc Pacifique', active: 1 }])
+              .filter((item) => item.active)
+              .map((item) => <option key={item.code} value={item.code}>{item.code} — {item.label}</option>)}
+          </Select>
+        </Field>
+      </div>
+
       <PageHeader
         breadcrumb={<Link to="/devis" className="inline-flex items-center gap-1 hover:text-brand-700"><ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> {t('quotes.title')}</Link>}
         title={quote ? `${t('quotes.edit')} · ${quote.number}` : t('quotes.new')}

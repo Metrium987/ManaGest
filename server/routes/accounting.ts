@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { parseInput } from '../lib/validation';
 import { balanceSheet, incomeStatement, trialBalance } from '../lib/accounting';
 import { buildVatReturn, type VatBucket } from '../lib/vat-return';
+import { convertToBase } from '../lib/fx';
 import { safeLines } from '../services/documents';
 import { computeTotals } from '../lib/tax';
 import { logActivity } from '../lib/audit';
@@ -66,53 +67,87 @@ accountingRoutes.get('/balance-sheet', requirePermission('accounting.read'), asy
 });
 
 /**
- * VAT recap for the 1010 declaration: the issued invoices' stored buckets minus
- * the credit notes of the period. Amounts are in the document currency (XPF for
- * now); the screen says so and never pretends to fill the official form.
+ * VAT recap for the 1010 declaration, expressed in XPF at each document's frozen
+ * rate: a declaration is filed in the unit of account, not in the currency the
+ * customer was billed in. The original-currency breakdown travels alongside so
+ * the accountant can reconcile a foreign invoice without a second ledger.
  */
 accountingRoutes.get('/vat-return', requirePermission('accounting.read'), async (c) => {
   const range = parseInput(rangeSchema, c.req.query());
   const from = range.from ?? '0000-01-01';
   const to = range.to ?? '9999-12-31';
   const rows = await c.env.DB.prepare(
-    `SELECT i.id, i.tax_exempt, i.subtotal, l.rate, l.base, l.amount
+    `SELECT i.id, i.tax_exempt, i.subtotal, i.currency, i.exchange_rate, i.currency_decimals,
+            l.rate, l.base, l.amount
      FROM invoices i LEFT JOIN invoice_tax_lines l ON l.invoice_id = i.id
      WHERE i.deleted_at IS NULL AND i.status NOT IN ('draft', 'cancelled')
        AND i.date >= ? AND i.date <= ?
      ORDER BY i.date, i.number`,
-  ).bind(from, to).all<{ id: string; tax_exempt: number; subtotal: number; rate: number | null; base: number | null; amount: number | null }>();
+  ).bind(from, to).all<{
+    id: string; tax_exempt: number; subtotal: number; currency: string;
+    exchange_rate: number; currency_decimals: number;
+    rate: number | null; base: number | null; amount: number | null;
+  }>();
 
   const byInvoice = new Map<string, VatBucket[]>();
+  const origin = new Map<string, { currency: string; rate: number; base: number; tax: number }>();
   let exemptBase = 0;
   for (const row of rows.results ?? []) {
+    const decimals = Number(row.currency_decimals ?? 0);
+    const rate = Number(row.exchange_rate ?? 1);
+    const currency = row.currency || 'XPF';
     if (!byInvoice.has(row.id)) byInvoice.set(row.id, []);
-    if (row.tax_exempt) exemptBase += row.subtotal;
+    if (row.tax_exempt) exemptBase += convertToBase(Number(row.subtotal), decimals, rate);
     if (row.rate !== null) {
-      byInvoice.get(row.id)!.push({ rate: row.rate, base: row.base ?? 0, amount: row.amount ?? 0 });
+      const base = convertToBase(Number(row.base ?? 0), decimals, rate);
+      const tax = convertToBase(Number(row.amount ?? 0), decimals, rate);
+      byInvoice.get(row.id)!.push({ rate: Number(row.rate), base, amount: tax });
+      const key = `${currency}/${row.rate}`;
+      const bucket = origin.get(key) ?? { currency, rate: Number(row.rate), base: 0, tax: 0 };
+      bucket.base += Number(row.base ?? 0);
+      bucket.tax += Number(row.amount ?? 0);
+      origin.set(key, bucket);
     }
   }
 
   const credits = await c.env.DB.prepare(
-    `SELECT line_items, discount_type, discount_value, tax_exempt
+    `SELECT line_items, discount_type, discount_value, tax_exempt, currency, exchange_rate, currency_decimals
      FROM credits WHERE deleted_at IS NULL AND status NOT IN ('draft', 'cancelled')
        AND date >= ? AND date <= ?`,
-  ).bind(from, to).all<{ line_items: string; discount_type: string; discount_value: number; tax_exempt: number }>();
+  ).bind(from, to).all<{
+    line_items: string; discount_type: string; discount_value: number; tax_exempt: number;
+    currency: string; exchange_rate: number; currency_decimals: number;
+  }>();
 
   let creditExemptBase = 0;
   const creditBuckets = (credits.results ?? []).map((credit) => {
+    const decimals = Number(credit.currency_decimals ?? 0);
+    const rate = Number(credit.exchange_rate ?? 1);
     const totals = computeTotals(
       safeLines(credit.line_items),
       { discount_type: credit.discount_type === 'amount' ? 'amount' : 'percent', discount_value: credit.discount_value },
       Boolean(credit.tax_exempt),
     );
-    if (credit.tax_exempt) creditExemptBase += totals.subtotal;
-    return totals.tax_buckets;
+    if (credit.tax_exempt) creditExemptBase += convertToBase(totals.subtotal, decimals, rate);
+    return totals.tax_buckets.map((bucket) => ({
+      rate: bucket.rate,
+      base: convertToBase(bucket.base, decimals, rate),
+      amount: convertToBase(bucket.amount, decimals, rate),
+    }));
   });
 
+  const recap = buildVatReturn({
+    invoices: [...byInvoice.values()],
+    credits: creditBuckets,
+    exemptBase,
+    creditExemptBase,
+  });
   return c.json({
     from: range.from ?? null,
     to: range.to ?? null,
-    ...buildVatReturn({ invoices: [...byInvoice.values()], credits: creditBuckets, exemptBase, creditExemptBase }),
+    currency: 'XPF',
+    ...recap,
+    by_currency: [...origin.values()].sort((a, b) => a.currency.localeCompare(b.currency) || a.rate - b.rate),
   });
 });
 

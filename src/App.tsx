@@ -34,6 +34,7 @@ import { TasksPage } from '@/features/tasks/TasksPage';
 import { BankPage } from '@/features/bank/BankPage';
 import { ReportsPage } from '@/features/reports/ReportsPage';
 import { AccountingPage } from '@/features/accounting/AccountingPage';
+import { CurrenciesPage } from '@/features/accounting/CurrenciesPage';
 import { ApprovalsPage } from '@/features/approvals/ApprovalsPage';
 import { ImportPage } from '@/features/import/ImportPage';
 import { SettingsPage } from '@/features/settings/SettingsPage';
@@ -102,6 +103,7 @@ const PAGE_ELEMENTS: Record<string, ReactNode> = {
   'banque': <BankPage />,
   'rapports': <ReportsPage />,
   'comptabilite': <AccountingPage />,
+  'devises': <CurrenciesPage />,
   'approbations': <ApprovalsPage />,
   'parametres': <SettingsPage />,
   'parametres/utilisateurs': <UsersPage />,

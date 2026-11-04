@@ -23,6 +23,7 @@ interface InvoiceDraft {
   client_id: string;
   date: string;
   due_date: string;
+  currency: string;
   po_number: string;
   line_items: LineItem[];
   discount_type: 'percent' | 'amount';
@@ -39,11 +40,11 @@ function InvoiceEditor({ invoice }: { invoice?: Invoice }) {
   const toast = useToast();
   const [params] = useSearchParams();
   const { company, can } = useSession();
-  const currency = company?.currency ?? 'XPF';
   const [draft, setDraft] = useState<InvoiceDraft>(() => ({
     client_id: invoice?.client_id ?? params.get('client') ?? '',
     date: invoice?.date ?? todayISO(),
     due_date: invoice?.due_date ?? addDaysISO(todayISO(), company?.payment_terms ?? DEFAULT_PAYMENT_TERMS_DAYS),
+    currency: invoice?.currency ?? company?.currency ?? 'XPF',
     po_number: invoice?.po_number ?? '',
     line_items: invoice?.line_items ?? [emptyLine(company?.default_tax_rate ?? DEFAULT_TAX_RATE)],
     discount_type: invoice?.discount_type ?? 'percent',
@@ -54,6 +55,7 @@ function InvoiceEditor({ invoice }: { invoice?: Invoice }) {
     transport_reference: invoice?.transport_reference ?? '',
     shipped_by_seller: Boolean(invoice?.shipped_by_seller),
   }));
+  const currency = draft.currency;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [dueTouched, setDueTouched] = useState(false);
 
@@ -66,6 +68,10 @@ function InvoiceEditor({ invoice }: { invoice?: Invoice }) {
     queryFn: () => api.get<ListResponse<Product>>('/products?per_page=100'),
   });
 
+  const currencies = useQuery({
+    queryKey: ['currencies'],
+    queryFn: () => api.get<{ data: { code: string; label: string; active: number }[] }>('/currencies'),
+  });
   const selectedClient = clients.data?.data.find((client) => client.id === draft.client_id);
 
   useEffect(() => {
@@ -81,6 +87,7 @@ function InvoiceEditor({ invoice }: { invoice?: Invoice }) {
             client_id: draft.client_id,
             date: draft.date,
             due_date: draft.due_date || null,
+            currency: draft.currency,
             line_items: draft.line_items,
             discount_type: draft.discount_type,
             discount_value: draft.discount_value,
@@ -95,6 +102,7 @@ function InvoiceEditor({ invoice }: { invoice?: Invoice }) {
             client_id: draft.client_id,
             date: draft.date,
             due_date: draft.due_date || null,
+            currency: draft.currency,
             line_items: draft.line_items,
             discount_type: draft.discount_type,
             discount_value: draft.discount_value,
@@ -132,6 +140,19 @@ function InvoiceEditor({ invoice }: { invoice?: Invoice }) {
 
   return (
     <form onSubmit={submit} noValidate>
+      <div className="mb-4 max-w-xs">
+        <Field label={t('currencies.title')} htmlFor="invoice_currency">
+          <Select
+            id="invoice_currency"
+            value={draft.currency}
+            onChange={(event) => setDraft((current) => ({ ...current, currency: event.target.value }))}
+          >
+            {(currencies.data?.data ?? [{ code: 'XPF', label: 'Franc Pacifique', active: 1 }])
+              .filter((item) => item.active)
+              .map((item) => <option key={item.code} value={item.code}>{item.code} — {item.label}</option>)}
+          </Select>
+        </Field>
+      </div>
       <PageHeader
         breadcrumb={
           <Link to={invoice ? `/factures/${invoice.id}` : '/factures'} className="inline-flex items-center gap-1 hover:text-brand-700">

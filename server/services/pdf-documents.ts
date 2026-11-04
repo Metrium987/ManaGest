@@ -34,6 +34,8 @@ export interface DocumentInput {
   subtotal: number;
   tax_total: number;
   total: number;
+  exchange_rate?: number | null;
+  total_xpf?: number | null;
   tax_exempt: number | boolean;
   notes: string | null;
   terms: string | null;
@@ -189,6 +191,13 @@ export async function buildDocumentPdf(
     rows.push([`TVA ${bucket.rate} %`, money(bucket.amount, doc.currency)]);
   }
   rows.push([TOTAL_LABELS[kind], money(doc.total, doc.currency), true]);
+  if (doc.currency !== 'XPF' && Number(doc.total_xpf ?? 0) > 0) {
+    const rate = Number(doc.exchange_rate ?? 1);
+    rows.push([
+      `Contre-valeur XPF (1 ${doc.currency} = ${rate.toLocaleString('fr-FR', { maximumFractionDigits: 6 })} XPF)`,
+      money(Number(doc.total_xpf), 'XPF'),
+    ]);
+  }
 
   for (const [label, value, strong] of rows) {
     if (strong) {

@@ -122,16 +122,43 @@ Ce ne sont pas des bugs ouverts : ce sont des comportements assumés, écrits po
   build verts.
 - **Chorus Pro : aucune intégration** (décision du propriétaire : facture normale aux organismes
   publics locaux). Rien à construire.
-- **Limite assumée :** le récapitulatif est en devise du document ; tant que le multi-devises n'est
-  pas livré, toutes les factures sont en XPF.
+- **Multi-devises livré depuis :** le récapitulatif est calculé en XPF au taux figé de chaque
+  document, avec la ventilation en devise d'origine affichée sous le tableau.
 
-**Multi-devises — spécifié, non construit (décision produit ouverte).** Le registre Q15 reste
-valable : convertir seulement l'affichage produirait un journal faux. Le lot cohérent demande :
-devises libres + taux saisis à la main (aucune API bancaire locale), taux **figé par document**,
-totaux XPF stockés, conversion du journal, de la TVA, des règlements partiels, des avoirs, des
-rapports et des PDF, écarts de change 666/766. **Une décision manque** : les règlements d'une
-facture en devise se font-ils dans cette devise (écart constaté au paiement) ou en XPF au taux
-figé ? Répondre à cette question débloque le lot ; le livrer à moitié corromprait la comptabilité.
+**Multi-devises — livré le 2026-11-03.**
+
+- **Décision prise (elle n'attend plus de réponse) :** comptabilité de trésorerie standard. Un
+  règlement est saisi **dans la devise du document** ; la banque et le client sont mouvementés en
+  XPF au taux figé du document ; l'écart entre le taux du paiement et le taux figé est constaté au
+  paiement en **666 (perte)** ou **766 (gain)**. Ce choix est aussi dans le CHANGELOG.
+- **Devises et taux 100 % paramétrables :** écran « Devises » dans la rubrique Comptabilité,
+  `GET/POST /api/currencies`, `PATCH /api/currencies/:code`, `GET/POST /api/currencies/:code/rates`.
+  Code, libellé, symbole, décimales et activation sont libres ; les taux sont saisis à la main avec
+  une date d'effet (aucune API bancaire locale). XPF est la devise de tenue, non désactivable.
+- **Taux figé par document :** `invoices`, `quotes` et `credits` stockent `exchange_rate`,
+  `currency_decimals`, `subtotal_xpf`, `tax_total_xpf` et `total_xpf`. Le taux est résolu à la date
+  du document, re-résolu tant que le document est brouillon, puis figé à l'émission. Modifier un
+  taux ensuite ne réécrit aucun document émis.
+- **Refus explicites :** devise inconnue (`CURRENCY_UNKNOWN`), désactivée (`CURRENCY_INACTIVE`),
+  taux absent à la date (`EXCHANGE_RATE_MISSING`), changement de devise d'un document figé
+  (`CURRENCY_LOCKED`), règlement ou avoir dans une autre devise (`CURRENCY_MISMATCH`). Aucun taux
+  n'est deviné.
+- **Journal et TVA (1010) :** les écritures postent les montants XPF au taux figé et conservent la
+  devise, le montant d'origine et le taux sur chaque ligne (`journal_lines.currency`,
+  `original_amount`, `exchange_rate`) ; la TVA agrège en XPF et ventile par devise d'origine.
+- **Règlements :** `payments` et `payment_allocations` stockent devise, taux, montant XPF et écart ;
+  les règlements partiels sont couverts, l'écart est visible sur le détail du règlement.
+- **Avoirs et PDF :** un avoir en devise reprend le taux de son émission et ne s'applique qu'à une
+  facture de même devise ; factures, devis et avoirs impriment la contre-valeur XPF au taux figé.
+- **Permissions :** lecture des devises/taux ouverte à `settings.read` (donc au comptable), écriture
+  réservée à `settings.write` (admin) ; l'écran masque les actions d'écriture hors admin.
+- **Preuve :** `tests/multi-currency.test.ts` (11 cas : conversion, taux le plus récent, taux
+  manquant, devise désactivée, document non réécrit, facture/avoir en USD, règlement partiel avec
+  gain 766 et perte 666, TVA en XPF, code devise), plus la suite existante. Gate : typecheck 0,
+  **83 fichiers / 698 tests**, build de production OK.
+- **Limites assumées :** pas de feed bancaire (par choix), pas d'écran de lettrage dédié au-delà du
+  détail du règlement, et les rapports historiques convertissent les soldes au prorata du total.
+  Aucun test navigateur dans cet environnement.
 
 ## 6. Ce qui est terminé, pour éviter la confusion
 

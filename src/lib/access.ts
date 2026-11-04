@@ -39,6 +39,7 @@ export const CLIENT_ROUTES: ClientRoute[] = [
   { path: 'banque', permission: 'bank.read' },
   { path: 'rapports', permission: 'reports.read' },
   { path: 'comptabilite', permission: 'accounting.read' },
+  { path: 'devises', permission: 'settings.read' },
   { path: 'approbations', permission: 'approvals.read' },
   { path: 'parametres', permission: 'settings.read' },
   { path: 'parametres/utilisateurs', permission: 'users.read' },

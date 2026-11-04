@@ -28,6 +28,7 @@ export function CreditsPage() {
   const [date, setDate] = useState(todayISO());
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState(0);
+  const [creditCurrency, setCreditCurrency] = useState(company?.currency ?? 'XPF');
   const [taxRate, setTaxRate] = useState(company?.default_tax_rate ?? DEFAULT_TAX_RATE);
   const [invoiceId, setInvoiceId] = useState('');
   const [applyAmount, setApplyAmount] = useState(0);
@@ -51,12 +52,13 @@ export function CreditsPage() {
       api.post('/credits', {
         client_id: clientId,
         date,
+        currency: creditCurrency,
         line_items: [
           {
             id: crypto.randomUUID(),
             description: description || t('credits.title'),
             quantity: 1,
-            unit_price: toMinor(amount, currency),
+            unit_price: toMinor(amount, creditCurrency),
             tax_rate: taxRate,
           },
         ],
@@ -146,8 +148,8 @@ export function CreditsPage() {
                         fields: [
                           { label: t('invoices.client'), value: credit.client_name },
                           { label: t('common.date'), value: formatDate(credit.date) },
-                          { label: t('common.total'), value: formatMoney(credit.total, currency) },
-                          { label: t('credits.remaining'), value: formatMoney(credit.balance, currency) },
+                          { label: t('common.total'), value: formatMoney(credit.total, credit.currency ?? currency) },
+                          { label: t('credits.remaining'), value: formatMoney(credit.balance, credit.currency ?? currency) },
                           { label: t('common.status'), value: <StatusBadge status={credit.status} /> },
                         ],
                       })}
@@ -157,8 +159,8 @@ export function CreditsPage() {
                   </td>
                   <td>{credit.client_name}</td>
                   <td className="text-muted">{formatDate(credit.date)}</td>
-                  <td className="text-right tabular-nums">{formatMoney(credit.total, currency)}</td>
-                  <td className="text-right tabular-nums">{formatMoney(credit.balance, currency)}</td>
+                  <td className="text-right tabular-nums">{formatMoney(credit.total, credit.currency ?? currency)}</td>
+                  <td className="text-right tabular-nums">{formatMoney(credit.balance, credit.currency ?? currency)}</td>
                   <td><StatusBadge status={credit.status} /></td>
                   <td className="text-right">
                     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -205,11 +207,18 @@ export function CreditsPage() {
             </Select>
           </Field>
           <FormGrid>
+            <Field label={t('currencies.title')} htmlFor="credit_currency">
+              <Select id="credit_currency" value={creditCurrency} onChange={(event) => setCreditCurrency(event.target.value)}>
+                <option value="XPF">XPF</option>
+                <option value="EUR">EUR</option>
+                <option value="USD">USD</option>
+              </Select>
+            </Field>
             <Field label={t('common.date')} htmlFor="credit_date">
               <Input id="credit_date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
             </Field>
             <Field label={t('common.amount')} htmlFor="credit_amount" required>
-              <Input id="credit_amount" type="number" min="0" value={amount || ''} onChange={(event) => setAmount(Number(event.target.value))} required />
+              <Input id="credit_amount" type="number" min="0" step={creditCurrency === 'XPF' ? '1' : '0.01'} value={amount || ''} onChange={(event) => setAmount(Number(event.target.value))} required />
             </Field>
             <Field label={t('invoices.lineTax')} htmlFor="credit_tax">
               <Select id="credit_tax" value={taxRate} onChange={(event) => setTaxRate(Number(event.target.value))}>

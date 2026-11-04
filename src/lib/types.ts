@@ -285,6 +285,7 @@ export interface Quote extends QuoteSummary {
 }
 
 export interface CreditSummary {
+  currency?: string;
   id: string;
   number: string | null;
   client_id: string;
@@ -306,6 +307,7 @@ export interface Credit extends CreditSummary {
 }
 
 export interface PaymentSummary {
+  currency?: string;
   id: string;
   number: string | null;
   client_id: string;

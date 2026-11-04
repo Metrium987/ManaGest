@@ -5,6 +5,7 @@ import {
   Activity, BarChart3, Briefcase, Building2, Calculator, CalendarDays, ChevronDown, ClipboardCheck, CreditCard, FileText, FolderKanban,
   Landmark, LayoutDashboard, ListChecks, LogOut, Menu, Package, Plus, Receipt, RefreshCw,
   Search, Settings, ShieldCheck, ShoppingCart, Upload, Users, Wallet, X,
+  Coins,
 } from 'lucide-react';
 import type { Permission } from '@shared/domain';
 import { api, toQuery } from '@/lib/api';
@@ -64,6 +65,7 @@ export const NAV: NavSection[] = [
     items: [
       { to: '/banque', label: 'nav.bank', icon: Landmark, permission: 'bank.read' },
       { to: '/comptabilite', label: 'nav.accounting', icon: Calculator, permission: 'accounting.read' },
+      { to: '/devises', label: 'nav.currencies', icon: Coins, permission: 'settings.read' },
       { to: '/approbations', label: 'nav.approvals', icon: ClipboardCheck, permission: 'approvals.read' },
     ],
   },

@@ -35,7 +35,6 @@ export function InvoiceDetailPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
   const { company, can } = useSession();
-  const currency = company?.currency ?? 'XPF';
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [method, setMethod] = useState('transfer');
   const [reference, setReference] = useState('');
@@ -51,6 +50,7 @@ export function InvoiceDetailPage() {
     queryFn: () => api.get<Invoice>(`/invoices/${id}`),
     enabled: Boolean(id),
   });
+  const currency = (invoice.data as { currency?: string } | undefined)?.currency ?? company?.currency ?? 'XPF';
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['invoice', id] });

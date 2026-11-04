@@ -12,7 +12,7 @@ import {
   type AccountCodes,
 } from '../../shared/accounts';
 
-export const EXTRA_KEYS = ['retention_years', 'ui_language', 'franchise_threshold', 'pdf_layout', 'attachment_max_mb', 'reminder_interval_days', 'api_token_lifetime_days', 'api_token_max_per_user', 'approval_credit_amount', 'approval_expense_amount', 'approval_discount_percent', 'separation_of_duties', 'item_accounts', 'archipelago_excluded_families', 'account_client', 'account_supplier', 'account_sales', 'account_deferred', 'account_bank', 'account_expense', 'account_vat_due', 'account_vat_deductible', 'account_retained_earnings', 'price_history_months', 'price_alert_percent', 'price_alert_days'] as const;
+export const EXTRA_KEYS = ['retention_years', 'ui_language', 'franchise_threshold', 'pdf_layout', 'attachment_max_mb', 'reminder_interval_days', 'api_token_lifetime_days', 'api_token_max_per_user', 'approval_credit_amount', 'approval_expense_amount', 'approval_discount_percent', 'separation_of_duties', 'item_accounts', 'archipelago_excluded_families', 'account_client', 'account_supplier', 'account_sales', 'account_deferred', 'account_bank', 'account_expense', 'account_vat_due', 'account_vat_deductible', 'account_retained_earnings', 'account_fx_gain', 'account_fx_loss', 'price_history_months', 'price_alert_percent', 'price_alert_days'] as const;
 
 export type ExtraKey = (typeof EXTRA_KEYS)[number];
 
@@ -62,6 +62,8 @@ export const EXTRA_DEFAULTS: Record<ExtraKey, string> = {
   account_vat_due: DEFAULT_ACCOUNT_CODES.vatDue,
   account_vat_deductible: DEFAULT_ACCOUNT_CODES.vatDeductible,
   account_retained_earnings: DEFAULT_ACCOUNT_CODES.retainedEarnings,
+  account_fx_gain: DEFAULT_ACCOUNT_CODES.fxGain,
+  account_fx_loss: DEFAULT_ACCOUNT_CODES.fxLoss,
   // Purchase price history (owner decision 2026-11-02): standard values taken
   // from the usual purchasing practice — three years of history, an alert when
   // a price rises by 10 % or more, and a 90-day window for the reference price.
@@ -108,6 +110,8 @@ const EXTRA_RULES: Record<ExtraKey, (value: string) => boolean> = {
   account_vat_due: (value) => accountCodeError(value) === null,
   account_vat_deductible: (value) => accountCodeError(value) === null,
   account_retained_earnings: (value) => accountCodeError(value) === null,
+  account_fx_gain: (value) => accountCodeError(value) === null,
+  account_fx_loss: (value) => accountCodeError(value) === null,
   price_history_months: (value) => intBetween(value, 1, 120),
   // 0 disables the alert; 1000 % is a typo guard, not a business ceiling.
   price_alert_percent: (value) => intBetween(value, 0, 1000),

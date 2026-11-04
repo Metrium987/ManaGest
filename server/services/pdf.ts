@@ -248,6 +248,13 @@ export async function buildInvoicePdf(
 
 
   totalRows.push(['Total TTC', money(totals.total, currency), true]);
+  if (currency !== 'XPF' && Number(invoice.total_xpf ?? 0) > 0) {
+    const rate = Number(invoice.exchange_rate ?? 1);
+    totalRows.push([
+      `Contre-valeur XPF (1 ${currency} = ${rate.toLocaleString('fr-FR', { maximumFractionDigits: 6 })} XPF)`,
+      money(Number(invoice.total_xpf), 'XPF'),
+    ]);
+  }
 
   for (const [label, value, strong] of totalRows) {
     if (strong) {

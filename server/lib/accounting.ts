@@ -22,6 +22,12 @@ export interface DraftLine {
   label: string;
   debit: number;
   credit: number;
+  /** Document currency of the figure behind this line, for the journal view. */
+  currency?: string | null;
+  /** Amount in the document's own currency (minor units). */
+  original_amount?: number | null;
+  /** XPF for one unit of the document currency, frozen with the document. */
+  exchange_rate?: number | null;
 }
 
 export type JournalCode = 'VE' | 'AC' | 'BQ' | 'OD' | 'AN';
@@ -29,11 +35,15 @@ export type JournalCode = 'VE' | 'AC' | 'BQ' | 'OD' | 'AN';
 export interface DocumentAmounts {
   number: string | null;
   date: string;
+  /** Amounts in the document currency; converted when `xpf` is present. */
   subtotal: number;
   discountTotal: number;
   taxTotal: number;
   total: number;
   taxExempt?: boolean;
+  currency?: string;
+  exchangeRate?: number;
+  xpf?: { subtotal: number; discountTotal: number; taxTotal: number; total: number };
 }
 
 /** The minimal chart the documents need. Codes follow the French PCG; the
@@ -49,6 +59,9 @@ export const CHART: Account[] = [
   { code: DEFAULT_ACCOUNT_CODES.sales, label: 'Prestations de services', type: 'income' },
   // E3: revenue billed in advance and not earned yet.
   { code: DEFAULT_ACCOUNT_CODES.deferred, label: 'Produits constatés d’avance', type: 'liability' },
+  // Multi-currency: realised differences on settlement.
+  { code: DEFAULT_ACCOUNT_CODES.fxGain, label: 'Gains de change', type: 'income' },
+  { code: DEFAULT_ACCOUNT_CODES.fxLoss, label: 'Pertes de change', type: 'expense' },
 ];
 
 /** Q2: the account a sale posts its revenue to until the workspace says
@@ -109,12 +122,34 @@ export function invoiceLines(
   accounts: AccountCodes = DEFAULT_ACCOUNT_CODES,
 ): DraftLine[] {
   const reference = document.number ?? '—';
-  const lines = [
-    line(accounts.client, `Facture ${reference}`, document.total, 0),
-    ...revenueLines(document, reference, split, accounts),
+  const base = document.xpf;
+  const currency = document.currency ?? 'XPF';
+  const rate = currency === 'XPF' ? 1 : document.exchangeRate ?? 1;
+  const receivable = base ? base.total : document.total;
+  const tax = base ? base.taxTotal : document.taxTotal;
+  const netBase = base ? Math.max(0, base.subtotal - base.discountTotal) : netRevenue(document);
+  const netOriginal = netRevenue(document);
+  // Revenue lines are computed in base currency; their original equivalent is
+  // apportioned from the same split, so the journal shows both without inventing
+  // a second breakdown.
+  const revenueDocument = base
+    ? { ...document, subtotal: base.subtotal, discountTotal: base.discountTotal, taxTotal: base.taxTotal, total: base.total }
+    : document;
+  const revenue = revenueLines(revenueDocument, reference, split, accounts).map((entry) => ({
+    ...entry,
+    currency,
+    exchange_rate: rate,
+    original_amount: netBase > 0 ? Math.round(entry.credit * (netOriginal / netBase)) : 0,
+  }));
+  const lines: DraftLine[] = [
+    { ...line(accounts.client, `Facture ${reference}`, receivable, 0), currency, exchange_rate: rate, original_amount: document.total },
+    ...revenue,
   ];
-  if (!document.taxExempt && document.taxTotal > 0) {
-    lines.push(line(accounts.vatDue, `TVA collectée ${reference}`, 0, document.taxTotal));
+  if (!document.taxExempt && tax > 0) {
+    lines.push({
+      ...line(accounts.vatDue, `TVA collectée ${reference}`, 0, tax),
+      currency, exchange_rate: rate, original_amount: document.taxTotal,
+    });
   }
   return lines;
 }
@@ -145,11 +180,33 @@ export function paymentLines(
   amount: number,
   reference: string,
   accounts: AccountCodes = DEFAULT_ACCOUNT_CODES,
+  settlement?: {
+    currency?: string;
+    exchangeRate?: number;
+    originalAmount?: number;
+    /** Receivable relieved at the invoice's frozen rate. Defaults to `amount`. */
+    receivable?: number;
+    /** Positive = gain (766), negative = loss (666). */
+    difference?: number;
+  },
 ): DraftLine[] {
-  return [
-    line(accounts.bank, `Encaissement ${reference}`, amount, 0),
-    line(accounts.client, `Encaissement ${reference}`, 0, amount),
+  const receivable = settlement?.receivable ?? amount;
+  const difference = settlement?.difference ?? 0;
+  const currency = settlement?.currency ?? 'XPF';
+  const rate = currency === 'XPF' ? 1 : settlement?.exchangeRate ?? 1;
+  const annotate = (entry: DraftLine, original: number): DraftLine => ({
+    ...entry, currency, exchange_rate: rate, original_amount: original,
+  });
+  const lines: DraftLine[] = [
+    annotate(line(accounts.bank, `Encaissement ${reference}`, amount, 0), settlement?.originalAmount ?? amount),
+    annotate(line(accounts.client, `Encaissement ${reference}`, 0, receivable), settlement?.originalAmount ?? amount),
   ];
+  if (difference > 0) {
+    lines.push(line(accounts.fxGain, `Écart de change ${reference}`, 0, difference));
+  } else if (difference < 0) {
+    lines.push(line(accounts.fxLoss, `Écart de change ${reference}`, -difference, 0));
+  }
+  return lines;
 }
 
 /** An expense is recorded at its pre-tax amount plus deductible VAT. */

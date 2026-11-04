@@ -10,9 +10,36 @@ import {
 } from '../../shared/company-defaults';
 import { SLA_DEFAULT_POLICIES } from '../../shared/planning';
 
-export const SCHEMA_VERSION = 50;
+export const SCHEMA_VERSION = 51;
 
 export const SCHEMA_STATEMENTS: string[] = [
+
+  // Multi-currency (schema 51): the owner types currencies and rates because no
+  // local bank provides a feed. XPF is the unit of account and never depends on
+  // a rate; every document freezes the rate it was issued with.
+  `CREATE TABLE IF NOT EXISTS currencies (
+    code TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    decimals INTEGER NOT NULL DEFAULT 2,
+    is_base INTEGER NOT NULL DEFAULT 0,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `INSERT OR IGNORE INTO currencies (code, label, symbol, decimals, is_base, active, created_at, updated_at)
+   VALUES ('XPF', 'Franc Pacifique', 'F', 0, 1, 1, '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`,
+  `CREATE TABLE IF NOT EXISTS exchange_rates (
+    id TEXT PRIMARY KEY,
+    currency TEXT NOT NULL,
+    rate REAL NOT NULL,
+    effective_date TEXT NOT NULL,
+    note TEXT,
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (currency, effective_date)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_exchange_rates_currency ON exchange_rates(currency, effective_date)`,
   `CREATE TABLE IF NOT EXISTS expense_categories (
     key TEXT PRIMARY KEY,
     label TEXT NOT NULL,
@@ -349,6 +376,8 @@ export const SCHEMA_STATEMENTS: string[] = [
     date TEXT NOT NULL,
     due_date TEXT,
     currency TEXT NOT NULL DEFAULT 'XPF',
+    exchange_rate REAL NOT NULL DEFAULT 1,
+    currency_decimals INTEGER NOT NULL DEFAULT 0,
     subtotal INTEGER NOT NULL DEFAULT 0,
     discount_type TEXT NOT NULL DEFAULT 'percent',
     discount_value INTEGER NOT NULL DEFAULT 0,
@@ -356,6 +385,9 @@ export const SCHEMA_STATEMENTS: string[] = [
     tax_total INTEGER NOT NULL DEFAULT 0,
     cps_total INTEGER NOT NULL DEFAULT 0,
     total INTEGER NOT NULL DEFAULT 0,
+    subtotal_xpf INTEGER NOT NULL DEFAULT 0,
+    tax_total_xpf INTEGER NOT NULL DEFAULT 0,
+    total_xpf INTEGER NOT NULL DEFAULT 0,
     paid_total INTEGER NOT NULL DEFAULT 0,
     balance INTEGER NOT NULL DEFAULT 0,
     tax_exempt INTEGER NOT NULL DEFAULT 0,
@@ -386,6 +418,10 @@ export const SCHEMA_STATEMENTS: string[] = [
     number TEXT,
     date TEXT NOT NULL,
     amount INTEGER NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'XPF',
+    exchange_rate REAL NOT NULL DEFAULT 1,
+    amount_xpf INTEGER NOT NULL DEFAULT 0,
+    fx_difference INTEGER NOT NULL DEFAULT 0,
     method TEXT NOT NULL DEFAULT 'transfer',
     reference TEXT,
     notes TEXT,
@@ -402,6 +438,9 @@ export const SCHEMA_STATEMENTS: string[] = [
     payment_id TEXT NOT NULL,
     invoice_id TEXT NOT NULL,
     amount INTEGER NOT NULL,
+    amount_xpf INTEGER NOT NULL DEFAULT 0,
+    exchange_rate REAL NOT NULL DEFAULT 1,
+    fx_difference INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE
   )`,
@@ -416,12 +455,17 @@ export const SCHEMA_STATEMENTS: string[] = [
     date TEXT NOT NULL,
     valid_until TEXT,
     currency TEXT NOT NULL DEFAULT 'XPF',
+    exchange_rate REAL NOT NULL DEFAULT 1,
+    currency_decimals INTEGER NOT NULL DEFAULT 0,
     subtotal INTEGER NOT NULL DEFAULT 0,
     discount_type TEXT NOT NULL DEFAULT 'percent',
     discount_value INTEGER NOT NULL DEFAULT 0,
     discount_total INTEGER NOT NULL DEFAULT 0,
     tax_total INTEGER NOT NULL DEFAULT 0,
     total INTEGER NOT NULL DEFAULT 0,
+    subtotal_xpf INTEGER NOT NULL DEFAULT 0,
+    tax_total_xpf INTEGER NOT NULL DEFAULT 0,
+    total_xpf INTEGER NOT NULL DEFAULT 0,
     tax_exempt INTEGER NOT NULL DEFAULT 0,
     line_items TEXT NOT NULL DEFAULT '[]',
     notes TEXT,
@@ -443,12 +487,17 @@ export const SCHEMA_STATEMENTS: string[] = [
     status TEXT NOT NULL DEFAULT 'draft',
     date TEXT NOT NULL,
     currency TEXT NOT NULL DEFAULT 'XPF',
+    exchange_rate REAL NOT NULL DEFAULT 1,
+    currency_decimals INTEGER NOT NULL DEFAULT 0,
     subtotal INTEGER NOT NULL DEFAULT 0,
     discount_type TEXT NOT NULL DEFAULT 'percent',
     discount_value INTEGER NOT NULL DEFAULT 0,
     discount_total INTEGER NOT NULL DEFAULT 0,
     tax_total INTEGER NOT NULL DEFAULT 0,
     total INTEGER NOT NULL DEFAULT 0,
+    subtotal_xpf INTEGER NOT NULL DEFAULT 0,
+    tax_total_xpf INTEGER NOT NULL DEFAULT 0,
+    total_xpf INTEGER NOT NULL DEFAULT 0,
     applied_total INTEGER NOT NULL DEFAULT 0,
     balance INTEGER NOT NULL DEFAULT 0,
     tax_exempt INTEGER NOT NULL DEFAULT 0,
@@ -1051,6 +1100,9 @@ export const SCHEMA_STATEMENTS: string[] = [
     label TEXT NOT NULL,
     debit INTEGER NOT NULL DEFAULT 0,
     credit INTEGER NOT NULL DEFAULT 0,
+    currency TEXT,
+    original_amount INTEGER,
+    exchange_rate REAL,
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_journal_entries_date ON journal_entries(date)`,

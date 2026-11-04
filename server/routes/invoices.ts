@@ -27,6 +27,8 @@ import {
 import { buildInvoicePdf } from '../services/pdf';
 import { resolveLayout } from '../services/pdf-style';
 import { getExtra } from '../lib/settings-extra';
+import { convertToBase } from '../lib/fx';
+import { freezeFx } from '../services/currencies';
 import { validateArchipelagoVat } from '../../shared/archipelago';
 import { deriveInvoiceStatus, isOverdue, refundableAmount } from '../services/status';
 import { recalcCredit } from '../services/documents';
@@ -64,6 +66,8 @@ const invoiceSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   due_date: optionalIsoDate,
   line_items: lineItemsSchema,
+  // Any active workspace currency; defaults to the customer's, then the company's.
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3,5}$/).optional(),
   discount_type: z.enum(['percent', 'amount']).default('percent'),
   discount_value: z.coerce.number().int().min(0).default(0),
   notes: z.string().max(4000).nullish(),
@@ -161,7 +165,8 @@ invoiceRoutes.get('/:id', requirePermission('invoices.read'), async (c) => {
   if (!invoice) return fail(404, 'NOT_FOUND');
 
   const allocations = await c.env.DB.prepare(
-    `SELECT pa.id, pa.amount, p.number AS payment_number, p.date, p.method, p.reference
+    `SELECT pa.id, pa.amount, pa.amount_xpf, pa.exchange_rate, pa.fx_difference,
+            p.currency, p.number AS payment_number, p.date, p.method, p.reference
      FROM payment_allocations pa JOIN payments p ON p.id = pa.payment_id
      WHERE pa.invoice_id = ? AND p.deleted_at IS NULL
      ORDER BY p.date DESC`,
@@ -207,6 +212,10 @@ invoiceRoutes.post('/', requirePermission('invoices.write'), async (c) => {
   const archipelago = await assertArchipelagoEvidence(c, body, client.tax_id);
   if (archipelago) return archipelago;
 
+  const currency = (body.currency || client.currency || company.currency).toUpperCase();
+  const fx = await freezeFx(c.env.DB, currency, body.date);
+  const toBase = (value: number) => convertToBase(value, fx.currency.decimals, fx.rate);
+
   const totals = computeTotals(
     body.line_items,
     { discount_type: body.discount_type, discount_value: body.discount_value },
@@ -218,15 +227,17 @@ invoiceRoutes.post('/', requirePermission('invoices.write'), async (c) => {
   const dueDate = body.due_date ?? (company.payment_terms >= 0 ? addDays(body.date, client.payment_terms ?? company.payment_terms) : null);
 
   await c.env.DB.prepare(
-    `INSERT INTO invoices (id, client_id, number, status, date, due_date, currency, subtotal, discount_type, discount_value,
-      discount_total, tax_total, total, paid_total, balance, tax_exempt, po_number, line_items, notes, terms, footer,
+    `INSERT INTO invoices (id, client_id, number, status, date, due_date, currency, exchange_rate, currency_decimals,
+      subtotal, discount_type, discount_value, discount_total, tax_total, total, subtotal_xpf, tax_total_xpf, total_xpf,
+      paid_total, balance, tax_exempt, po_number, line_items, notes, terms, footer,
       archipelago, transport_reference, shipped_by_seller, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
-      id, body.client_id, number, body.date, dueDate, client.currency || company.currency,
-      totals.subtotal, body.discount_type, body.discount_value, totals.discount_total, totals.tax_total,
-      totals.total, totals.total, client.is_tax_exempt, body.po_number ?? null, serialiseLines(body.line_items),
+      id, body.client_id, number, body.date, dueDate, currency, fx.rate, fx.currency.decimals,
+      totals.subtotal, body.discount_type, body.discount_value, totals.discount_total, totals.tax_total, totals.total,
+      toBase(totals.subtotal), toBase(totals.tax_total), toBase(totals.total), toBase(totals.total),
+      client.is_tax_exempt, body.po_number ?? null, serialiseLines(body.line_items),
       body.notes ?? null, terms, body.footer || company.invoice_footer,
       body.archipelago ?? null, body.transport_reference ?? null, body.shipped_by_seller ? 1 : 0,
       user.id, nowISO(), nowISO(),
@@ -274,6 +285,14 @@ invoiceRoutes.patch('/:id', requirePermission('invoices.write'), async (c) => {
   const patchCheck = await assertArchipelagoEvidence(c, body, (existing.client_tax_id as string | null) ?? null);
   if (patchCheck) return patchCheck;
 
+  const locked = existing.status !== 'draft';
+  if (locked && body.currency && body.currency !== existing.currency) return fail(409, 'CURRENCY_LOCKED');
+  const currency = (locked ? String(existing.currency) : (body.currency || String(existing.currency))).toUpperCase();
+  const fx = locked
+    ? { currency: { code: currency, decimals: Number(existing.currency_decimals ?? 0) }, rate: Number(existing.exchange_rate ?? 1) }
+    : await freezeFx(c.env.DB, currency, body.date);
+  const toBase = (value: number) => convertToBase(value, fx.currency.decimals, fx.rate);
+
   const totals = computeTotals(
     body.line_items,
     { discount_type: body.discount_type, discount_value: body.discount_value },
@@ -281,13 +300,16 @@ invoiceRoutes.patch('/:id', requirePermission('invoices.write'), async (c) => {
   );
 
   await c.env.DB.prepare(
-    `UPDATE invoices SET client_id = ?, date = ?, due_date = ?, subtotal = ?, discount_type = ?, discount_value = ?,
-      discount_total = ?, tax_total = ?, total = ?, balance = ?, po_number = ?, line_items = ?, notes = ?, terms = ?,
+    `UPDATE invoices SET client_id = ?, date = ?, due_date = ?, currency = ?, exchange_rate = ?, currency_decimals = ?,
+      subtotal = ?, discount_type = ?, discount_value = ?, discount_total = ?, tax_total = ?, total = ?,
+      subtotal_xpf = ?, tax_total_xpf = ?, total_xpf = ?, balance = ?, po_number = ?, line_items = ?, notes = ?, terms = ?,
       footer = ?, archipelago = ?, transport_reference = ?, shipped_by_seller = ?, updated_at = ? WHERE id = ?`,
   )
     .bind(
-      body.client_id, body.date, body.due_date, totals.subtotal, body.discount_type, body.discount_value,
-      totals.discount_total, totals.tax_total, totals.total, totals.total, body.po_number ?? null,
+      body.client_id, body.date, body.due_date, currency, fx.rate, fx.currency.decimals,
+      totals.subtotal, body.discount_type, body.discount_value, totals.discount_total, totals.tax_total, totals.total,
+      toBase(totals.subtotal), toBase(totals.tax_total), toBase(totals.total), totals.total,
+      body.po_number ?? null,
       serialiseLines(body.line_items), body.notes ?? null, body.terms || company.invoice_terms,
       body.footer || company.invoice_footer,
       body.archipelago ?? null, body.transport_reference ?? null, body.shipped_by_seller ? 1 : 0,
@@ -320,13 +342,14 @@ invoiceRoutes.post('/:id/send', requirePermission('invoices.write'), async (c) =
   const id = c.req.param('id');
   const user = c.get('user')!;
   const invoice = await c.env.DB.prepare(
-    `SELECT id, number, status, date, subtotal, discount_type, discount_value, total, line_items
+    `SELECT id, number, status, date, subtotal, discount_type, discount_value, tax_total, total, currency, line_items
      FROM invoices WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(id)
     .first<{
       id: string; number: string; status: string; date: string; subtotal: number;
-      discount_type: string; discount_value: number; total: number; line_items: string | null;
+      discount_type: string; discount_value: number; tax_total: number;
+      total: number; currency: string; line_items: string | null;
     }>();
   if (!invoice) return fail(404, 'NOT_FOUND');
   if (invoice.status !== 'draft') return fail(409, 'INVALID_TRANSITION');
@@ -341,6 +364,21 @@ invoiceRoutes.post('/:id/send', requirePermission('invoices.write'), async (c) =
     requestedBy: user.id,
   });
   await assertPeriodOpen(c.env.DB, invoice.date);
+
+  // Freeze the rate at issue: a later rate change must not rewrite this document.
+  const issueFx = await freezeFx(c.env.DB, invoice.currency, invoice.date);
+  await c.env.DB.prepare(
+    `UPDATE invoices SET exchange_rate = ?, currency_decimals = ?, subtotal_xpf = ?, tax_total_xpf = ?, total_xpf = ?, updated_at = ?
+     WHERE id = ?`,
+  )
+    .bind(
+      issueFx.rate, issueFx.currency.decimals,
+      convertToBase(invoice.subtotal, issueFx.currency.decimals, issueFx.rate),
+      convertToBase(invoice.tax_total, issueFx.currency.decimals, issueFx.rate),
+      convertToBase(invoice.total, issueFx.currency.decimals, issueFx.rate),
+      nowISO(), id,
+    )
+    .run();
 
   // A3: the goods leave the warehouse when the document is issued. The refusal
   // throws before the status changes, so a short order leaves a draft behind.
@@ -431,9 +469,11 @@ invoiceRoutes.post('/:id/duplicate', requirePermission('invoices.write'), async 
   const number = await nextNumber(c.env.DB, 'invoice', 'FAC', company.number_pattern, date);
 
   await c.env.DB.prepare(
-    `INSERT INTO invoices (id, client_id, number, status, date, due_date, currency, subtotal, discount_type, discount_value,
-      discount_total, tax_total, total, paid_total, balance, tax_exempt, po_number, line_items, notes, terms, footer, created_by, created_at, updated_at)
-     SELECT ?, client_id, ?, 'draft', ?, ?, currency, subtotal, discount_type, discount_value, discount_total, tax_total, total,
+    `INSERT INTO invoices (id, client_id, number, status, date, due_date, currency, exchange_rate, currency_decimals,
+      subtotal, discount_type, discount_value, discount_total, tax_total, total, subtotal_xpf, tax_total_xpf, total_xpf,
+      paid_total, balance, tax_exempt, po_number, line_items, notes, terms, footer, created_by, created_at, updated_at)
+     SELECT ?, client_id, ?, 'draft', ?, ?, currency, exchange_rate, currency_decimals, subtotal, discount_type,
+            discount_value, discount_total, tax_total, total, subtotal_xpf, tax_total_xpf, total_xpf,
             0, total, tax_exempt, po_number, line_items, notes, terms, footer, ?, ?, ?
      FROM invoices WHERE id = ?`,
   )

@@ -2,6 +2,7 @@ import { nowISO } from '../db';
 import { groupRevenue, resolveAccount } from '../lib/account-resolution';
 import { lineNetAmounts } from '../lib/margin';
 import { getAccountCodes } from '../lib/settings-extra';
+import { convertToBase } from '../lib/fx';
 import type { AccountCodes } from '../../shared/accounts';
 import {
   CHART,
@@ -136,6 +137,12 @@ interface DocumentRow {
   tax_exempt: number;
   status: string;
   line_items: string | null;
+  currency: string;
+  exchange_rate: number;
+  currency_decimals: number;
+  subtotal_xpf: number;
+  tax_total_xpf: number;
+  total_xpf: number;
 }
 
 interface SplitLine {
@@ -154,6 +161,7 @@ async function revenueSplit(
   row: DocumentRow,
   catalogue: () => Promise<{ products: Map<string, { account: string | null; family: string | null }>; families: Map<string, string | null> }>,
   codes: AccountCodes,
+  fx: { decimals: number; rate: number },
 ): Promise<RevenueSplit[] | null> {
   let lines: SplitLine[];
   try {
@@ -187,21 +195,37 @@ async function revenueSplit(
         family: family ? families.get(family) ?? null : null,
         fallback: codes.sales,
       }),
-      amount: net[index] ?? 0,
+      amount: convertToBase(net[index] ?? 0, fx.decimals, fx.rate),
     };
   }));
 }
 
 function amounts(row: DocumentRow) {
+  const currency = row.currency || 'XPF';
+  const rate = Number(row.exchange_rate ?? 1);
+  // `??` is not enough: a migrated row may carry 0 while its total is not zero.
+  const pick = (xpf: number, own: number) => (Number(xpf) > 0 || own === 0 ? Number(xpf) : Number(own));
   return {
     number: row.number,
     date: row.date,
-    subtotal: row.subtotal,
-    discountTotal: row.discount_total,
-    taxTotal: row.tax_total,
-    total: row.total,
+    subtotal: Number(row.subtotal),
+    discountTotal: Number(row.discount_total),
+    taxTotal: Number(row.tax_total),
+    total: Number(row.total),
     taxExempt: Boolean(row.tax_exempt),
+    currency,
+    exchangeRate: rate,
+    xpf: {
+      subtotal: pick(row.subtotal_xpf, row.subtotal),
+      discountTotal: convertToBase(row.discount_total, Number(row.currency_decimals ?? 0), rate),
+      taxTotal: pick(row.tax_total_xpf, row.tax_total),
+      total: pick(row.total_xpf, row.total),
+    },
   };
+}
+
+function fxOf(row: { currency_decimals?: number; exchange_rate?: number }) {
+  return { decimals: Number(row.currency_decimals ?? 0), rate: Number(row.exchange_rate ?? 1) };
 }
 
 /** The accounts resolution needs: what each article says, and what its family
@@ -242,13 +266,14 @@ export async function syncAccounting(database: D1Database): Promise<number> {
   const invoices = await database
     .prepare(
       `SELECT id, number, date, subtotal, discount_total, discount_type, discount_value, tax_total,
-              total, tax_exempt, status, line_items
+              total, tax_exempt, status, line_items, currency, exchange_rate, currency_decimals,
+              subtotal_xpf, tax_total_xpf, total_xpf
        FROM invoices WHERE deleted_at IS NULL AND status IN ('sent','partial','paid','cancelled')`,
     )
     .all<DocumentRow>();
   for (const row of invoices.results ?? []) {
     const reference = row.number ?? '—';
-    const split = byItemAccount ? await revenueSplit(row, catalogue, codes) : null;
+    const split = byItemAccount ? await revenueSplit(row, catalogue, codes, fxOf(row)) : null;
     const lines = row.status === 'cancelled'
       ? reversalLines(amounts(row), split, codes)
       : invoiceLines(amounts(row), split, codes);
@@ -263,13 +288,14 @@ export async function syncAccounting(database: D1Database): Promise<number> {
   const credits = await database
     .prepare(
       `SELECT id, number, date, subtotal, discount_total, discount_type, discount_value, tax_total,
-              total, tax_exempt, status, line_items
+              total, tax_exempt, status, line_items, currency, exchange_rate, currency_decimals,
+              subtotal_xpf, tax_total_xpf, total_xpf
        FROM credits WHERE deleted_at IS NULL AND status IN ('sent','partial','applied')`,
     )
     .all<DocumentRow>();
   for (const row of credits.results ?? []) {
     const reference = row.number ?? '—';
-    const split = byItemAccount ? await revenueSplit(row, catalogue, codes) : null;
+    const split = byItemAccount ? await revenueSplit(row, catalogue, codes, fxOf(row)) : null;
     const lines = creditLines(amounts(row), split, codes);
     if (await post(database, {
       id: row.id, source_type: 'credit', source_id: row.id, event: 'issued',
@@ -279,15 +305,27 @@ export async function syncAccounting(database: D1Database): Promise<number> {
 
   const payments = await database
     .prepare(
-      `SELECT id, number, date, amount FROM payments WHERE status = 'completed'`,
+      `SELECT id, number, date, amount, currency, exchange_rate, amount_xpf, fx_difference
+       FROM payments WHERE status = 'completed'`,
     )
-    .all<{ id: string; number: string | null; date: string; amount: number }>();
+    .all<{ id: string; number: string | null; date: string; amount: number; currency: string; exchange_rate: number; amount_xpf: number; fx_difference: number }>();
   for (const row of payments.results ?? []) {
     const reference = row.number ?? '—';
     if (await post(database, {
       id: row.id, source_type: 'payment', source_id: row.id, event: 'completed',
       date: row.date, reference, label: `Règlement ${reference}`, journal: 'BQ',
-      lines: paymentLines(row.amount, reference, codes),
+      lines: paymentLines(
+        row.amount_xpf || row.amount,
+        reference,
+        codes,
+        {
+          currency: row.currency,
+          exchangeRate: row.exchange_rate,
+          originalAmount: row.amount,
+          receivable: (row.amount_xpf || row.amount) - (row.fx_difference ?? 0),
+          difference: row.fx_difference ?? 0,
+        },
+      ),
     })) created += 1;
   }
 
@@ -335,7 +373,7 @@ export async function journalEntries(
   const ids = (entries.results ?? []).map((entry) => entry.id);
   const lines = ids.length
     ? await database
-        .prepare(`SELECT entry_id, account_code, label, debit, credit FROM journal_lines WHERE entry_id IN (${ids.map(() => '?').join(',')}) ORDER BY account_code ASC`)
+        .prepare(`SELECT entry_id, account_code, label, debit, credit, currency, original_amount, exchange_rate FROM journal_lines WHERE entry_id IN (${ids.map(() => '?').join(',')}) ORDER BY account_code ASC`)
         .bind(...ids)
         .all()
     : { results: [] };

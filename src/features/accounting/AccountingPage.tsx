@@ -46,6 +46,9 @@ interface JournalLine {
   label: string;
   debit: number;
   credit: number;
+  currency?: string | null;
+  original_amount?: number | null;
+  exchange_rate?: number | null;
 }
 
 interface IncomeStatement {
@@ -139,6 +142,8 @@ export function AccountingPage() {
         exempt_base: number;
         documents: number;
         credits: number;
+        currency: string;
+        by_currency: { currency: string; rate: number; base: number; tax: number }[];
       }>('/accounting/vat-return'),
     enabled: tab === 'vat',
   });
@@ -289,6 +294,14 @@ export function AccountingPage() {
               <p className="text-xs text-slate-500">
                 {vat.data.documents} {t('accounting.vatDocuments')} · {vat.data.credits} {t('accounting.vatDocuments')}
               </p>
+              {vat.data.by_currency?.length ? (
+                <p className="text-xs text-slate-500">
+                  {vat.data.by_currency
+                    .map((row: { currency: string; rate: number; base: number; tax: number }) =>
+                      `${row.currency} ${row.rate} % : ${new Intl.NumberFormat('fr-FR').format(row.base)} / ${new Intl.NumberFormat('fr-FR').format(row.tax)}`)
+                    .join(' · ')}
+                </p>
+              ) : null}
             </div>
           ) : (
             <EmptyState title={t('accounting.vatReturn')} description={t('accounting.vatHint')} />
@@ -396,7 +409,12 @@ export function AccountingPage() {
                         <span className="font-mono text-xs text-muted">{line.account_code}</span>
                         <span className="ml-2 text-xs">{line.label}</span>
                       </td>
-                      <td className="text-right tabular-nums">{line.debit ? formatMoney(line.debit, currency) : '—'}</td>
+                      <td className="text-right tabular-nums">
+                        {line.debit ? formatMoney(line.debit, currency) : '—'}
+                        {line.currency && line.currency !== 'XPF' && line.original_amount != null ? (
+                          <div className="text-xs text-muted">{formatMoney(line.original_amount, line.currency)}</div>
+                        ) : null}
+                      </td>
                       <td className="text-right tabular-nums">{line.credit ? formatMoney(line.credit, currency) : '—'}</td>
                     </tr>
                   ))

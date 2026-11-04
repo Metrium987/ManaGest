@@ -36,6 +36,8 @@ const custom: AccountCodes = {
   vatDue: '445711',
   vatDeductible: '445661',
   retainedEarnings: '110100',
+    fxGain: '766000',
+    fxLoss: '666000',
 };
 
 const codesOf = (lines: { account_code: string }[]) => lines.map((line) => line.account_code);
@@ -44,7 +46,9 @@ describe('chart codes are settings, not constants', () => {
   it('defaults follow the shared PCG table', () => {
     expect(DEFAULT_ACCOUNT_CODES.sales).toBe('706000');
     expect(DEFAULT_ACCOUNT_CODES.deferred).toBe('487000');
-    expect(new Set(Object.values(DEFAULT_ACCOUNT_CODES)).size).toBe(9);
+    expect(DEFAULT_ACCOUNT_CODES.fxGain).toBe('766000');
+    expect(DEFAULT_ACCOUNT_CODES.fxLoss).toBe('666000');
+    expect(new Set(Object.values(DEFAULT_ACCOUNT_CODES)).size).toBe(11);
   });
 
   it('an invoice posts to the configured receivable, revenue and VAT accounts', () => {

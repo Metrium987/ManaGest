@@ -9,6 +9,8 @@ import { offsetOf, paginationSchema, parseInput } from '../lib/validation';
 import { assertPeriodOpen } from '../lib/locks';
 import { requireAuth, requirePermission } from '../middleware';
 import { recalcInvoice } from '../services/documents';
+import { convertToBase } from '../lib/fx';
+import { freezeFx } from '../services/currencies';
 import type { AppEnv } from '../types';
 
 const allocationSchema = z.object({
@@ -20,6 +22,8 @@ const paymentSchema = z.object({
   client_id: z.string().min(8).max(60),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   amount: z.coerce.number().int().positive(),
+  // A settlement is entered in the currency of the invoices it pays.
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3,5}$/).optional(),
   method: z.enum(['transfer', 'cash', 'cheque', 'card', 'direct_debit', 'credit', 'other']).default('transfer'),
   reference: z.string().max(120).nullish(),
   notes: z.string().max(2000).nullish(),
@@ -82,7 +86,8 @@ paymentRoutes.get('/:id', requirePermission('payments.read'), async (c) => {
   if (!payment) return fail(404, 'NOT_FOUND');
 
   const allocations = await c.env.DB.prepare(
-    `SELECT pa.id, pa.amount, i.number AS invoice_number, i.id AS invoice_id, i.balance AS invoice_balance
+    `SELECT pa.id, pa.amount, pa.amount_xpf, pa.exchange_rate, pa.fx_difference,
+            i.number AS invoice_number, i.id AS invoice_id, i.balance AS invoice_balance, i.currency AS invoice_currency
      FROM payment_allocations pa JOIN invoices i ON i.id = pa.invoice_id
      WHERE pa.payment_id = ?`,
   )
@@ -99,26 +104,41 @@ paymentRoutes.post('/', requirePermission('payments.write'), async (c) => {
   await assertPeriodOpen(c.env.DB, body.date);
 
   const client = await c.env.DB.prepare(
-    `SELECT id FROM clients WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT id, currency FROM clients WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(body.client_id)
-    .first<{ id: string }>();
+    .first<{ id: string; currency: string | null }>();
   if (!client) return fail(422, 'VALIDATION_ERROR', { client_id: 'not_found' });
 
   const openInvoices = await c.env.DB.prepare(
-    `SELECT id, balance FROM invoices
+    `SELECT id, balance, currency, exchange_rate, currency_decimals FROM invoices
      WHERE client_id = ? AND deleted_at IS NULL AND status IN ('sent', 'partial') AND balance > 0
      ORDER BY date ASC, created_at ASC`,
   )
     .bind(body.client_id)
-    .all<{ id: string; balance: number }>();
+    .all<{ id: string; balance: number; currency: string; exchange_rate: number; currency_decimals: number }>();
   const open = openInvoices.results ?? [];
+
+  // The currency is the invoices' one: paying a USD invoice in XPF would need a
+  // second conversion nobody asked for and would hide the realised difference.
+  let currency = body.currency?.toUpperCase() ?? null;
+  if (!currency) {
+    const targeted = body.allocations
+      .map((allocation) => open.find((row) => row.id === allocation.invoice_id))
+      .filter((row): row is (typeof open)[number] => Boolean(row));
+    const currencies = new Set(targeted.map((row) => row.currency));
+    if (currencies.size > 1) return fail(409, 'CURRENCY_MISMATCH');
+    currency = [...currencies][0] ?? (client.currency || company.currency).toUpperCase();
+  }
+  const fx = await freezeFx(c.env.DB, currency, body.date);
+  const decimals = fx.currency.decimals;
 
   let allocations = body.allocations;
   if (allocations.length === 0 && body.auto_apply) {
     let remaining = body.amount;
     allocations = [];
     for (const invoice of open) {
+      if (invoice.currency !== currency) continue;
       if (remaining <= 0) break;
       const amount = Math.min(remaining, invoice.balance);
       allocations.push({ invoice_id: invoice.id, amount });
@@ -129,28 +149,58 @@ paymentRoutes.post('/', requirePermission('payments.write'), async (c) => {
   const allocatedTotal = allocations.reduce((sum, row) => sum + row.amount, 0);
   if (allocatedTotal > body.amount) return fail(422, 'VALIDATION_ERROR', { allocations: 'exceeds_amount' });
 
+  const settled: {
+    invoice_id: string;
+    amount: number;
+    amount_xpf: number;
+    exchange_rate: number;
+    fx_difference: number;
+  }[] = [];
   for (const allocation of allocations) {
     const invoice = open.find((row) => row.id === allocation.invoice_id);
     if (!invoice) return fail(409, 'INVOICE_NOT_OPEN');
+    if (invoice.currency !== currency) return fail(409, 'CURRENCY_MISMATCH', { invoice: invoice.id });
     if (allocation.amount > invoice.balance) return fail(409, 'AMOUNT_EXCEEDS_BALANCE');
+    // Cash enters at the payment-date rate; the receivable leaves at the rate
+    // frozen on the invoice. The difference is the realised gain or loss.
+    const cash = convertToBase(allocation.amount, decimals, fx.rate);
+    const receivable = convertToBase(
+      allocation.amount,
+      Number(invoice.currency_decimals ?? 0),
+      Number(invoice.exchange_rate ?? 1),
+    );
+    settled.push({
+      invoice_id: invoice.id,
+      amount: allocation.amount,
+      amount_xpf: cash,
+      exchange_rate: fx.rate,
+      fx_difference: cash - receivable,
+    });
   }
 
   const id = crypto.randomUUID();
   const number = await nextNumber(c.env.DB, 'payment', 'REG', company.number_pattern, body.date);
+  const amountXpf = convertToBase(body.amount, decimals, fx.rate);
+  const fxDifference = settled.reduce((sum, row) => sum + row.fx_difference, 0);
 
   const statements = [
     c.env.DB.prepare(
-      `INSERT INTO payments (id, client_id, number, date, amount, method, reference, notes, status, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`,
-    ).bind(id, body.client_id, number, body.date, body.amount, body.method, body.reference ?? null, body.notes ?? null, user.id, nowISO(), nowISO()),
-    ...allocations.map((allocation) =>
+      `INSERT INTO payments (id, client_id, number, date, amount, currency, exchange_rate, amount_xpf, fx_difference,
+        method, reference, notes, status, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`,
+    ).bind(
+      id, body.client_id, number, body.date, body.amount, currency, fx.rate, amountXpf, fxDifference,
+      body.method, body.reference ?? null, body.notes ?? null, user.id, nowISO(), nowISO(),
+    ),
+    ...settled.map((row) =>
       c.env.DB.prepare(
-        `INSERT INTO payment_allocations (id, payment_id, invoice_id, amount, created_at) VALUES (?, ?, ?, ?, ?)`,
-      ).bind(crypto.randomUUID(), id, allocation.invoice_id, allocation.amount, nowISO()),
+        `INSERT INTO payment_allocations (id, payment_id, invoice_id, amount, amount_xpf, exchange_rate, fx_difference, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(crypto.randomUUID(), id, row.invoice_id, row.amount, row.amount_xpf, row.exchange_rate, row.fx_difference, nowISO()),
     ),
   ];
   await c.env.DB.batch(statements);
-  for (const allocation of allocations) {
+  for (const allocation of settled) {
     await recalcInvoice(c.env.DB, allocation.invoice_id);
   }
 
@@ -160,10 +210,14 @@ paymentRoutes.post('/', requirePermission('payments.write'), async (c) => {
     entityType: 'payment',
     entityId: id,
     summary: 'activity.payment_created',
-    meta: { number, amount: body.amount, allocations: allocations.length, date: todayIn(company.timezone) },
+    meta: { number, amount: body.amount, currency, allocations: settled.length, date: todayIn(company.timezone) },
   });
 
-  return c.json({ id, number, allocated: allocatedTotal }, 201);
+  return c.json({
+    id, number, allocated: allocatedTotal, currency,
+    exchange_rate: fx.rate, amount_xpf: amountXpf, fx_difference: fxDifference,
+    allocations: settled,
+  }, 201);
 });
 
 paymentRoutes.delete('/:id', requirePermission('payments.delete'), async (c) => {

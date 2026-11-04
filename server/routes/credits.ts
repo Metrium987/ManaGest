@@ -8,6 +8,8 @@ import { retentionElapsed, DEFAULT_RETENTION_YEARS } from '../lib/retention';
 import { fail } from '../lib/errors';
 import { nextNumber, recordNumberGap } from '../lib/numbering';
 import { computeTotals } from '../lib/tax';
+import { convertToBase } from '../lib/fx';
+import { freezeFx } from '../services/currencies';
 import { lineItemsSchema, offsetOf, paginationSchema, parseInput } from '../lib/validation';
 import { assertPeriodOpen } from '../lib/locks';
 import { requireAuth, requirePermission } from '../middleware';
@@ -21,6 +23,7 @@ const creditSchema = z.object({
   client_id: z.string().min(8).max(60),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   line_items: lineItemsSchema,
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3,5}$/).optional(),
   discount_type: z.enum(['percent', 'amount']).default('percent'),
   discount_value: z.coerce.number().int().min(0).default(0),
   notes: z.string().max(4000).nullish(),
@@ -95,6 +98,8 @@ creditRoutes.get('/:id/pdf', requirePermission('credits.read'), async (c) => {
     subtotal: Number(credit.subtotal ?? 0),
     tax_total: Number(credit.tax_total ?? 0),
     total: Number(credit.total ?? 0),
+    exchange_rate: Number(credit.exchange_rate ?? 1),
+    total_xpf: Number(credit.total_xpf ?? 0),
     tax_exempt: Number(credit.tax_exempt ?? 0),
     notes: (credit.notes as string | null) ?? null,
     terms: (credit.terms as string | null) ?? null,
@@ -130,6 +135,8 @@ creditRoutes.post('/', requirePermission('credits.write'), async (c) => {
     .first<{ id: string; is_tax_exempt: number; currency: string }>();
   if (!client) return fail(422, 'VALIDATION_ERROR', { client_id: 'not_found' });
 
+  const currency = (body.currency || client.currency || company.currency).toUpperCase();
+  const fx = await freezeFx(c.env.DB, currency, body.date);
   const totals = computeTotals(
     body.line_items,
     { discount_type: body.discount_type, discount_value: body.discount_value },
@@ -139,13 +146,17 @@ creditRoutes.post('/', requirePermission('credits.write'), async (c) => {
   const number = await nextNumber(c.env.DB, 'credit', 'AV', company.number_pattern, body.date);
 
   await c.env.DB.prepare(
-    `INSERT INTO credits (id, client_id, number, status, date, currency, subtotal, discount_type, discount_value,
-      discount_total, tax_total, total, applied_total, balance, tax_exempt, line_items, notes, terms, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO credits (id, client_id, number, status, date, currency, exchange_rate, currency_decimals,
+      subtotal, discount_type, discount_value, discount_total, tax_total, total, subtotal_xpf, tax_total_xpf, total_xpf,
+      applied_total, balance, tax_exempt, line_items, notes, terms, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
-      id, body.client_id, number, body.date, client.currency || company.currency, totals.subtotal,
+      id, body.client_id, number, body.date, currency, fx.rate, fx.currency.decimals, totals.subtotal,
       body.discount_type, body.discount_value, totals.discount_total, totals.tax_total, totals.total,
+      convertToBase(totals.subtotal, fx.currency.decimals, fx.rate),
+      convertToBase(totals.tax_total, fx.currency.decimals, fx.rate),
+      convertToBase(totals.total, fx.currency.decimals, fx.rate),
       totals.total, client.is_tax_exempt, serialiseLines(body.line_items), body.notes ?? null,
       body.terms || company.invoice_terms, user.id, nowISO(), nowISO(),
     )
@@ -177,12 +188,27 @@ creditRoutes.post('/:id/send', requirePermission('credits.write'), async (c) => 
     requestedBy: c.get('user')!.id,
   });
   const id = c.req.param('id');
-  const credit = await c.env.DB.prepare(`SELECT status, date FROM credits WHERE id = ? AND deleted_at IS NULL`)
+  const credit = await c.env.DB.prepare(
+    `SELECT status, date, currency, subtotal, tax_total, total FROM credits WHERE id = ? AND deleted_at IS NULL`,
+  )
     .bind(id)
-    .first<{ status: string; date: string }>();
+    .first<{ status: string; date: string; currency: string; subtotal: number; tax_total: number; total: number }>();
   if (!credit) return fail(404, 'NOT_FOUND');
   if (credit.status !== 'draft') return fail(409, 'INVALID_TRANSITION');
   await assertPeriodOpen(c.env.DB, credit.date);
+  const issueFx = await freezeFx(c.env.DB, credit.currency, credit.date);
+  await c.env.DB.prepare(
+    `UPDATE credits SET exchange_rate = ?, currency_decimals = ?, subtotal_xpf = ?, tax_total_xpf = ?, total_xpf = ?, updated_at = ?
+     WHERE id = ?`,
+  )
+    .bind(
+      issueFx.rate, issueFx.currency.decimals,
+      convertToBase(credit.subtotal, issueFx.currency.decimals, issueFx.rate),
+      convertToBase(credit.tax_total, issueFx.currency.decimals, issueFx.rate),
+      convertToBase(credit.total, issueFx.currency.decimals, issueFx.rate),
+      nowISO(), id,
+    )
+    .run();
   await c.env.DB.prepare(`UPDATE credits SET status = 'sent', updated_at = ? WHERE id = ?`)
     .bind(nowISO(), id)
     .run();
@@ -199,20 +225,21 @@ creditRoutes.post('/:id/apply', requirePermission('credits.write'), async (c) =>
   );
 
   const credit = await c.env.DB.prepare(
-    `SELECT id, client_id, balance, number FROM credits WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT id, client_id, balance, number, currency FROM credits WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(id)
-    .first<{ id: string; client_id: string; balance: number; number: string }>();
+    .first<{ id: string; client_id: string; balance: number; number: string; currency: string }>();
   if (!credit) return fail(404, 'NOT_FOUND');
   if (body.amount > credit.balance) return fail(409, 'CREDIT_INSUFFICIENT_BALANCE');
 
   const invoice = await c.env.DB.prepare(
-    `SELECT id, client_id, balance FROM invoices WHERE id = ? AND deleted_at IS NULL AND status IN ('sent','partial')`,
+    `SELECT id, client_id, balance, currency FROM invoices WHERE id = ? AND deleted_at IS NULL AND status IN ('sent','partial')`,
   )
     .bind(body.invoice_id)
-    .first<{ id: string; client_id: string; balance: number }>();
+    .first<{ id: string; client_id: string; balance: number; currency: string }>();
   if (!invoice) return fail(409, 'INVOICE_NOT_OPEN');
   if (invoice.client_id !== credit.client_id) return fail(409, 'CLIENT_MISMATCH');
+  if (invoice.currency !== credit.currency) return fail(409, 'CURRENCY_MISMATCH');
   if (body.amount > invoice.balance) return fail(409, 'AMOUNT_EXCEEDS_BALANCE');
 
   await c.env.DB.prepare(

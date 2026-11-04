@@ -16,6 +16,8 @@ export interface AccountCodes {
   vatDue: string;
   vatDeductible: string;
   retainedEarnings: string;
+  fxGain: string;
+  fxLoss: string;
 }
 
 export const DEFAULT_ACCOUNT_CODES: AccountCodes = {
@@ -28,6 +30,8 @@ export const DEFAULT_ACCOUNT_CODES: AccountCodes = {
   vatDue: '445710',
   vatDeductible: '445660',
   retainedEarnings: '110000',
+  fxGain: '766000',
+  fxLoss: '666000',
 };
 
 /** The workspace setting that overrides each code, in `settings_extra`. */
@@ -41,6 +45,8 @@ export const ACCOUNT_SETTING_KEYS: Record<keyof AccountCodes, string> = {
   vatDue: 'account_vat_due',
   vatDeductible: 'account_vat_deductible',
   retainedEarnings: 'account_retained_earnings',
+  fxGain: 'account_fx_gain',
+  fxLoss: 'account_fx_loss',
 };
 
 export const ACCOUNT_ROLES = Object.keys(ACCOUNT_SETTING_KEYS) as (keyof AccountCodes)[];

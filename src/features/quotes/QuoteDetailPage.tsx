@@ -21,7 +21,6 @@ export function QuoteDetailPage() {
   const toast = useToast();
   const { confirm } = useConfirm();
   const { company, can } = useSession();
-  const currency = company?.currency ?? 'XPF';
 
   const quote = useQuery({ queryKey: ['quote', id], queryFn: () => api.get<Quote>(`/quotes/${id}`), enabled: Boolean(id) });
 
@@ -38,6 +37,7 @@ export function QuoteDetailPage() {
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
+  const currency = quote.data?.currency ?? company?.currency ?? 'XPF';
 
   const sendEmail = useMutation({
     mutationFn: () => api.post(`/email/quote/${id}`),

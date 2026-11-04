@@ -7,6 +7,8 @@ import { fail } from '../lib/errors';
 import { nextNumber } from '../lib/numbering';
 import { isExpiredQuote } from '../services/status';
 import { computeTotals } from '../lib/tax';
+import { convertToBase } from '../lib/fx';
+import { freezeFx } from '../services/currencies';
 import { enrichLines } from '../lib/catalogue';
 import { applyClientPricingForClient } from '../lib/client-pricing';
 import { applyExpertiseForLines } from '../lib/expertise';
@@ -25,6 +27,7 @@ const quoteSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   valid_until: optionalIsoDate,
   line_items: lineItemsSchema,
+  currency: z.string().trim().toUpperCase().regex(/^[A-Z]{3,5}$/).optional(),
   discount_type: z.enum(['percent', 'amount']).default('percent'),
   discount_value: z.coerce.number().int().min(0).default(0),
   notes: z.string().max(4000).nullish(),
@@ -112,6 +115,8 @@ quoteRoutes.get('/:id/pdf', requirePermission('quotes.read'), async (c) => {
     subtotal: Number(quote.subtotal ?? 0),
     tax_total: Number(quote.tax_total ?? 0),
     total: Number(quote.total ?? 0),
+    exchange_rate: Number(quote.exchange_rate ?? 1),
+    total_xpf: Number(quote.total_xpf ?? 0),
     tax_exempt: Number(quote.tax_exempt ?? 0),
     notes: (quote.notes as string | null) ?? null,
     terms: (quote.terms as string | null) ?? null,
@@ -158,6 +163,8 @@ quoteRoutes.post('/', requirePermission('quotes.write'), async (c) => {
     body.project_template_version = version;
   }
 
+  const currency = (body.currency || client.currency || company.currency).toUpperCase();
+  const fx = await freezeFx(c.env.DB, currency, body.date);
   const totals = computeTotals(
     body.line_items,
     { discount_type: body.discount_type, discount_value: body.discount_value },
@@ -167,14 +174,17 @@ quoteRoutes.post('/', requirePermission('quotes.write'), async (c) => {
   const number = await nextNumber(c.env.DB, 'quote', 'DEV', company.number_pattern, body.date);
 
   await c.env.DB.prepare(
-    `INSERT INTO quotes (id, client_id, number, status, date, valid_until, currency, subtotal, discount_type, discount_value,
-      discount_total, tax_total, total, tax_exempt, line_items, notes, terms,
-      project_template_id, project_template_version, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO quotes (id, client_id, number, status, date, valid_until, currency, exchange_rate, currency_decimals,
+      subtotal, discount_type, discount_value, discount_total, tax_total, total, subtotal_xpf, tax_total_xpf, total_xpf,
+      tax_exempt, line_items, notes, terms, project_template_id, project_template_version, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
-      id, body.client_id, number, body.date, body.valid_until ?? addDays(body.date, 30), client.currency || company.currency,
+      id, body.client_id, number, body.date, body.valid_until ?? addDays(body.date, 30), currency, fx.rate, fx.currency.decimals,
       totals.subtotal, body.discount_type, body.discount_value, totals.discount_total, totals.tax_total, totals.total,
+      convertToBase(totals.subtotal, fx.currency.decimals, fx.rate),
+      convertToBase(totals.tax_total, fx.currency.decimals, fx.rate),
+      convertToBase(totals.total, fx.currency.decimals, fx.rate),
       client.is_tax_exempt, serialiseLines(body.line_items), body.notes ?? null, body.terms || company.invoice_terms,
       body.project_template_id ?? null, body.project_template_version ?? null,
       user.id, nowISO(), nowISO(),
@@ -202,11 +212,12 @@ quoteRoutes.patch('/:id', requirePermission('quotes.write'), async (c) => {
   body.line_items = await applyExpertiseForLines(c.env.DB, body.line_items);
   body.line_items = await applyClientPricingForClient(c.env.DB, body.client_id, body.line_items);
   const existing = await c.env.DB.prepare(
-    `SELECT q.status, c.is_tax_exempt, q.currency FROM quotes q JOIN clients c ON c.id = q.client_id
+    `SELECT q.status, q.currency, q.exchange_rate, q.currency_decimals, c.is_tax_exempt
+     FROM quotes q JOIN clients c ON c.id = q.client_id
      WHERE q.id = ? AND q.deleted_at IS NULL`,
   )
     .bind(id)
-    .first<{ status: string; is_tax_exempt: number; currency: string }>();
+    .first<{ status: string; is_tax_exempt: number; currency: string; exchange_rate: number; currency_decimals: number }>();
   if (!existing) return fail(404, 'NOT_FOUND');
   if (['converted', 'rejected'].includes(existing.status)) return fail(409, 'QUOTE_LOCKED');
   if (body.project_template_id) {
@@ -215,6 +226,16 @@ quoteRoutes.patch('/:id', requirePermission('quotes.write'), async (c) => {
     body.project_template_version = version;
   }
 
+  const locked = existing.status !== 'draft';
+  if (locked && body.currency && body.currency !== existing.currency) return fail(409, 'CURRENCY_LOCKED');
+  const currency = (locked ? existing.currency : (body.currency || existing.currency)).toUpperCase();
+  const fx = locked
+    ? { currency: { code: currency, decimals: 0 }, rate: 1 }
+    : await freezeFx(c.env.DB, currency, body.date);
+  // A sent quote keeps the rate it was sent with; correcting its lines still
+  // converts at that frozen rate instead of silently re-pricing the offer.
+  const rate = locked ? Number(existing.exchange_rate ?? 1) : fx.rate;
+  const decimals = locked ? Number(existing.currency_decimals ?? 0) : fx.currency.decimals;
   const totals = computeTotals(
     body.line_items,
     { discount_type: body.discount_type, discount_value: body.discount_value },
@@ -222,14 +243,19 @@ quoteRoutes.patch('/:id', requirePermission('quotes.write'), async (c) => {
   );
 
   await c.env.DB.prepare(
-    `UPDATE quotes SET client_id = ?, date = ?, valid_until = ?, subtotal = ?, discount_type = ?, discount_value = ?,
-      discount_total = ?, tax_total = ?, total = ?, line_items = ?, notes = ?, terms = ?,
+    `UPDATE quotes SET client_id = ?, date = ?, valid_until = ?, currency = ?, exchange_rate = ?, currency_decimals = ?,
+      subtotal = ?, discount_type = ?, discount_value = ?, discount_total = ?, tax_total = ?, total = ?,
+      subtotal_xpf = ?, tax_total_xpf = ?, total_xpf = ?, line_items = ?, notes = ?, terms = ?,
       project_template_id = ?, project_template_version = ?, updated_at = ? WHERE id = ?`,
   )
     .bind(
-      body.client_id, body.date, body.valid_until, totals.subtotal, body.discount_type, body.discount_value,
-      totals.discount_total, totals.tax_total, totals.total, serialiseLines(body.line_items),
-      body.notes ?? null, body.terms,
+      body.client_id, body.date, body.valid_until, currency, rate, decimals,
+      totals.subtotal, body.discount_type, body.discount_value,
+      totals.discount_total, totals.tax_total, totals.total,
+      convertToBase(totals.subtotal, decimals, rate),
+      convertToBase(totals.tax_total, decimals, rate),
+      convertToBase(totals.total, decimals, rate),
+      serialiseLines(body.line_items), body.notes ?? null, body.terms,
       body.project_template_id ?? null, body.project_template_version ?? null, nowISO(), id,
     )
     .run();
@@ -339,18 +365,24 @@ quoteRoutes.post('/:id/convert', requirePermission('invoices.write'), async (c) 
   const invoiceId = crypto.randomUUID();
   const date = new Date().toISOString().slice(0, 10);
   await assertPeriodOpen(c.env.DB, date);
+  const currency = String(quote.currency ?? company.currency).toUpperCase();
+  const fx = await freezeFx(c.env.DB, currency, date);
   const number = await nextNumber(c.env.DB, 'invoice', 'FAC', company.number_pattern, date);
   const dueDate = addDays(date, Number(quote.payment_terms ?? company.payment_terms));
 
   await c.env.DB.batch([
     c.env.DB.prepare(
-      `INSERT INTO invoices (id, client_id, number, status, date, due_date, currency, subtotal, discount_type, discount_value,
-        discount_total, tax_total, total, paid_total, balance, tax_exempt, line_items, notes, terms, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO invoices (id, client_id, number, status, date, due_date, currency, exchange_rate, currency_decimals,
+        subtotal, discount_type, discount_value, discount_total, tax_total, total, subtotal_xpf, tax_total_xpf, total_xpf,
+        paid_total, balance, tax_exempt, line_items, notes, terms, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
-      invoiceId, quote.client_id, number, date, dueDate, quote.currency, quote.subtotal, quote.discount_type,
-      quote.discount_value, quote.discount_total, quote.tax_total, quote.total, quote.total, quote.tax_exempt,
-      quote.line_items, quote.notes, quote.terms, user.id, nowISO(), nowISO(),
+      invoiceId, quote.client_id, number, date, dueDate, currency, fx.rate, fx.currency.decimals,
+      quote.subtotal, quote.discount_type, quote.discount_value, quote.discount_total, quote.tax_total, quote.total,
+      convertToBase(Number(quote.subtotal), fx.currency.decimals, fx.rate),
+      convertToBase(Number(quote.tax_total), fx.currency.decimals, fx.rate),
+      convertToBase(Number(quote.total), fx.currency.decimals, fx.rate),
+      quote.total, quote.tax_exempt, quote.line_items, quote.notes, quote.terms, user.id, nowISO(), nowISO(),
     ),
     c.env.DB.prepare(
       `UPDATE quotes SET status = 'converted', converted_invoice_id = ?, updated_at = ? WHERE id = ?`,

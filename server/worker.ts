@@ -18,6 +18,7 @@ import { importRoutes } from './routes/import';
 import { planningRoutes } from './routes/planning';
 import { invoiceRoutes } from './routes/invoices';
 import { roleRoutes } from './routes/roles';
+import { currencyRoutes } from './routes/currencies';
 import { runRoutes } from './routes/runs';
 import {
   expenseRoutes, projectRoutes, purchaseOrderRoutes, taskRoutes, vendorRoutes,
@@ -98,6 +99,7 @@ app.route('/api/runs', runRoutes);
 app.route('/api/roles', roleRoutes);
 app.route('/api/filters', filterRoutes);
 app.route('/api/accounting', accountingRoutes);
+app.route('/api/currencies', currencyRoutes);
 app.route('/api/revenue', revenueRoutes);
 app.route('/api/api-tokens', apiTokenRoutes);
 app.route('/api/approvals', approvalRoutes);

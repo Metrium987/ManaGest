@@ -36,6 +36,7 @@ export function PaymentsPage() {
   const [clientId, setClientId] = useState('');
   const [date, setDate] = useState(todayISO());
   const [amount, setAmount] = useState(0);
+  const [payCurrency, setPayCurrency] = useState(company?.currency ?? 'XPF');
   const [method, setMethod] = useState('transfer');
   const [reference, setReference] = useState('');
   const [autoApply, setAutoApply] = useState(true);
@@ -57,7 +58,8 @@ export function PaymentsPage() {
       api.post('/payments', {
         client_id: clientId,
         date,
-        amount: toMinor(amount, currency),
+        amount: toMinor(amount, payCurrency),
+        currency: payCurrency,
         method,
         reference,
         auto_apply: autoApply,
@@ -138,8 +140,8 @@ export function PaymentsPage() {
                   <td>{payment.client_name}</td>
                   <td className="text-muted">{formatDate(payment.date)}</td>
                   <td className="text-muted">{t(`methods.${payment.method}`)}</td>
-                  <td className="text-right font-medium tabular-nums">{formatMoney(payment.amount, currency)}</td>
-                  <td className="text-right tabular-nums text-muted">{formatMoney(payment.applied ?? 0, currency)}</td>
+                  <td className="text-right font-medium tabular-nums">{formatMoney(payment.amount, payment.currency ?? currency)}</td>
+                  <td className="text-right tabular-nums text-muted">{formatMoney(payment.applied ?? 0, payment.currency ?? currency)}</td>
                   <td className="text-right">
                     <button
                       type="button"
@@ -153,8 +155,8 @@ export function PaymentsPage() {
                         fields: [
                           { label: t('common.date'), value: formatDate(payment.date) },
                           { label: t('invoices.client'), value: payment.client_name },
-                          { label: t('common.amount'), value: formatMoney(payment.amount, currency) },
-                          { label: t('payments.applied'), value: formatMoney(payment.applied ?? 0, currency) },
+                          { label: t('common.amount'), value: formatMoney(payment.amount, payment.currency ?? currency) },
+                          { label: t('payments.applied'), value: formatMoney(payment.applied ?? 0, payment.currency ?? currency) },
                           { label: t('payments.method'), value: t(`methods.${payment.method}`) },
                           { label: t('common.reference'), value: payment.reference },
                         ],
@@ -230,11 +232,18 @@ export function PaymentsPage() {
                 id="payment_amount"
                 type="number"
                 min="0"
-                step={currency === 'XPF' ? '1' : '0.01'}
+                step={payCurrency === 'XPF' ? '1' : '0.01'}
                 value={amount || ''}
                 onChange={(event) => setAmount(Number(event.target.value))}
                 required
               />
+            </Field>
+            <Field label={t('currencies.title')} htmlFor="payment_currency">
+              <Select id="payment_currency" value={payCurrency} onChange={(event) => setPayCurrency(event.target.value)}>
+                <option value="XPF">XPF</option>
+                <option value="EUR">EUR</option>
+                <option value="USD">USD</option>
+              </Select>
             </Field>
             <Field label={t('payments.method')} htmlFor="payment_method">
               <Select id="payment_method" value={method} onChange={(event) => setMethod(event.target.value)}>
