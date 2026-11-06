@@ -5,7 +5,7 @@ pas terminé, pas vérifié ou volontairement écarté. Il remplace les listes d
 chose est repoussée, elle est écrite ici et nulle part ailleurs.
 
 Ce qu'il n'est pas : ni l'ordre d'exécution (c'est [`TODO.md`](TODO.md)), ni l'état de ce qui
-est livré (c'est [`../AUDIT.md`](../AUDIT.md) §10).
+est livré (c'est [`TODO.md`](TODO.md) et [`../AUDIT-2026-11-06.md`](../AUDIT-2026-11-06.md)).
 
 | Statut | Sens |
 |---|---|
@@ -35,6 +35,7 @@ attendent une donnée externe.
 | D-01 | **Soldes de reprise** | RÉGLÉ : reprise à zéro, saisie ouverte à tout moment (Comptabilité → Reprise de balance). |
 | D-02 | **Valeurs fiscales par défaut** | RÉGLÉ : ce sont des réglages ordinaires ; depuis le 2/11/2026 une installation neuve est polynésienne (XPF, Pacific/Tahiti, plan 0/5/13/16 + 1 % daté, défaut 13 %). |
 | D-03 | **Seuils d'approbation** | RÉGLÉ : livrés à 0 (règle désactivée), activables dans Paramètres → Sécurité. |
+| D-05 | **Hébergement hors Cloudflare** | RÉGLÉ (décision propriétaire, 6/11/2026) : l'application n'est pas déployée sur Cloudflare. Les lignes qui décrivent une action Cloudflare (P-03 sauvegarde D1 automatique, migrations distantes) restent écrites **pour mémoire** et ne bloquent aucune tâche ; le travail local (fichiers, tests, base `--local`) fait foi. Rouvrir si l'hébergement change. |
 
 ---
 
@@ -168,7 +169,7 @@ T-201 → T-207, T-301 → T-304. Les quatre points d'extension R4 (T-401 → T-
 Le détail, la preuve et les limites de chaque tâche sont dans [`TODO.md`](TODO.md) et
 [`CHANGELOG.md`](CHANGELOG.md). L'audit d'origine reste lisible dans
 [`../archive/audit-2026-10-28/`](../archive/audit-2026-10-28/), ses constats à jour dans
-[`../AUDIT.md`](../AUDIT.md) §10.
+[`../AUDIT-2026-11-06.md`](../AUDIT-2026-11-06.md) ; l'ancien `AUDIT.md` y est archivé, figé.
 
 ## 7. Règle de tenue
 
