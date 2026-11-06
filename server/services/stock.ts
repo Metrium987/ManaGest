@@ -274,12 +274,22 @@ export async function consumeInvoiceStock(
     const extra = await database
       .prepare(
         `SELECT id, name, item_type, quantity_milli, track_quantity, allow_negative_stock, lot_tracking,
-                warehouse_location, bom, bom_mode, cost
+                warehouse_location, bom, bom_mode, cost, deleted_at
          FROM products WHERE id IN (${placeholdersOf(missingIds)})`,
       )
       .bind(...missingIds)
       .all<StockProduct>();
     for (const row of extra.results ?? []) byId.set(row.id, row);
+  }
+
+  // A-14: a kit whose component vanished must be refused, not silently built
+  // from the components that happen to remain. The message names the ids.
+  const missingComponents = [...wanted.keys()].filter((id) => {
+    const product = byId.get(id);
+    return !product || Boolean((product as StockProduct & { deleted_at?: string | null }).deleted_at);
+  });
+  if (missingComponents.length) {
+    throw new ApiError(422, 'KIT_COMPONENT_MISSING', { products: missingComponents.join(' | ') });
   }
 
   const shortages: Shortage[] = [];

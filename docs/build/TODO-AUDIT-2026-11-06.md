@@ -85,6 +85,12 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **97 fichier
 
 ---
 
+**6 novembre 2026 — A-14 : une seule vérité de stock.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-14 | **DONE** | `server/lib/stock-balance.ts` (`stockBalanceRows`, `stockBalanceReport`, `stockBalance`) compare mouvements signés, `products.quantity_milli`, `stock_lots` et `lot_balances` ; `GET /dashboard/stock-balance` et le passage quotidien (`stock_gaps`, activité `stock_gap`) **signalent** sans réécrire. Le retour client écrit `lot_balances` + `stock_valuations` ; `consumeInvoiceStock` refuse `422 KIT_COMPONENT_MISSING` ; `unresolvedReferences` + `assertProductReferences` refusent une nomenclature pointant sur un produit supprimé. `docs/ARCHITECTURE.md` fixe la source de vérité. `tests/stock-integrity.test.ts`, **5 cas** : réception 10 → assemblage 2 kits → vente 1 → désassemblage 1 avec quatre quantités égales à chaque étape ; compteur trafiqué (`+5`) → 1 écart `counter_gap_milli` conservé ; casier ≠ lot → `shelf_gap_milli` ; kit au composant supprimé refusé ; références manquantes nommées. Mutations : garde kit neutralisée et écart de casier forcé à 0 → 2 cas en échec. |
+
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -569,7 +575,19 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   `tests/kit-explosion.test.ts`.
 - **Pièges.** Le compteur peut déjà être faux en base existante : la réconciliation doit
   produire un **rapport** avant toute correction automatique, jamais un écrasement silencieux.
-- **Effort.** L. **Statut.** TODO.
+- **Effort.** L. **Statut.** DONE (2026-11-06). Mouvements = vérité, compteur = cache : le passage
+  quotidien **rapporte** les écarts (`stock_gaps`, activité `stock_gap`, carte
+  `GET /dashboard/stock-balance`) et ne réécrit jamais un compteur — une correction silencieuse
+  effacerait la preuve du mouvement fautif (écart assumé avec l'étape 3, qui suggérait un
+  recalcul ; `docs/ARCHITECTURE.md` documente le choix). Le retour client écrit `lot_balances`
+  et `stock_valuations` (même clé lot + emplacement que la sortie) ; `receiptUnitCost` reste la
+  seule conversion. Nomenclatures : `unresolvedReferences` refuse un `bom`/`substitutes`/
+  `accessories` pointant sur un produit supprimé, et `consumeInvoiceStock` refuse un kit
+  incomplet en `422 KIT_COMPONENT_MISSING` au lieu de l'ignorer. Preuve :
+  `tests/stock-integrity.test.ts`, 5 cas (réception → assemblage → vente → désassemblage avec
+  `counter_gap_milli`/`shelf_gap_milli` nuls à chaque étape, compteur trafiqué détecté et
+  conservé, écart de casier nommé, kit supprimé refusé, références manquantes nommées) ;
+  mutations vérifiées : désactiver la garde kit ou l'écart de casier fait échouer deux cas.
 
 ### A-15 — Respecter les plafonds D1 dans les requêtes
 
@@ -1073,7 +1091,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-11 | Index manquants et doublon | 2 | M | A-10 | **DONE** |
 | A-12 | Intégrité référentielle | 4 | L | A-10 | **DONE** |
 | A-13 | Contraintes de cohérence | 4 | M | A-10 | **DONE** |
-| A-14 | Stock : une vérité | 4 | L | A-10 | TODO |
+| A-14 | Stock : une vérité | 4 | L | A-10 | DONE |
 | A-15 | Plafonds D1 (IN, LIKE) | 3 | M | — | TODO |
 | A-16 | Projections des listes | 5 | M | — | TODO |
 | A-17 | FTS5 + sauvegarde | 5 | L | A-10, A-11 | TODO |

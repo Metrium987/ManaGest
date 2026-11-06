@@ -5,6 +5,7 @@ import { alertCounts } from '../lib/stock-alerting';
 import { addMonths, monthStart, todayIn } from '../lib/dates';
 import { logActivity } from '../lib/audit';
 import { integrityReport } from '../lib/integrity';
+import { stockBalance } from '../lib/stock-balance';
 import { csvResponse } from '../lib/csv';
 import { fail } from '../lib/errors';
 import {
@@ -366,6 +367,16 @@ reportRoutes.get('/revenue-summary', requirePermission('reports.read'), async (c
  * A-12: referential integrity card. A non-zero total names the relation and a
  * few offending ids, so the gap is actionable instead of merely alarming.
  */
+/**
+ * A-14: stock reconciliation. Only the articles whose cache or shelf ledger
+ * disagrees with the movements are returned, with both gaps, so the report is a
+ * to-do list rather than a wall of correct rows.
+ */
+dashboardRoutes.get('/stock-balance', requirePermission('reports.read'), async (c) => {
+  const report = await stockBalance(c.env.DB);
+  return c.json({ total: report.total, gaps: report.gaps, rows: report.rows.length });
+});
+
 dashboardRoutes.get('/integrity', requirePermission('reports.read'), async (c) => {
   const report = await integrityReport(c.env.DB);
   return c.json(report);

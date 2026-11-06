@@ -655,6 +655,8 @@ invoiceRoutes.post('/:id/returns', requirePermission('invoices.write'), async (c
         .bind(line.quantity_milli, now, line.product_id),
     );
     if (lotCode) {
+      const returnMovementId = crypto.randomUUID();
+      const returnLocation = product?.warehouse_location ?? null;
       statements.push(
         c.env.DB.prepare(
           `INSERT INTO stock_lots (id, product_id, lot_code, expiry_date, location, quantity_milli, created_at, updated_at)
@@ -664,15 +666,38 @@ invoiceRoutes.post('/:id/returns', requirePermission('invoices.write'), async (c
              updated_at = excluded.updated_at`,
         ).bind(
           crypto.randomUUID(), line.product_id, lotCode,
-          product?.warehouse_location ?? null, line.quantity_milli, now, now,
+          returnLocation, line.quantity_milli, now, now,
         ),
         c.env.DB.prepare(
           `INSERT INTO stock_movements
              (id, product_id, kind, quantity_milli, reason, reference, unit_cost, location, lot, user_id, created_at)
            VALUES (?, ?, 'in', ?, 'customer_return', ?, ?, ?, ?, ?, ?)`,
         ).bind(
-          crypto.randomUUID(), line.product_id, line.quantity_milli, invoice.number,
-          Number(product?.cost ?? 0), product?.warehouse_location ?? null, lotCode, user.id, now,
+          returnMovementId, line.product_id, line.quantity_milli, invoice.number,
+          Number(product?.cost ?? 0), returnLocation, lotCode, user.id, now,
+        ),
+        // A-14: the shelf learns about the return too, on the same lot and
+        // location as the pick — otherwise `stock_lots` and `lot_balances`
+        // disagree from the first return on.
+        c.env.DB.prepare(
+          `INSERT INTO lot_balances (lot_id, location, quantity_milli, updated_at)
+           SELECT l.id, COALESCE(?, ''), ?, ?
+           FROM stock_lots l WHERE l.product_id = ? AND l.lot_code = ?
+           ON CONFLICT(lot_id, location) DO UPDATE SET
+             quantity_milli = lot_balances.quantity_milli + excluded.quantity_milli,
+             updated_at = excluded.updated_at`,
+        ).bind(returnLocation, line.quantity_milli, now, line.product_id, lotCode),
+        // ...and the valuation records the inflow, like any other receipt.
+        c.env.DB.prepare(
+          `INSERT INTO stock_valuations
+             (id, product_id, movement_id, reason, quantity_before_milli, cost_before,
+              inbound_milli, inbound_unit_cost, quantity_after_milli, cost_after, value_after, created_at)
+           SELECT ?, p.id, ?, 'customer_return', p.quantity_milli - ?, p.cost, ?, p.cost,
+                  p.quantity_milli, p.cost, CAST(ROUND(p.quantity_milli * p.cost / 1000.0) AS INTEGER), ?
+           FROM products p WHERE p.id = ?`,
+        ).bind(
+          crypto.randomUUID(), returnMovementId, line.quantity_milli, line.quantity_milli,
+          Number(product?.cost ?? 0), now, line.product_id,
         ),
       );
     } else {

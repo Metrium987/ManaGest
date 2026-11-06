@@ -81,3 +81,25 @@ export async function attachProductLinks<T extends { id: string; links?: Product
   }
   return products;
 }
+
+/**
+ * A-14: names every product reference a sheet keeps while the product is gone.
+ * A nomenclature, a substitute or an accessory pointing at a deleted (or
+ * unknown) article would explode later, inside a sale, far from its cause.
+ */
+export function unresolvedReferences(
+  links: {
+    bom?: { product_id?: string | null }[] | null;
+    substitutes?: (string | null)[] | null;
+    accessories?: (string | null)[] | null;
+  },
+  existing: Iterable<string>,
+): string[] {
+  const known = new Set(existing);
+  const ids = [
+    ...(links.bom ?? []).map((line) => line?.product_id),
+    ...(links.substitutes ?? []),
+    ...(links.accessories ?? []),
+  ].filter((id): id is string => typeof id === 'string' && id.length > 0);
+  return [...new Set(ids.filter((id) => !known.has(id)))];
+}

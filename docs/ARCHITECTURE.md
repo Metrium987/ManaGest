@@ -137,3 +137,15 @@ manuelle n'est nécessaire.
 
 Pour un déploiement hors Sites, fournir un binding D1 nommé `DB` et un binding
 `ASSETS` (ou servir `dist/client` séparément).
+
+## Stock : une seule vérité (A-14)
+
+Les **mouvements signés** (`stock_movements`) sont la source de vérité. `products.quantity_milli`
+n'est qu'un cache de lecture, `stock_lots` porte les quantités par lot et `lot_balances` les
+quantités par lot et emplacement. Le passage quotidien compare les quatre et **signale** tout
+écart (`stock_gaps`, activité `stock_gap`, carte `GET /dashboard/stock-balance`) sans jamais
+réécrire le compteur : une correction silencieuse effacerait la preuve du mouvement fautif.
+Un retour client écrit désormais le lot, son emplacement et la ligne de valorisation, comme
+n'importe quelle entrée. Un kit dont un composant a été supprimé est refusé
+(`422 KIT_COMPONENT_MISSING`), et une nomenclature ne peut pas être enregistrée si elle
+référence un produit absent.

@@ -3,6 +3,7 @@ import { logActivity } from '../lib/audit';
 import { assertPeriodOpen } from '../lib/locks';
 import { getExtra } from '../lib/settings-extra';
 import { integrityReport } from '../lib/integrity';
+import { stockBalance } from '../lib/stock-balance';
 import { advanceRunDate, generateRecurringInvoice } from './recurring';
 import { DEFAULT_REMINDER_INTERVAL_DAYS, runReminderPass } from './reminders';
 import type { CompanyRow } from '../types';
@@ -33,6 +34,8 @@ export interface RunSummary {
   truncated: boolean;
   /** A-12: orphan rows found by the integrity pass, 0 on a healthy book. */
   integrity_gaps?: number;
+  /** A-14: articles whose stock cache or shelf ledger drifted, 0 when consistent. */
+  stock_gaps?: number;
 }
 
 /** A pass is only successful when every template it touched produced an invoice. */
@@ -272,6 +275,21 @@ export async function runDailyPipeline(
       entityId: 'daily',
       summary: 'activity.integrity_gap',
       meta: { total: integrity.total, relations: integrity.relations.filter((gap) => gap.orphans > 0).map((gap) => gap.relation) },
+    });
+  }
+
+  // A-14: report the stock gap, never overwrite it — a counter corrected in
+  // silence would erase the evidence of the movement that made it wrong.
+  const balance = await stockBalance(database);
+  summary.stock_gaps = balance.total;
+  if (balance.total > 0) {
+    await logActivity(database, {
+      userId: null,
+      action: 'stock_gap',
+      entityType: 'stock',
+      entityId: 'daily',
+      summary: 'activity.stock_gap',
+      meta: { total: balance.total, products: balance.gaps.slice(0, 10).map((row) => row.product_id) },
     });
   }
 

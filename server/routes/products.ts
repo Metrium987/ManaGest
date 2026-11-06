@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { unresolvedReferences } from '../lib/product-links';
 import { z } from 'zod';
 import {
   BOM_MODES,
@@ -54,6 +55,7 @@ import {
 } from '../lib/validation';
 import { requireAuth, requirePermission } from '../middleware';
 import type { AppEnv } from '../types';
+import { ApiError } from '../lib/errors';
 
 /** Quantities travel in human units and are stored in thousandths, as elsewhere
  * in the app: 2.5 hours is 2500, never a floating point surprise. */
@@ -420,6 +422,32 @@ function columns(body: ProductBody) {
     cost: body.cost,
     tax_rate: body.tax_rate,
   };
+}
+
+
+/**
+ * A-14: a bill of materials, a substitute or an accessory must name an existing
+ * product. Refusing at save time keeps a kit buildable instead of discovering the
+ * hole when someone tries to assemble it.
+ */
+async function assertProductReferences(
+  database: D1Database,
+  body: { bom?: { product_id?: string | null }[] | null; substitutes?: (string | null)[] | null; accessories?: (string | null)[] | null },
+): Promise<void> {
+  const wanted = [
+    ...(body.bom ?? []).map((line) => line?.product_id),
+    ...(body.substitutes ?? []),
+    ...(body.accessories ?? []),
+  ].filter((id): id is string => typeof id === 'string' && id.length > 0);
+  if (!wanted.length) return;
+  const rows = await database
+    .prepare(`SELECT id FROM products WHERE deleted_at IS NULL AND id IN (${wanted.map(() => '?').join(',')})`)
+    .bind(...[...new Set(wanted)])
+    .all<{ id: string }>();
+  const missing = unresolvedReferences(body, (rows.results ?? []).map((row) => row.id));
+  if (missing.length) {
+    throw new ApiError(422, 'VALIDATION_ERROR', { references: missing.join(' | ') });
+  }
 }
 
 export const productRoutes = new Hono<AppEnv>();
@@ -1390,6 +1418,7 @@ productRoutes.get('/:id', requirePermission('products.read'), async (c) => {
 productRoutes.post('/', requirePermission('products.write'), async (c) => {
   const user = c.get('user')!;
   const body = parseInput(productSchema, await c.req.json().catch(() => ({})));
+  await assertProductReferences(c.env.DB, body);
   const id = crypto.randomUUID();
   if (body.bom.some((line) => line.product_id === id)) {
     return fail(422, 'VALIDATION_ERROR', { bom: 'self_reference' });
@@ -1435,6 +1464,7 @@ productRoutes.patch('/:id', requirePermission('products.write'), async (c) => {
   const user = c.get('user')!;
   const id = c.req.param('id');
   const body = parseInput(productSchema, await c.req.json().catch(() => ({})));
+  await assertProductReferences(c.env.DB, body);
   if (body.bom.some((line) => line.product_id === id)) {
     return fail(422, 'VALIDATION_ERROR', { bom: 'self_reference' });
   }
