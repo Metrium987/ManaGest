@@ -149,6 +149,16 @@ A-18 est complète (écriture + lecture). Prochaine fiche : **A-19 — chaîne d
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **105 fichiers, 804 tests, 0 échec**.
 
 `audit_tail` est incluse dans la sauvegarde (table additionnelle hors ordre de schéma) et recréée par le schéma à la restauration. Prochaine fiche : **A-20 — limitation des tentatives par IP et par compte**.
+
+**6 novembre 2026 — A-20 : limitation des tentatives de connexion par IP et par compte.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-20 | **DONE** | `server/lib/limits.ts` : fenêtre 15 min, 8 échecs/compte, 50 échecs/IP, `Retry-After` dérivé de l'échec le plus ancien ; enregistrement par un `INSERT … SELECT … WHERE` unique (compteurs dans l'instruction) donc pas de dépassement concurrent ; contrôles avant vérification du mot de passe. `/login` et `/mfa/verify` partagent le module ; refus journalisés avec adresse masquée, `Retry-After` posé par `onError`. Migration `0009_login_attempts_ip` (index IP + created_at), `SCHEMA_STATEMENTS` aligné ; purge > 90 jours dans le passage quotidien. `tests/login-throttle.test.ts` **5 cas** : compte → 429 + `Retry-After`, réouverture après fenêtre ; IP 50 comptes → 429, autre IP intacte ; 20 tentatives simultanées → 8 échecs exactement ; journal sans adresse complète ; purge. Mutation (garde neutralisée) : **4 cas en échec sur 5**. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **106 fichiers, 809 tests, 0 échec**.
+
+Prochaine fiche : **A-21 — en-têtes de sécurité sur l'origine réelle**.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -901,7 +911,26 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   `429` sur l'IP.
 - **Tests.** `tests/login-throttle.test.ts`.
 - **Pièges.** Ne pas révéler l'existence d'un compte par un message différent.
-- **Effort.** S. **Statut.** TODO.
+- **Livré (2026-11-06).** `server/lib/limits.ts` : fenêtre glissante de 15 min, quota
+  **8 échecs par compte** et **50 échecs par IP**, `Retry-After` calculé sur l'expiration de
+  l'échec le plus ancien de la fenêtre bloquante. L'échec est enregistré par une **seule**
+  instruction conditionnelle `INSERT … SELECT … WHERE` (compteurs inclus), donc des tentatives
+  simultanées ne peuvent pas dépasser le quota ; `loginThrottle` vérifie les deux quotas avant
+  toute vérification de mot de passe (pas de fuite par le temps). `POST /login` et
+  `POST /mfa/verify` partagent ce module. Les refus sont journalisés (`login_blocked`) avec
+  l'adresse **masquée** (`o***@example.test`) et sans mot de passe ; `Retry-After` est posé par
+  le gestionnaire d'erreurs. Migration `0009_login_attempts_ip` (`.ts` + `.sql`, enregistrée) :
+  index `login_attempts(ip, created_at)` et `(created_at)` pour le quota IP et la purge ;
+  `SCHEMA_STATEMENTS` aligné. Le passage quotidien purge les tentatives de plus de 90 jours
+  (`purgeLoginAttempts`).
+  Preuve : `tests/login-throttle.test.ts` (**5 cas**) — quota compte → 429 + `Retry-After`
+  ∈ (0, 900], mot de passe correct toujours refusé, réouverture après la fenêtre ; quota IP sur
+  50 comptes distincts → 429, autre IP non affectée ; **20 tentatives simultanées → exactement
+  8 échecs enregistrés** (8×401, 12×429) ; refus journalisé sans adresse complète ni mot de
+  passe ; purge au-delà de 90 jours. Mutation : garde de quota neutralisée
+  (`false &&` sur les deux seuils + `recordLoginFailure` toujours vrai) → **4 cas en échec
+  sur 5**. Typecheck 0 erreur ; suite **106 fichiers / 809 tests**.
+- **Effort.** S. **Statut.** DONE.
 
 ### A-21 — En-têtes de sécurité sur l'origine réelle
 
@@ -1259,7 +1288,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-17 | FTS5 + sauvegarde | 5 | L | A-10, A-11 | DONE |
 | A-18 | Comptabilité incrémentale | 5 | L | A-05 | DONE |
 | A-19 | Chaîne d'audit sans course | 4 | M | — | DONE |
-| A-20 | Limitation par IP et compte | 6 | S | — | TODO |
+| A-20 | Limitation par IP et compte | 6 | S | — | DONE |
 | A-21 | En-têtes de sécurité cohérents | 6 | M | — | TODO |
 | A-22 | Ré-auth MFA | 6 | S | — | TODO |
 | A-23 | Installation verrouillée | 6 | S | A-13 | TODO |

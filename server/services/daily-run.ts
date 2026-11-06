@@ -3,6 +3,7 @@ import { logActivity } from '../lib/audit';
 import { assertPeriodOpen } from '../lib/locks';
 import { getExtra } from '../lib/settings-extra';
 import { integrityReport } from '../lib/integrity';
+import { purgeLoginAttempts } from '../lib/limits';
 import { stockBalance } from '../lib/stock-balance';
 import { advanceRunDate, generateRecurringInvoice } from './recurring';
 import { DEFAULT_REMINDER_INTERVAL_DAYS, runReminderPass } from './reminders';
@@ -201,6 +202,8 @@ export async function runDailyPipeline(
 ): Promise<RunSummary> {
   const { day } = options;
   const summary: RunSummary = { day, generated: [], failed: [], templates: 0, reminders: 0, truncated: false };
+  // A-20: attempts older than the retention window leave on the daily pass.
+  await purgeLoginAttempts(database);
 
   if (!(await periodOpen(database, day))) {
     summary.skipped_reason = 'PERIOD_LOCKED';

@@ -115,6 +115,10 @@ app.get('*', async (c) => {
 
 app.onError((error, c) => {
   if (error instanceof ApiError) {
+    // A-20: a throttled login answers with the wait it asks the client to honour.
+    if (error.status === 429 && error.details?.retry_after) {
+      c.header('Retry-After', error.details.retry_after);
+    }
     return c.json(
       { error: { code: error.code, details: error.details ?? null } },
       error.status as 400 | 401 | 403 | 404 | 409 | 422 | 429 | 500,

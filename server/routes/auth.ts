@@ -7,6 +7,7 @@ import {
 } from '../lib/crypto';
 import { fail } from '../lib/errors';
 import { validatePassword } from '../lib/passwords';
+import { loginThrottle, maskedEmail, recordLoginFailure } from '../lib/limits';
 import {
   generateRecoveryCodes, generateTotpSecret, groupSecret, normalizeRecoveryCode, otpauthUri,
   verifyTotp,
@@ -18,8 +19,6 @@ import { createSession, destroySession } from '../services/session';
 import { readMailConfig } from '../services/email';
 import type { AppEnv, CompanyRow, UserRow } from '../types';
 
-const MAX_ATTEMPTS = 8;
-const WINDOW_MINUTES = 15;
 
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(190),
@@ -59,17 +58,21 @@ authRoutes.post('/login', async (c) => {
 
   const body = parseInput(loginSchema, await c.req.json().catch(() => ({})));
   const ip = clientIp(c);
-  const cutoff = new Date(Date.now() - WINDOW_MINUTES * 60_000).toISOString();
 
-  const recentFailures = await c.env.DB.prepare(
-    `SELECT COUNT(*) AS count FROM login_attempts
-     WHERE email = ? AND successful = 0 AND created_at >= ?`,
-  )
-    .bind(body.email, cutoff)
-    .first<{ count: number }>();
-
-  if ((recentFailures?.count ?? 0) >= MAX_ATTEMPTS) {
-    return fail(429, 'TOO_MANY_ATTEMPTS');
+  // A-20: both quotas are checked before any password work, so a throttled
+  // caller learns nothing about the account by timing.
+  const throttle = await loginThrottle(c.env.DB, { email: body.email, ip });
+  if (throttle.blocked) {
+    await logActivity(c.env.DB, {
+      userId: null,
+      action: 'login_blocked',
+      entityType: 'auth',
+      entityId: maskedEmail(body.email),
+      summary: 'activity.login_blocked',
+      meta: { reason: 'throttle', retry_after: throttle.retryAfterSeconds, ip },
+      ip,
+    });
+    return fail(429, 'TOO_MANY_ATTEMPTS', { retry_after: String(throttle.retryAfterSeconds) });
   }
 
   const user = await c.env.DB.prepare(
@@ -81,13 +84,31 @@ authRoutes.post('/login', async (c) => {
   const hash = user?.password_hash ?? DUMMY_PASSWORD_HASH;
   const valid = await verifyPassword(body.password, hash);
 
-  await c.env.DB.prepare(
-    `INSERT INTO login_attempts (id, email, ip, successful, created_at) VALUES (?, ?, ?, ?, ?)`,
-  )
-    .bind(crypto.randomUUID(), body.email, ip, valid && user ? 1 : 0, nowISO())
-    .run();
+  if (!valid || !user) {
+    // A-20: the failure is recorded by one conditional INSERT. If the quota
+    // refuses it, the attempt is throttled instead of merely refused.
+    const recorded = await recordLoginFailure(c.env.DB, { email: body.email, ip });
+    if (!recorded) {
+      const decision = await loginThrottle(c.env.DB, { email: body.email, ip });
+      await logActivity(c.env.DB, {
+        userId: null,
+        action: 'login_blocked',
+        entityType: 'auth',
+        entityId: maskedEmail(body.email),
+        summary: 'activity.login_blocked',
+        meta: { reason: 'quota', retry_after: decision.retryAfterSeconds, ip },
+        ip,
+      });
+      return fail(429, 'TOO_MANY_ATTEMPTS', { retry_after: String(decision.retryAfterSeconds) });
+    }
+    return fail(401, 'INVALID_CREDENTIALS');
+  }
 
-  if (!valid || !user) return fail(401, 'INVALID_CREDENTIALS');
+  await c.env.DB.prepare(
+    `INSERT INTO login_attempts (id, email, ip, successful, created_at) VALUES (?, ?, ?, 1, ?)`,
+  )
+    .bind(crypto.randomUUID(), body.email, ip, nowISO())
+    .run();
 
   await c.env.DB.prepare(`DELETE FROM login_attempts WHERE email = ? AND successful = 0`)
     .bind(body.email)
@@ -178,14 +199,10 @@ authRoutes.post('/mfa/verify', async (c) => {
     return fail(401, 'INVALID_CREDENTIALS');
   }
 
-  const cutoff = new Date(Date.now() - WINDOW_MINUTES * 60_000).toISOString();
-  const recentFailures = await c.env.DB.prepare(
-    `SELECT COUNT(*) AS count FROM login_attempts
-     WHERE email = ? AND successful = 0 AND created_at >= ?`,
-  )
-    .bind(challenge.email, cutoff)
-    .first<{ count: number }>();
-  if ((recentFailures?.count ?? 0) >= MAX_ATTEMPTS) return fail(429, 'TOO_MANY_ATTEMPTS');
+  const throttle = await loginThrottle(c.env.DB, { email: challenge.email, ip });
+  if (throttle.blocked) {
+    return fail(429, 'TOO_MANY_ATTEMPTS', { retry_after: String(throttle.retryAfterSeconds) });
+  }
 
   const code = body.code.trim();
   const isTotp = /^\d{6}$/.test(code);
@@ -204,11 +221,11 @@ authRoutes.post('/mfa/verify', async (c) => {
   }
 
   if (!totpOk && remainingCodes === null) {
-    await c.env.DB.prepare(
-      `INSERT INTO login_attempts (id, email, ip, successful, created_at) VALUES (?, ?, ?, 0, ?)`,
-    )
-      .bind(crypto.randomUUID(), challenge.email, ip, nowISO())
-      .run();
+    const recorded = await recordLoginFailure(c.env.DB, { email: challenge.email, ip });
+    if (!recorded) {
+      const decision = await loginThrottle(c.env.DB, { email: challenge.email, ip });
+      return fail(429, 'TOO_MANY_ATTEMPTS', { retry_after: String(decision.retryAfterSeconds) });
+    }
     return fail(401, 'INVALID_CODE');
   }
 

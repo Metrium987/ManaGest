@@ -190,6 +190,8 @@ export const SCHEMA_STATEMENTS: string[] = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON login_attempts(email, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_login_attempts_created ON login_attempts(created_at)`,
 
   `CREATE TABLE IF NOT EXISTS number_sequences (
     entity TEXT NOT NULL,
