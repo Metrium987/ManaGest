@@ -104,6 +104,16 @@ const COMPANY_DIFF_KEYS = [
   'session_idle_minutes', 'session_absolute_hours',
 ] as const;
 
+/**
+ * A-30: a setting may describe a credential in a future provider. The journal
+ * must stay readable, so such a value is replaced instead of copied.
+ */
+const SECRET_SETTING_KEY = /(secret|password|credential|smtp|api[_-]?key|provider)/i;
+function journalSettingValue(key: string, value: string | null): string | null {
+  if (value === null) return null;
+  return SECRET_SETTING_KEY.test(key) ? '[masqué]' : value;
+}
+
 export const settingsRoutes = new Hono<AppEnv>();
 settingsRoutes.use('*', requireAuth);
 
@@ -322,20 +332,34 @@ settingsRoutes.patch('/extras', requirePermission('settings.write'), async (c) =
   const conflict = await accountCodeConflict(c.env.DB, Object.fromEntries(entries));
   if (conflict) return fail(422, 'VALIDATION_ERROR', { [conflict]: 'duplicate' });
   const now = nowISO();
+  const keys = entries.map(([key]) => key);
+  const stored = await c.env.DB.prepare(
+    `SELECT key, value FROM settings_extra WHERE key IN (${keys.map(() => '?').join(', ')})`,
+  ).bind(...keys).all<{ key: string; value: string }>();
+  const previous = new Map((stored.results ?? []).map((row) => [row.key, row.value]));
   for (const [key, value] of entries) {
     await c.env.DB.prepare(
       `INSERT INTO settings_extra (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
     ).bind(key, value, user.id, now).run();
   }
-  await logActivity(c.env.DB, {
-    userId: user.id,
-    action: 'updated',
-    entityType: 'settings',
-    entityId: 'extras:fiscal',
-    summary: 'activity.settings_extra_changed',
-    meta: Object.fromEntries(entries),
-  });
+  // A-30: one line per modified key, with the previous value — never one
+  // aggregate line that hides what changed. Setting values are configuration,
+  // not credentials; a key that names one still goes through the redaction.
+  for (const [key, value] of entries) {
+    const before = previous.get(key) ?? null;
+    if (before === value) continue;
+    await logActivity(c.env.DB, {
+      userId: user.id,
+      action: 'updated',
+      entityType: 'settings',
+      entityId: `extras:${key}`,
+      summary: 'activity.settings_extra_changed',
+      meta: { key },
+      before: { [key]: journalSettingValue(key, before) },
+      after: { [key]: journalSettingValue(key, value) },
+    });
+  }
   return c.json({ ok: true });
 });
 
@@ -349,6 +373,9 @@ settingsRoutes.put('/extras/:key', requirePermission('settings.write'), async (c
     if (conflict) return fail(422, 'VALIDATION_ERROR', { [conflict]: 'duplicate' });
   }
   const user = c.get('user')!;
+  const current = await c.env.DB.prepare(`SELECT value FROM settings_extra WHERE key = ?`)
+    .bind(key)
+    .first<{ value: string }>();
   await c.env.DB.prepare(
     `INSERT INTO settings_extra (key, value, updated_by, updated_at) VALUES (?, ?, ?, ?)
      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
@@ -359,7 +386,9 @@ settingsRoutes.put('/extras/:key', requirePermission('settings.write'), async (c
     entityType: 'settings',
     entityId: `extras:${key}`,
     summary: 'activity.settings_extra_changed',
-    meta: { key, value: body.value },
+    meta: { key },
+    before: { [key]: journalSettingValue(key, current?.value ?? null) },
+    after: { [key]: journalSettingValue(key, body.value) },
   });
   return c.json({ ok: true });
 });

@@ -232,7 +232,25 @@ d'espace de travail, livrés avec le comportement historique : `login_window_min
 `setup_window_minutes` (15), `setup_max_attempts_per_ip` (5). Ils se lisent via `getExtra` dans
 `server/lib/limits.ts` et se changent dans Paramètres → Sécurité ; une valeur hors bornes est
 refusée par `EXTRA_RULES`. Le plafond de 200 lignes d'un document et les 100 paramètres liés de
-D1 restent des garde-fous techniques, non réglables. Chaque requête est enregistrée dans
+D1 restent des garde-fous techniques, non réglables.
+
+## Qui peut changer quoi (A-30)
+
+La matrice de `shared/domain.ts` est la référence ; les tests la figent.
+
+| Action | owner | admin | accountant | sales | viewer |
+|---|---|---|---|---|---|
+| Lire les paramètres (`settings.read`) | oui | oui | oui | non | non |
+| Écrire les paramètres (`settings.write`) | oui | oui | non | non | non |
+| Gérer comptes, rôles et permissions (`users.write`) | oui | oui | non | non | non |
+| Lire le journal (`activity.read`) | oui | oui | oui | non | non |
+
+Chaque écriture de réglage produit une ligne d'audit **par clé modifiée**, avec la valeur
+précédente et la nouvelle ; une valeur dont la clé nomme un secret est masquée (`[masqué]`).
+Un compte délégataire ne peut pas s'élargir : nommer un `owner`/`admin` est réservé au
+propriétaire, et un rôle ou une permission ne peut dépasser ce que l'acteur détient déjà
+(`403 SELF_ESCALATION`). Un rôle sur mesure est filtré de la même façon à la création et à
+l'édition. Chaque requête est enregistrée dans
 `login_attempts` ; aucun secret, jeton ni mot de passe n'y est écrit. `recover-owner` conserve
 sa comparaison à temps constant et son marqueur `owner_recovery_used` à usage unique.
 

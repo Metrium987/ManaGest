@@ -6,7 +6,7 @@ import { fail } from '../lib/errors';
 import { parseInput } from '../lib/validation';
 import { requireAuth, requirePermission } from '../middleware';
 import { PERMISSIONS, ROLE_PERMISSIONS, type Permission, type Role } from '../../shared/domain';
-import { isSystemRole, restrictToActor } from '../services/roles';
+import { isSystemRole, parsePermissions, restrictToActor } from '../services/roles';
 import type { AppEnv } from '../types';
 
 /**
@@ -74,6 +74,8 @@ roleRoutes.post('/', requirePermission('users.write'), async (c) => {
   if (existing) return fail(409, 'ROLE_EXISTS');
 
   const permissions = validatePermissions(body.permissions);
+  // A-30: a delegated account manager cannot create a role wider than itself.
+  if (!restrictToActor(actor.permissions, permissions)) return fail(403, 'SELF_ESCALATION');
   await c.env.DB.prepare(
     `INSERT INTO roles (key, name, permissions, is_system, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)`,
   ).bind(key, body.name, JSON.stringify(permissions), nowISO(), nowISO()).run();
@@ -94,6 +96,7 @@ roleRoutes.patch('/:key', requirePermission('users.write'), async (c) => {
   if (!existing) return fail(404, 'NOT_FOUND');
 
   const permissions = validatePermissions(body.permissions);
+  if (!restrictToActor(actor.permissions, permissions)) return fail(403, 'SELF_ESCALATION');
   await c.env.DB.prepare(`UPDATE roles SET name = ?, permissions = ?, updated_at = ? WHERE key = ? AND is_system = 0`)
     .bind(body.name, JSON.stringify(permissions), nowISO(), key).run();
 
@@ -145,7 +148,7 @@ roleRoutes.put('/user/:userId/permissions', requirePermission('users.write'), as
 
   const permissions = validatePermissions(body.permissions);
   const allowed = restrictToActor(actor.permissions, permissions);
-  if (!allowed) return fail(403, 'FORBIDDEN');
+  if (!allowed) return fail(403, 'SELF_ESCALATION');
   if (!allowed.length) return fail(422, 'VALIDATION_ERROR', { permissions: 'empty' });
 
   const key = `custom_${target.id.replace(/-/g, '').slice(0, 12)}`;
@@ -212,14 +215,25 @@ roleRoutes.patch('/assign/:userId', requirePermission('users.write'), async (c) 
 
   let nextRole: Role = target.role;
   let nextKey: string | null = null;
+  let nextPermissions: Permission[] = ROLE_PERMISSIONS[target.role];
   if (isSystemRole(body.role)) {
     nextRole = body.role;
+    nextPermissions = ROLE_PERMISSIONS[body.role];
   } else {
-    const custom = await c.env.DB.prepare(`SELECT key FROM roles WHERE key = ? AND is_system = 0`)
+    const custom = await c.env.DB.prepare(`SELECT key, permissions FROM roles WHERE key = ? AND is_system = 0`)
       .bind(body.role)
-      .first();
+      .first<{ key: string; permissions: string }>();
     if (!custom) return fail(422, 'VALIDATION_ERROR', { role: 'unknown' });
     nextKey = body.role;
+    nextPermissions = parsePermissions(custom.permissions);
+  }
+  // A-30: only an owner names an administrator, and nobody hands out a
+  // permission they do not hold themselves (no self-escalation by role swap).
+  if (actor.role !== 'owner' && (nextRole === 'owner' || nextRole === 'admin')) {
+    return fail(403, 'SELF_ESCALATION');
+  }
+  if (nextPermissions.some((permission) => !actor.permissions.includes(permission))) {
+    return fail(403, 'SELF_ESCALATION');
   }
 
   // Removing the last owner would lock the workspace out of its own settings.

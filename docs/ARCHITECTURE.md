@@ -176,3 +176,13 @@ sourcé), `EXTRA_RULES` (borne de validation) et `getExtra`. Les seuils de sécu
 d'un refus. Les garde-fous techniques — 200 lignes par document, 100 paramètres liés de D1 — ne
 sont pas des réglages. La correspondance valeur / défaut / source / réglage est tenue en section
 8 de `docs/CONFORMITE.md`.
+
+## Autorité et journal des réglages (A-30)
+
+`PATCH /api/settings/extras` et `PUT /api/settings/extras/:key` écrivent dans
+`settings_extra` puis ajoutent une entrée d'audit **par clé modifiée** (`entity_id:
+extras:<clé>`) avec `before_json`/`after_json`, reprise par Paramètres → Journal. Les clés qui
+nomment un secret sont masquées. Les routes de rôles (`server/routes/roles.ts`) refusent toute
+attribution qui dépasserait les permissions de l'acteur, et seul un propriétaire nomme un
+administrateur (`403 SELF_ESCALATION`). Aucune migration : les colonnes `before_json`/`after_json`
+existaient déjà (A-19).

@@ -236,9 +236,17 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **112 fichie
 |---|---|---|
 | A-29 | **DONE** | Six seuils de `server/lib/limits.ts` deviennent des clés de réglages (`login_window_minutes` 15, `login_max_per_account` 8, `login_max_per_ip` 50, `login_attempt_retention_days` 90, `setup_window_minutes` 15, `setup_max_attempts_per_ip` 5), consommées par `getExtra` dans la décision, avec bornes, libellés FR/EN et champs Paramètres → Sécurité. Garde-fous techniques inchangés (200 lignes, 100 paramètres D1). `tests/settings-coverage.test.ts` : **6 cas** ; `tests/settings-extra.test.ts` : **8 cas**. Mutation (`perAccount: 8` en dur) → **1 cas sur 6 en échec**, restauré → 6/6. Aucune migration. |
 
-Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **114 fichiers, 855 tests, 0 échec**.
+**6 novembre 2026 — A-30 : l'écriture des paramètres est tracée et sans élévation.**
 
-Prochaine fiche : **A-30 — autorité sur les paramètres**.
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-30 | **DONE** | Matrice figée : `owner`/`admin` lisent et écrivent, `accountant` lit seulement, `sales`/`viewer` sont refusés. `PATCH`/`PUT` des réglages journalisent une ligne **par clé modifiée** avec avant/après (secret masqué), lisible dans Paramètres → Journal. Un gestionnaire délégué ne peut ni nommer un `admin` ni attribuer un rôle ou une permission qu'il ne détient pas (`403 SELF_ESCALATION`). `tests/settings-authority.test.ts` : **3 cas** ; mutation du contrôle de sous-ensemble → **1 cas sur 3 en échec**, restauré → 3/3. Aucune migration. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **115 fichiers, 858 tests, 0 échec**.
+
+Aucune fiche actionnable restante : **A-31** (réévaluation de change de clôture) reste
+**conditionnelle** et sa condition — une première facture émise dans une devise non arrimée —
+n'est pas déclenchée dans ce dépôt. La todo actionnable est épuisée.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -1428,7 +1436,29 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   auto-élévation), extension des tests de permissions.
 - **Pièges.** Un `PATCH` en lot journalise **par clé** modifiée, pas une ligne globale. Ne jamais
   journaliser un secret en clair.
-- **Effort.** M. **Statut.** TODO.
+- **Effort.** M. **Statut.** **DONE** (6/11/2026).
+- **Livré.** Le `PATCH /api/settings/extras` journalise désormais **une ligne par clé modifiée**
+  (`entity_id: extras:<clé>`, `meta: { key }`) avec `before` et `after` ; le `PUT /extras/:key`
+  fait de même. Une clé inchangée n'écrit rien. Les valeurs dont la clé nomme un secret
+  (`secret`, `password`, `credential`, `smtp`, `api_key`, `provider`) sont remplacées par
+  `[masqué]` : aujourd'hui le registre `EXTRA_KEYS` ne contient aucun identifiant, mais le garde
+  reste. Paramètres → Journal affichait déjà les paires avant/après (`ActivityPage.tsx`) : les
+  écritures de réglages y sont maintenant lisibles. L'élévation est fermée dans
+  `server/routes/roles.ts` : un porteur de `users.write` non propriétaire ne peut pas nommer un
+  `owner`/`admin`, ni attribuer un rôle ou une permission qu'il ne possède pas
+  (`403 SELF_ESCALATION`) ; la création et l'édition d'un rôle sur mesure sont filtrées de la
+  même façon. La matrice de `shared/domain.ts` reste inchangée et est désormais figée par test.
+- **Preuve.** `tests/settings-authority.test.ts`, **3 cas**, vrai worker sur base migrée par cas :
+  (1) matrice — `owner`/`admin` lisent et écrivent (200), `accountant` lit (200) mais écrit 403
+  `FORBIDDEN`, `sales`/`viewer` reçoivent 403 en lecture comme en écriture ; (2) journal — un
+  `PATCH` puis un `PUT` produisent deux lignes `extras:retention_years`, la première
+  `before: null → after: '11'`, la seconde `before: '11' → after: '12'` ; (3) élévation — un
+  gestionnaire délégué (`users.write` + `settings.read` seulement) reçoit 403 `SELF_ESCALATION`
+  pour nommer un `admin`, attribuer un rôle plus large ou accorder `settings.write`, tandis que
+  le propriétaire nomme l'administrateur (200). Mutation : le contrôle de sous-ensemble retiré
+  de `PATCH /roles/assign/:userId` → **1 cas sur 3 en échec** (« refuses a delegated manager who
+  tries to widen a role or a permission », 200 au lieu de 403), restauré → **3/3**. Aucune
+  migration. Porte : typecheck **0 erreur**, suite **115 fichiers / 858 tests, 0 échec**.
 
 ### A-31 — Réévaluation de change de fin d'exercice (conditionnelle)
 
@@ -1558,5 +1588,5 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-27 | Documentation | 6 | S | A-01…A-31 | DONE |
 | A-28 | Tests de concurrence | 6 | M | A-19, A-23 | DONE |
 | A-29 | Aucune valeur métier en dur | 6 | M | A-10 | **DONE** |
-| A-30 | Autorité sur les paramètres | 6 | M | — | TODO |
+| A-30 | Autorité sur les paramètres | 6 | M | — | **DONE** |
 | A-31 | Réévaluation de change de clôture | 3 | L | A-01, A-08 | TODO (conditionnelle) |
