@@ -116,7 +116,7 @@ T-000 backup · T-001 numbering · T-002a/b/c/d TVA status (b: invoice PDF + rep
 ## Audit du 6 novembre 2026 — plan d'exécution détaillé
 
 L'audit [`docs/AUDIT-2026-11-06.md`](../AUDIT-2026-11-06.md) a produit un second plan, additif à
-celui-ci et portant des identifiants distincts (`A-01` … `A-30`) :
+celui-ci et portant des identifiants distincts (`A-01` … `A-31`) :
 [`TODO-AUDIT-2026-11-06.md`](TODO-AUDIT-2026-11-06.md).
 
 Il ne remplace aucune ligne de ce document : les tâches `T-xxx` restent la référence pour ce qui

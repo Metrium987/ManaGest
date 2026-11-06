@@ -85,6 +85,9 @@ Trois pistes parallèles : **chiffres justes** (A-01…A-08), **schéma** (A-10�
 les phases ; les lancer après A-10 pour que les nouveaux réglages naissent dans un schéma
 versionné.
 
+**Conditionnelle.** A-31 (réévaluation de change de clôture) ne démarre que sur une devise non
+arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
+
 ---
 
 ## 3. Phase 1 — Chiffres justes (à faire avant toute démonstration à un comptable)
@@ -111,12 +114,15 @@ versionné.
   4. Conserver le comportement « encaisser un brouillon l'émet » (stock + `sent_at`) mais
      l'exécuter **avant** l'écriture du règlement, dans la même logique de service.
 - **Critères d'acceptation.** Facture XPF : `amount_xpf = amount`, `fx_difference = 0`.
-  Facture EUR avec taux 119,33 : `amount_xpf = round(amount × 119,33)`, écart non nul si le
-  taux du jour diffère. Le journal contient banque (débit XPF) / client (crédit XPF) /
-  gain ou perte de change. Aucune ligne `payments` avec `amount_xpf = 0` alors que `amount > 0`.
-- **Tests.** `tests/mark-paid-fx.test.ts` : XPF, EUR même taux, EUR taux différent (gain),
-  EUR taux différent (perte), taux manquant (422), double encaissement (409), brouillon
-  encaissé (stock consommé une seule fois).
+  Facture EUR : `amount_xpf = round(amount × 119,3317)`, et **écart nul par construction** — le
+  franc Pacifique est arrimé à l'euro à parité fixe (`XPF_PER_EUR`, `shared/landed-cost.ts:33`),
+  donc un écart EUR/XPF ne peut venir que d'une saisie erronée. L'écart réalisé se teste sur une
+  devise **non arrimée** (USD, AUD, NZD). Le journal contient banque (débit XPF) / client (crédit
+  XPF) / gain ou perte de change. Aucune ligne `payments` avec `amount_xpf = 0` alors que
+  `amount > 0`.
+- **Tests.** `tests/mark-paid-fx.test.ts` : XPF, EUR (parité fixe → écart nul), **USD gain**,
+  **USD perte**, taux manquant (422), double encaissement (409), brouillon encaissé (stock
+  consommé une seule fois).
 - **Pièges.** Ne pas réutiliser `body.amount` du client : c'est le **solde** qui fait foi.
   Vérifier qu'un second appel ne crée pas un deuxième règlement (idempotence par solde).
 - **Effort.** M. **Statut.** TODO.
@@ -332,6 +338,11 @@ versionné.
   `tests/stock-*` pour un BC en devise.
 - **Pièges.** Un import CSV existant ne fournit pas la devise : défaut XPF, ne pas casser
   `tests/import*.test.ts`. Vérifier `tests/backup-restore.test.ts` après ajout de colonnes.
+  Deux représentations du taux coexistent : `exchange_rate REAL` sur les documents (`invoices`,
+  `quotes`, `credits`, `payments`, `recurring_invoices`) et `exchange_rate_micro INTEGER`
+  (×1e6) sur `landed_cost_sheets` et `import_sheets`. Suivre la convention des documents pour
+  les dépenses et les bons de commande, et **documenter** l'écart (précision des coûts
+  d'import) plutôt que d'introduire une troisième forme.
 - **Effort.** L. **Statut.** TODO.
 
 ### A-09 — Décimales : une seule source de vérité
@@ -901,6 +912,50 @@ versionné.
   journaliser un secret en clair.
 - **Effort.** M. **Statut.** TODO.
 
+### A-31 — Réévaluation de change de fin d'exercice (conditionnelle)
+
+- **But.** À la clôture, les créances et dettes en devise **non arrimée** sont réévaluées au taux
+  de clôture, l'écart latent est posté en 656/756, et l'ouverture suivante produit l'écriture
+  inverse — sans jamais réécrire le document.
+- **Pourquoi.** Le plan couvre l'écart **réalisé** au règlement (A-01) mais pas l'écart **latent**
+  de clôture : une facture USD non réglée au 31/12 reste au taux d'émission, donc le bilan et le
+  résultat de l'exercice sont faux. Le backlog produits l'avait identifié (Q15) et l'avait
+  reporté faute de transaction en devise tierce, avec une condition de réouverture nommée :
+  « une première facture émise dans une devise non arrimée à l'euro ».
+- **Référence.** Q15 (`docs/TODO-produits-services.md`) pour l'arbitrage et le plan en trois
+  étapes ; **PCG 2026** (C-7) pour les comptes **656/756** — l'ancien document citait 666/766,
+  corrigé depuis. Parité fixe XPF/EUR (`XPF_PER_EUR = 119,3317`) : **aucune réévaluation n'est
+  possible ni nécessaire entre XPF et EUR**, seulement pour USD/AUD/NZD.
+- **Fichiers.** `server/services/currencies.ts` (`freezeFx`, `rateOn`),
+  `server/services/accounting.ts`, `server/lib/accounting.ts`, `server/routes/accounting.ts`,
+  `shared/accounts.ts`, `server/services/locks.ts` (période).
+- **Étapes.**
+  1. `revalueOpenDocuments(database, { date })` : pour chaque facture/avoir non soldé et chaque
+     dette fournisseur en devise non arrimée, comparer `solde_devise × taux_clôture` au solde
+     XPF du document, puis agréger par tiers et par sens.
+  2. Poster une écriture par contrepartie (source `fx_revaluation`, event `closing`), clé
+     `(source, id, event, date)` pour l'idempotence, sous `assertPeriodOpen`.
+  3. Poster l'écriture inverse à l'ouverture suivante (`event = 'reversal'`), pour que la
+     réévaluation ne « colle » pas au bilan de l'exercice suivant.
+  4. Utiliser les comptes **paramétrés** (`account_fx_gain` / `account_fx_loss`, défaut 756/656),
+     jamais un littéral (R-1).
+  5. Rapport « réévaluation de clôture » : documents, taux retenu, écart par document, total par
+     compte ; export CSV comme les autres états.
+- **Critères d'acceptation.** Facture USD 1 000 non réglée, taux 100 à l'émission, 105 à la
+  clôture → écart latent 5 000 sur 656 ou 756 ; **aucune ligne** pour un document XPF ou EUR ;
+  l'écriture inverse existe au lendemain ; relancer la clôture ne double rien ; une période
+  close refuse l'opération.
+- **Tests.** `tests/fx-revaluation.test.ts` : USD en perte, USD en gain, EUR (parité fixe, aucun
+  écart), XPF (aucun écart), double exécution (idempotente), période close (409), avoir
+  partiellement réglé, sens fournisseur.
+- **Pièges.** Ne pas réévaluer un document déjà réglé (écart réalisé, A-01). Ne pas toucher au
+  document : seule l'écriture bouge. Un taux de clôture manquant doit refuser l'opération
+  (`409 RATE_MISSING`), jamais valoir 1.
+- **Déclencheur.** Aucune facture en devise tierce n'existe aujourd'hui : la tâche reste
+  spécifiée et `TODO`, et devient prioritaire à la première facture USD/AUD/NZD non réglée. Elle
+  n'est le prérequis d'aucune autre.
+- **Effort.** L. **Statut.** TODO (conditionnelle).
+
 ---
 
 ## 9. Séquencement recommandé
@@ -909,7 +964,7 @@ versionné.
 |---|---|---|
 | 1 | A-01, A-02, A-03, A-04, A-05 | Plus aucun chiffre faux sur facture/avoir/encaissement ; TVA déclarée juste |
 | 2 | A-06, A-10, A-11 | Approbations solides ; schéma versionné ; requêtes indexées |
-| 3 | A-07, A-08, A-09, A-15 | Multi-devises complet et plafonds D1 respectés |
+| 3 | A-07, A-08, A-09, A-15, A-31 (si déclenchée) | Multi-devises complet et plafonds D1 respectés |
 | 4 | A-12, A-13, A-14, A-19 | Intégrité défendue par la base ; stock réconcilié ; audit sans course |
 | 5 | A-16, A-17, A-18 | Performance et recherche ; comptabilité incrémentale |
 | 6 | A-20 à A-25, A-26, A-27, A-28, A-29, A-30 | Durcissement, purges, observabilité, tests, documentation, paramétrabilité |
@@ -920,6 +975,16 @@ dépend de A-01/A-03 ; A-17 dépend de A-10 (migration FTS5) et impacte A-26 (sa
 ---
 
 ## 10. Ce que ce plan ne fait pas
+
+**Hérité du backlog produits (`docs/TODO-produits-services.md`), intégré le 6/11/2026 plutôt
+qu'archivé.** Seul son contenu qui appelle du code entre dans ce plan : la **réévaluation de
+change de clôture** devient A-31, et deux corrections en découlent (A-01 teste l'écart réalisé
+sur une devise non arrimée, A-08 suit la convention `exchange_rate` des documents). Le reste
+n'est pas une tâche de code et reste à sa place : MRP/GPAO hors périmètre (détail H8 du
+backlog) ; paliers SLA par priorité, horaires et jours fériés sont des **valeurs à décider**,
+donc `PENDING.md` ; H4/H5 sont des **actions utilisateur** (fichiers de l'ancien logiciel,
+secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du 2/11 est obsolète
+(hébergement hors Cloudflare, D-05) et n'est pas reprise.
 
 - Pas de portail client, pas de passerelle de paiement, pas de Factur-X/Peppol : ces sujets
   restent des décisions produit de `PENDING.md` (T-401, T-402).
@@ -972,7 +1037,8 @@ dépend de A-01/A-03 ; A-17 dépend de A-10 (migration FTS5) et impacte A-26 (sa
 | A-24 | Rétention et purges | 6 | M | A-15 | TODO |
 | A-25 | Observabilité métier | 6 | M | A-12, A-14 | TODO |
 | A-26 | Tests HTTP d'intégration | 6 | L | A-10 | TODO |
-| A-27 | Documentation | 6 | S | A-01…A-30 | TODO |
+| A-27 | Documentation | 6 | S | A-01…A-31 | TODO |
 | A-28 | Tests de concurrence | 6 | M | A-19, A-23 | TODO |
 | A-29 | Aucune valeur métier en dur | 6 | M | A-10 | TODO |
 | A-30 | Autorité sur les paramètres | 6 | M | — | TODO |
+| A-31 | Réévaluation de change de clôture | 3 | L | A-01, A-08 | TODO (conditionnelle) |
