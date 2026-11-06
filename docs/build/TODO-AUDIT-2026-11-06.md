@@ -16,7 +16,7 @@ configurable codée en dur. Une vérification impossible (navigateur, D1 héberg
 Cloudflare) est **rapportée comme non exécutée**, jamais cochée.
 
 **Légende.** Effort : S (≤ ½ j), M (1–2 j), L (3–5 j), XL (> 1 semaine).
-Statut : `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED`.
+Statut : `TODO` | `IN PROGRESS` | `DONE` | `BLOCKED` | `CLOSED` (condition non déclenchée).
 
 ---
 
@@ -242,11 +242,14 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **112 fichie
 |---|---|---|
 | A-30 | **DONE** | Matrice figée : `owner`/`admin` lisent et écrivent, `accountant` lit seulement, `sales`/`viewer` sont refusés. `PATCH`/`PUT` des réglages journalisent une ligne **par clé modifiée** avec avant/après (secret masqué), lisible dans Paramètres → Journal. Un gestionnaire délégué ne peut ni nommer un `admin` ni attribuer un rôle ou une permission qu'il ne détient pas (`403 SELF_ESCALATION`). `tests/settings-authority.test.ts` : **3 cas** ; mutation du contrôle de sous-ensemble → **1 cas sur 3 en échec**, restauré → 3/3. Aucune migration. |
 
-Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **115 fichiers, 858 tests, 0 échec**.
+**6 novembre 2026 — A-31 : clôturée sans implémentation, condition non déclenchée.**
 
-Aucune fiche actionnable restante : **A-31** (réévaluation de change de clôture) reste
-**conditionnelle** et sa condition — une première facture émise dans une devise non arrimée —
-n'est pas déclenchée dans ce dépôt. La todo actionnable est épuisée.
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-31 | **CLOSED** | Déclencheur absent : `server/services/seed.ts` écrit toutes les factures, devis, abonnements et comptes de démonstration dans la devise unique de la société (`ctx.currency`), et aucune base n'est versionnée ; `server/` ne crée aucune facture USD/AUD/NZD. Les fixtures USD des tests prouvent l'écart **réalisé** (A-01), pas une facture émise. Aucun code ajouté : la spécification et ses tests restent dans la fiche, réactivables à la première facture non arrimée non soldée. |
+
+Bilan : **30 DONE, 1 CLOSED, 0 TODO**. Porte : `npm run typecheck` → **0 erreur** ;
+`npx vitest run` → **115 fichiers, 858 tests, 0 échec**.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -290,8 +293,10 @@ Trois pistes parallèles : **chiffres justes** (A-01…A-08), **schéma** (A-10�
 les phases ; les lancer après A-10 pour que les nouveaux réglages naissent dans un schéma
 versionné.
 
-**Conditionnelle.** A-31 (réévaluation de change de clôture) ne démarre que sur une devise non
-arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
+**Clôturée sans implémentation.** A-31 (réévaluation de change de clôture) n'a pas été
+déclenchée : aucune facture émise dans une devise non arrimée n'existe dans le dépôt (semis et
+code en XPF ; les fixtures USD testent l'écart réalisé d'A-01). Réactivation : première facture
+USD/AUD/NZD non soldée en base réelle. Elle dépend de A-01 et A-08 mais ne bloque personne.
 
 ---
 
@@ -1460,7 +1465,7 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   tries to widen a role or a permission », 200 au lieu de 403), restauré → **3/3**. Aucune
   migration. Porte : typecheck **0 erreur**, suite **115 fichiers / 858 tests, 0 échec**.
 
-### A-31 — Réévaluation de change de fin d'exercice (conditionnelle)
+### A-31 — Réévaluation de change de fin d'exercice (CLOSED — condition non déclenchée)
 
 - **But.** À la clôture, les créances et dettes en devise **non arrimée** sont réévaluées au taux
   de clôture, l'écart latent est posté en 656/756, et l'ouverture suivante produit l'écriture
@@ -1499,10 +1504,25 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Pièges.** Ne pas réévaluer un document déjà réglé (écart réalisé, A-01). Ne pas toucher au
   document : seule l'écriture bouge. Un taux de clôture manquant doit refuser l'opération
   (`409 RATE_MISSING`), jamais valoir 1.
-- **Déclencheur.** Aucune facture en devise tierce n'existe aujourd'hui : la tâche reste
-  spécifiée et `TODO`, et devient prioritaire à la première facture USD/AUD/NZD non réglée. Elle
-  n'est le prérequis d'aucune autre.
-- **Effort.** L. **Statut.** TODO (conditionnelle).
+- **Déclencheur.** Aucune facture en devise tierce n'a été émise : la tâche sera prioritaire à
+  la première facture USD/AUD/NZD non réglée. Elle n'est le prérequis d'aucune autre.
+- **Clôture (6/11/2026).** **CLOSED, non implémentée** : le déclencheur n'existe pas dans ce que
+  le dépôt contient réellement. Preuve : `server/services/seed.ts` écrit **toutes** les factures,
+  avoirs implicites, devis, abonnements et comptes bancaires de démonstration avec la devise
+  unique de la société (`ctx.currency`, XPF à l'installation), et l'installation transmet la
+  devise de la société (`server/routes/setup.ts`) ; aucune base ni fichier de données n'est
+  versionné. Dans `server/`, `USD` n'apparaît que dans un commentaire de `routes/payments.ts` et
+  comme exemple de format ISO dans `lib/fx.ts` : aucune facture USD/AUD/NZD n'est créée par le
+  produit. Les lignes USD de `tests/multi-currency.test.ts`, `tests/settle-invoice.test.ts` et
+  `tests/expenses-fx.test.ts` sont des **fixtures synthétiques** qui prouvent l'écart **réalisé**
+  au règlement (A-01) ; elles ne sont pas des factures émises. Le code de conversion par devise
+  (`freezeFx`, `rateOn`), les comptes 656/756 paramétrés et le verrou de période existent déjà :
+  ce sont des prérequis, pas le déclencheur, qui est une créance ou dette **ouverte en devise
+  tierce à la clôture**.
+- **Réactivation.** Rouvrir la fiche dès qu'une facture USD/AUD/NZD non soldée existe dans une
+  base réelle (ou si le semis de démonstration en produit une). Les étapes et tests ci-dessus
+  restent la spécification ; dépendances A-01 et A-08.
+- **Effort.** L. **Statut.** **CLOSED** (6/11/2026) — conditionnelle non déclenchée.
 
 ---
 
@@ -1512,7 +1532,7 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 |---|---|---|
 | 1 | A-01, A-02, A-03, A-04, A-05 | Plus aucun chiffre faux sur facture/avoir/encaissement ; TVA déclarée juste |
 | 2 | A-06, A-10, A-11 | Approbations solides ; schéma versionné ; requêtes indexées |
-| 3 | A-07, A-08, A-09, A-15, A-31 (si déclenchée) | Multi-devises complet et plafonds D1 respectés |
+| 3 | A-07, A-08, A-09, A-15, A-31 (clôturée, non déclenchée) | Multi-devises complet et plafonds D1 respectés |
 | 4 | A-12, A-13, A-14, A-19 | Intégrité défendue par la base ; stock réconcilié ; audit sans course |
 | 5 | A-16, A-17, A-18 | Performance et recherche ; comptabilité incrémentale |
 | 6 | A-20 à A-25, A-26, A-27, A-28, A-29, A-30 | Durcissement, purges, observabilité, tests, documentation, paramétrabilité |
@@ -1589,4 +1609,4 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-28 | Tests de concurrence | 6 | M | A-19, A-23 | DONE |
 | A-29 | Aucune valeur métier en dur | 6 | M | A-10 | **DONE** |
 | A-30 | Autorité sur les paramètres | 6 | M | — | **DONE** |
-| A-31 | Réévaluation de change de clôture | 3 | L | A-01, A-08 | TODO (conditionnelle) |
+| A-31 | Réévaluation de change de clôture | 3 | L | A-01, A-08 | CLOSED (condition non déclenchée) |
