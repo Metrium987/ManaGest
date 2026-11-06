@@ -179,6 +179,16 @@ Prochaine fiche : **A-22 — ré-authentification pour changer un facteur**.
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **107 fichiers, 819 tests, 0 échec**.
 
 Prochaine fiche : **A-23 — installation : verrou et limitation**.
+
+**6 novembre 2026 — A-23 : installation singleton et limitée.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-23 | **DONE** | Insertion conditionnelle (`INSERT … SELECT … WHERE NOT EXISTS (SELECT 1 FROM company)`) et propriétaire inséré dans le même `batch` seulement si la société a gagné ; relecture du `companyId` → `409 ALREADY_CONFIGURED` pour la perdante, en plus de la contrainte A-13. Limitation réutilisant A-20 sur `setup:install` et `setup:recover-owner` : 5 tentatives/IP/15 min, 6e → `429` + `retry_after`. `recover-owner` garde son jeton constant-time et son usage unique. Préversion non configurée = premier visiteur propriétaire : documenté dans `README.md` et `docs/SECURITE.md`. `tests/setup-concurrency.test.ts` **3 cas** (concurrence `[201, 409]` + 1 société/1 propriétaire ; 6 tentatives → `429` et autre IP servie ; récupération : 5×401 puis 429, jeton valide `200` puis `409 RECOVERY_ALREADY_USED`). Mutation (gardes retirées) : **2 cas en échec sur 3**. Pas de migration. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **108 fichiers, 822 tests, 0 échec**.
+
+Prochaine fiche : **A-24 — rétention et purges**.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -1044,8 +1054,30 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Critères d'acceptation.** Deux installations concurrentes → une seule société, l'autre
   reçoit `409 ALREADY_CONFIGURED`. 6e tentative → 429.
 - **Tests.** `tests/setup-concurrency.test.ts`.
+- **Livré (2026-11-06).** La contrainte A-13 (`company.singleton` + index unique) reste le
+  dernier rempart ; l'insertion devient conditionnelle : `INSERT INTO company (…) SELECT …
+  WHERE NOT EXISTS (SELECT 1 FROM company)`, et l'utilisateur propriétaire suit dans le même
+  `batch` avec `WHERE EXISTS (SELECT 1 FROM company WHERE id = ?)`. Après le batch, la route
+  relit son `companyId` : absent → `409 ALREADY_CONFIGURED`. Deux installations simultanées ne
+  peuvent donc plus créer deux sociétés, et la perdante est refusée proprement au lieu de
+  laisser une erreur de contrainte. Limitation A-20 réutilisée via une clé réservée
+  (`setup:install`, `setup:recover-owner`) : **5 tentatives par IP et par fenêtre de 15 min**,
+  la 6e répond `429 TOO_MANY_ATTEMPTS` avec `retry_after` (en-tête `Retry-After` posé par
+  `onError`). Chaque requête est enregistrée dans `login_attempts`, sans jamais journaliser de
+  secret. `recover-owner` garde son jeton `x-recovery-token` à comparaison constante et son
+  marqueur `owner_recovery_used` à usage unique. Documentation : `README.md` et
+  `docs/SECURITE.md` rappellent qu'une préversion non configurée donne le rôle propriétaire au
+  premier visiteur et ne doit jamais être exposée publiquement.
+  Preuve : `tests/setup-concurrency.test.ts`, **3 cas** sur les vraies routes — deux
+  installations concurrentes (`Promise.all`) → `[201, 409]`, **une** société et **un**
+  propriétaire ; six installations depuis une IP → `201` puis quatre `409` puis **`429`**, avec
+  `retry_after > 0`, et une autre IP toujours servie (`409`) ; six jetons de récupération
+  devinés → cinq `401` puis **`429`**, puis le jeton valide reste à usage unique (`200` puis
+  `409 RECOVERY_ALREADY_USED`, un seul marqueur). Mutation : gardes de limitation retirées →
+  **2 cas en échec sur 3**. Aucune migration (la contrainte A-13 suffit) ; typecheck 0 erreur ;
+  suite **108 fichiers / 822 tests**.
 - **Pièges.** `recover-owner` reste à usage unique ; ne pas affaiblir sa protection.
-- **Effort.** S. **Statut.** TODO.
+- **Effort.** S. **Statut.** DONE.
 
 ### A-24 — Rétention et purges
 
@@ -1347,7 +1379,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-20 | Limitation par IP et compte | 6 | S | — | DONE |
 | A-21 | En-têtes de sécurité cohérents | 6 | M | — | DONE |
 | A-22 | Ré-auth MFA | 6 | S | — | DONE |
-| A-23 | Installation verrouillée | 6 | S | A-13 | TODO |
+| A-23 | Installation verrouillée | 6 | S | A-13 | DONE |
 | A-24 | Rétention et purges | 6 | M | A-15 | TODO |
 | A-25 | Observabilité métier | 6 | M | A-12, A-14 | TODO |
 | A-26 | Tests HTTP d'intégration | 6 | L | A-10 | TODO |

@@ -135,6 +135,17 @@ il affiche l'assistant d'installation au premier accès.
 
 ---
 
+### Installation : une seule fois par base
+
+`/install` crée la société, le propriétaire et le plan de TVA en un seul appel. L'insertion est
+conditionnelle et limitée à **5 tentatives par IP et par quart d'heure** : une installation
+simultanée échoue proprement en `409 ALREADY_CONFIGURED`, la sixième tentative répond `429`.
+Le secours `recover-owner` suit la même limite et reste à usage unique.
+
+> **Attention** : tant que la base n'est pas installée, le premier visiteur de `/install`
+> devient propriétaire. Ne laissez jamais une préversion non configurée accessible publiquement
+> (voir `docs/SECURITE.md`).
+
 ## 5. Rôles
 
 | Rôle | Portée |

@@ -97,6 +97,46 @@ export async function recordLoginFailure(
   return Boolean(row?.id);
 }
 
+/**
+ * A-23: installation and break-glass recovery are one-shot endpoints, so they
+ * get their own per-IP budget instead of the account login quota. Five attempts
+ * per window, counted under a reserved key, then `429` until the window slides.
+ */
+export const SETUP_WINDOW_MINUTES = 15;
+export const SETUP_MAX_ATTEMPTS_PER_IP = 5;
+
+export async function setupThrottle(
+  database: D1Database,
+  context: { key: string; ip: string },
+  now = new Date(),
+): Promise<ThrottleDecision> {
+  const cutoff = new Date(now.getTime() - SETUP_WINDOW_MINUTES * 60_000).toISOString();
+  const row = await database
+    .prepare(
+      `SELECT COUNT(*) AS count, MIN(created_at) AS oldest FROM login_attempts
+       WHERE email = ? AND ip = ? AND successful = 0 AND created_at >= ?`,
+    )
+    .bind(context.key, context.ip, cutoff)
+    .first<{ count: number; oldest: string | null }>();
+  if (Number(row?.count ?? 0) < SETUP_MAX_ATTEMPTS_PER_IP) {
+    return { blocked: false, retryAfterSeconds: 0 };
+  }
+  const expiresAt = new Date(row?.oldest ?? now.toISOString()).getTime()
+    + SETUP_WINDOW_MINUTES * 60_000;
+  return { blocked: true, retryAfterSeconds: Math.max(1, Math.ceil((expiresAt - now.getTime()) / 1000)) };
+}
+
+/** Records one installation attempt, whether it succeeds or not. */
+export async function recordSetupAttempt(
+  database: D1Database,
+  context: { key: string; ip: string },
+): Promise<void> {
+  await database
+    .prepare(`INSERT INTO login_attempts (id, email, ip, successful, created_at) VALUES (?, ?, ?, 0, ?)`)
+    .bind(crypto.randomUUID(), context.key, context.ip, nowISO())
+    .run();
+}
+
 /** Never journal a full address: the journal is readable by more roles. */
 export function maskedEmail(email: string): string {
   const at = email.indexOf('@');

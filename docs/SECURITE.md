@@ -214,3 +214,20 @@ n'écrit rien. Aucun état « ré-authentifié » n'est conservé : le mot de pa
 appel, donc un `setup` autorisé ne vaut pas pour l'`enable` suivant et rien ne peut être rejoué.
 Le mot de passe n'apparaît ni dans l'audit ni dans les logs ; seuls `enabled`/`disabled` sont
 tracés, avec l'IP.
+
+## Installation unique et limitation (A-23)
+
+`/install` n'existe qu'une fois : l'insertion de la société est conditionnelle
+(`WHERE NOT EXISTS (SELECT 1 FROM company)`), l'utilisateur propriétaire suit dans le même
+`batch`, et la requête perdante reçoit `409 ALREADY_CONFIGURED` ; la contrainte
+`company.singleton` (A-13) reste le dernier rempart au niveau base.
+
+Les deux routes sans session, `/install` et `/recover-owner`, partagent la fenêtre de A-20 sous
+des clés réservées : 5 tentatives par IP et par tranche de 15 minutes, puis
+`429 TOO_MANY_ATTEMPTS` avec `retry_after`. Chaque requête est enregistrée dans
+`login_attempts` ; aucun secret, jeton ni mot de passe n'y est écrit. `recover-owner` conserve
+sa comparaison à temps constant et son marqueur `owner_recovery_used` à usage unique.
+
+**Préversion non configurée.** Le premier visiteur qui atteint `/install` crée la société et
+devient propriétaire. Une préversion non configurée ne doit donc jamais être exposée
+publiquement : installez-la ou laissez-la hors ligne.

@@ -19,7 +19,8 @@ import { fail } from '../lib/errors';
 import { logActivity } from '../lib/audit';
 import { validatePassword } from '../lib/passwords';
 import { optionalIsoDate, parseInput } from '../lib/validation';
-import { loadCompany } from '../middleware';
+import { clientIp, loadCompany } from '../middleware';
+import { recordSetupAttempt, setupThrottle } from '../lib/limits';
 import { seedDemoData } from '../services/seed';
 import type { AppEnv } from '../types';
 
@@ -102,6 +103,15 @@ setupRoutes.get('/status', async (c) => {
 });
 
 setupRoutes.post('/install', async (c) => {
+  // A-23: installation is one-shot and takes no credential, so it is limited
+  // per address before any work; the sixth attempt waits for the window.
+  const ip = clientIp(c);
+  const throttle = await setupThrottle(c.env.DB, { key: 'setup:install', ip });
+  if (throttle.blocked) {
+    return fail(429, 'TOO_MANY_ATTEMPTS', { retry_after: String(throttle.retryAfterSeconds) });
+  }
+  await recordSetupAttempt(c.env.DB, { key: 'setup:install', ip });
+
   const existing = await loadCompany(c.env.DB);
   if (existing) return fail(409, 'ALREADY_CONFIGURED');
 
@@ -171,17 +181,30 @@ setupRoutes.post('/install', async (c) => {
     updated_at: now,
   } satisfies Record<string, string | number | null>;
   const companyColumns = Object.keys(companyValues) as (keyof typeof companyValues)[];
+  // A-23: the check above is only a fast path. The insert itself refuses to add
+  // a second company, and the owner row follows the company that won, so two
+  // simultaneous installations cannot both succeed.
   const companyStatement = c.env.DB.prepare(
     `INSERT INTO company (${companyColumns.join(', ')})
-     VALUES (${companyColumns.map(() => '?').join(', ')})`,
+     SELECT ${companyColumns.map(() => '?').join(', ')}
+     WHERE NOT EXISTS (SELECT 1 FROM company)`,
   ).bind(...companyColumns.map((column) => companyValues[column]));
 
   const userStatement = c.env.DB.prepare(
     `INSERT INTO users (id, email, password_hash, first_name, last_name, role, is_active, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 'owner', 1, ?, ?)`,
-  ).bind(userId, body.admin.email, passwordHash, body.admin.first_name, body.admin.last_name, now, now);
+     SELECT ?, ?, ?, ?, ?, 'owner', 1, ?, ?
+     WHERE EXISTS (SELECT 1 FROM company WHERE id = ?)`,
+  ).bind(
+    userId, body.admin.email, passwordHash, body.admin.first_name, body.admin.last_name, now, now,
+    companyId,
+  );
 
   await c.env.DB.batch([companyStatement, userStatement]);
+
+  const installed = await c.env.DB.prepare(`SELECT id FROM company WHERE id = ?`)
+    .bind(companyId)
+    .first<{ id: string }>();
+  if (!installed) return fail(409, 'ALREADY_CONFIGURED');
 
   // The whole local plan, including the exempt line and the 1 % archipelago
   // rate with the date it starts to apply.
@@ -238,6 +261,15 @@ setupRoutes.post('/install', async (c) => {
  * once per database, and every use is recorded in the audit journal.
  */
 setupRoutes.post('/recover-owner', async (c) => {
+  // A-23: the recovery token is high-value, so guessing it is throttled per
+  // address; the single-use marker below is untouched.
+  const ip = clientIp(c);
+  const throttle = await setupThrottle(c.env.DB, { key: 'setup:recover-owner', ip });
+  if (throttle.blocked) {
+    return fail(429, 'TOO_MANY_ATTEMPTS', { retry_after: String(throttle.retryAfterSeconds) });
+  }
+  await recordSetupAttempt(c.env.DB, { key: 'setup:recover-owner', ip });
+
   const secret = c.env.OWNER_RECOVERY_TOKEN;
   if (!secret) return fail(503, 'RECOVERY_NOT_CONFIGURED');
   const presented = c.req.header('x-recovery-token') ?? '';
