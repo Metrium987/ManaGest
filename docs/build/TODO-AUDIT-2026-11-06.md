@@ -97,6 +97,12 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **97 fichier
 |---|---|---|
 | A-15 | **DONE** | `server/lib/sql.ts` (`chunks`/90, `placeholders`, `selectIn`, `runInChunks`, `firstIn`) remplace les 28 listes `IN (${…})` de `server/` ; `server/lib/search.ts` normalise et refuse > 50 octets en `422 VALIDATION_ERROR { q: 'too_long' }` avant requête ; `MAX_LINE_ITEMS = 200` nommé et 201e ligne refusée. `tests/sql-chunking.test.ts`, **5 cas** (90/91/200, ordre, 200 identifiants en 3 statements 90/90/20 en lecture et en écriture, `firstIn`) ; `tests/search-limits.test.ts`, **5 cas** (trim/minuscules, 50 vs 51 octets, accents en octets, 120 caractères, 200 vs 201 lignes). Mutations : `MAX_BOUND_PARAMS = 1000` et `MAX_SEARCH_BYTES = 500` → **5 cas en échec**. |
 
+**6 novembre 2026 — A-16 : les listes lisent ce qu'elles affichent.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-16 | **DONE** | `server/routes/invoices.ts` : `INVOICE_LIST_COLUMNS` + `invoiceListSql(where)` projettent toutes les colonnes sauf `line_items` ; la liste ne renvoie plus le payload, `GET /:id` le conserve. `server/routes/clients.ts` : `CLIENT_LIST_COLUMNS` remplace `c.*`. `server/routes/public-links.ts` : `PUBLIC_LINK_COLUMNS` remplace les deux `SELECT *` (sans `token_hash`). `tests/list-projection.test.ts`, **4 cas** (aucun `line_items`/`i.*`/`SELECT *`, toutes les colonnes du schéma projetées, annuaire explicite et complet, liens publics nommés). Mutations : `i.*` rétabli et `c.deleted_at` retiré → **3 cas en échec**. |
+
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -662,8 +668,19 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Tests.** `tests/list-projection.test.ts` (colonnes attendues, absence de `line_items`).
 - **Pièges.** Le drawer « Voir » lit la ligne de liste : vérifier qu'il n'a pas besoin d'un
   champ retiré.
-- **Effort.** M. **Statut.** TODO.
-
+- **Effort.** M. **Statut.** DONE (2026-11-06). `INVOICE_LIST_COLUMNS` +
+  `invoiceListSql(where)` projettent toutes les colonnes de la facture **sauf** `line_items` :
+  la liste ne renvoie plus le payload (le mapping qui le réinjectait est retiré), le détail
+  `GET /invoices/:id` le renvoie toujours. `CLIENT_LIST_COLUMNS` remplace `c.*` dans
+  l'annuaire et `PUBLIC_LINK_COLUMNS` remplace les deux `SELECT *` sur `public_links` (jamais
+  `token_hash`). Preuve : `tests/list-projection.test.ts`, 4 cas — la liste des factures ne
+  contient ni `line_items`, ni `i.*`, ni `SELECT *`, conserve l'alias `client_name` et l'ordre ;
+  elle projette **toutes** les autres colonnes du schéma (aucun champ affiché perdu) ; la
+  projection clients est explicite et complète ; la projection des liens publics exclut
+  `token_hash`. Mutations : retour à `i.*` et suppression de `c.deleted_at` → **3 cas en
+  échec**. Écart : la taille de réponse avant/après sur 100 factures n'est pas mesurée (aucun
+  jeu de 100 factures dans le dépôt) ; le gain est structurel — le JSON `line_items` n'est plus
+  lu du tout par la liste.
 ### A-17 — Recherche plein texte (FTS5) et sauvegarde compatible
 
 - **But.** La recherche globale et les listes filtrent sans `LIKE '%…%'`.
@@ -1117,7 +1134,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-13 | Contraintes de cohérence | 4 | M | A-10 | **DONE** |
 | A-14 | Stock : une vérité | 4 | L | A-10 | DONE |
 | A-15 | Plafonds D1 (IN, LIKE) | 3 | M | — | DONE |
-| A-16 | Projections des listes | 5 | M | — | TODO |
+| A-16 | Projections des listes | 5 | M | — | DONE |
 | A-17 | FTS5 + sauvegarde | 5 | L | A-10, A-11 | TODO |
 | A-18 | Comptabilité incrémentale | 5 | L | A-05 | TODO |
 | A-19 | Chaîne d'audit sans course | 4 | M | — | TODO |

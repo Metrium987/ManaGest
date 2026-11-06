@@ -189,6 +189,20 @@ function syncLegacyAddress(body: ClientInput): { address1: string | null; city: 
 export const clientRoutes = new Hono<AppEnv>();
 clientRoutes.use('*', requireAuth);
 
+/**
+ * A-16: the list names its columns instead of `c.*`, so a future wide column
+ * cannot silently ride along on every page of the directory.
+ */
+export const CLIENT_LIST_COLUMNS = `c.id, c.number, c.display_name, c.entity_category, c.legal_name,
+  c.trade_name, c.legal_form, c.numero_rcs, c.numero_tps, c.vat_regime, c.price_tier, c.first_name,
+  c.last_name, c.email, c.phone, c.contact_role, c.has_delegation_authority, c.address1, c.address2,
+  c.po_box_number, c.po_box_municipality, c.city, c.postal_code, c.island, c.physical_municipality,
+  c.district, c.pk_landmark, c.street_building_zone, c.delivery_instructions, c.country, c.tax_id,
+  c.currency, c.payment_method, c.payment_terms_code, c.payment_terms, c.bank_name, c.iban,
+  c.credit_limit, c.is_tax_exempt, c.tax_exemption_decree_num, c.tax_exemption_expiry,
+  c.data_consent_accepted, c.account_status, c.notes, c.archived, c.created_at, c.updated_at,
+  c.deleted_at`;
+
 clientRoutes.get('/', requirePermission('clients.read'), async (c) => {
   const { page, per_page } = parseInput(z.object(paginationSchema), c.req.query());
   const search = (c.req.query('q') ?? '').trim();
@@ -217,7 +231,7 @@ clientRoutes.get('/', requirePermission('clients.read'), async (c) => {
     .first<{ count: number }>();
 
   const rows = await c.env.DB.prepare(
-    `SELECT c.*, ${CLIENT_STATS_SQL} FROM clients c ${where}
+    `SELECT ${CLIENT_LIST_COLUMNS}, ${CLIENT_STATS_SQL} FROM clients c ${where}
      ORDER BY c.display_name COLLATE NOCASE ASC LIMIT ? OFFSET ?`,
   )
     .bind(...bindings, per_page, offsetOf(page, per_page))

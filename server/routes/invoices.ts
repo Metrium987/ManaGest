@@ -87,6 +87,25 @@ const invoiceSchema = z.object({
 export const invoiceRoutes = new Hono<AppEnv>();
 invoiceRoutes.use('*', requireAuth);
 
+/**
+ * A-16: the list reads what it shows. `line_items` is the document payload and
+ * stays on `GET /:id`; pulling it for every row wasted bytes on each page.
+ */
+export const INVOICE_LIST_COLUMNS = `i.id, i.client_id, i.number, i.status, i.date, i.due_date, i.currency,
+        i.exchange_rate, i.currency_decimals, i.subtotal, i.discount_type, i.discount_value, i.discount_total,
+        i.tax_total, i.cps_total, i.total, i.subtotal_xpf, i.tax_total_xpf, i.total_xpf, i.paid_total, i.balance,
+        i.tax_exempt, i.po_number, i.archipelago, i.transport_reference, i.shipped_by_seller, i.notes,
+        i.terms, i.footer, i.recurring_id, i.sent_at, i.paid_at, i.cancelled_at, i.created_by,
+        i.created_at, i.updated_at, i.deleted_at`;
+
+export function invoiceListSql(where: string): string {
+  return `SELECT ${INVOICE_LIST_COLUMNS}, c.display_name AS client_name
+     FROM invoices i JOIN clients c ON c.id = i.client_id
+     ${where}
+     ORDER BY i.date DESC, i.created_at DESC
+     LIMIT ? OFFSET ?`;
+}
+
 invoiceRoutes.get('/', requirePermission('invoices.read'), async (c) => {
   const { page, per_page } = parseInput(z.object(paginationSchema), c.req.query());
   const status = c.req.query('status') ?? '';
@@ -131,20 +150,13 @@ invoiceRoutes.get('/', requirePermission('invoices.read'), async (c) => {
     .first<{ count: number }>();
   const total = totalRow?.count ?? 0;
 
-  const rows = await c.env.DB.prepare(
-    `SELECT i.*, c.display_name AS client_name
-     FROM invoices i JOIN clients c ON c.id = i.client_id
-     ${where}
-     ORDER BY i.date DESC, i.created_at DESC
-     LIMIT ? OFFSET ?`,
-  )
+  const rows = await c.env.DB.prepare(invoiceListSql(where))
     .bind(...bindings, per_page, offsetOf(page, per_page))
     .all<Record<string, unknown>>();
 
   const today = todayIn(company.timezone);
   const data = (rows.results ?? []).map((row) => ({
     ...row,
-    line_items: safeLines(row.line_items),
     overdue: isOverdue(String(row.status), row.due_date as string | null, today),
   }));
 

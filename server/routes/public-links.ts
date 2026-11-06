@@ -58,6 +58,13 @@ function assertEntity(value: string): ShareEntity {
 export const publicLinkRoutes = new Hono<AppEnv>();
 publicLinkRoutes.use('*', requireAuth);
 
+/**
+ * A-16: a link row is read by name; `token_hash` never needs to leave the table
+ * for an access check or a revocation.
+ */
+export const PUBLIC_LINK_COLUMNS = `id, entity_type, entity_id, expires_at, revoked_at, created_at,
+  access_count, last_access_at`;
+
 publicLinkRoutes.get('/', requirePermission('invoices.read'), async (c) => {
   const entityType = assertEntity(c.req.query('entity_type') ?? '');
   const entityId = c.req.query('entity_id') ?? '';
@@ -124,7 +131,7 @@ publicLinkRoutes.post('/', async (c) => {
 });
 
 publicLinkRoutes.get('/:id/access', requirePermission('invoices.read'), async (c) => {
-  const link = await c.env.DB.prepare(`SELECT * FROM public_links WHERE id = ?`)
+  const link = await c.env.DB.prepare(`SELECT ${PUBLIC_LINK_COLUMNS} FROM public_links WHERE id = ?`)
     .bind(c.req.param('id'))
     .first<PublicLinkRow>();
   if (!link) return fail(404, 'NOT_FOUND');
@@ -141,7 +148,7 @@ publicLinkRoutes.get('/:id/access', requirePermission('invoices.read'), async (c
 });
 
 publicLinkRoutes.delete('/:id', requirePermission('invoices.read'), async (c) => {
-  const link = await c.env.DB.prepare(`SELECT * FROM public_links WHERE id = ?`)
+  const link = await c.env.DB.prepare(`SELECT ${PUBLIC_LINK_COLUMNS} FROM public_links WHERE id = ?`)
     .bind(c.req.param('id'))
     .first<PublicLinkRow>();
   if (!link) return fail(404, 'NOT_FOUND');
