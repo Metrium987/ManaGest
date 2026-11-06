@@ -36,6 +36,7 @@ import { activityRoutes, settingsRoutes, taxRateRoutes, userRoutes } from './rou
 import { publicDocumentRoutes, publicLinkRoutes } from './routes/public-links';
 import { backupRoutes } from './routes/backup';
 import { setupRoutes } from './routes/setup';
+import { healthReport } from './lib/observability';
 import type { AppEnv } from './types';
 
 const app = new Hono<AppEnv>();
@@ -44,7 +45,14 @@ app.use('*', securityHeaders);
 app.use('/api/*', withDatabase);
 app.use('/api/*', csrfProtection);
 
-app.get('/api/health', (c) => c.json({ status: 'ok' }));
+// A-25: health is public, so it carries versions and aggregate gaps only.
+app.get('/api/health', async (c) => {
+  try {
+    return c.json(await healthReport(c.env.DB));
+  } catch {
+    return c.json({ status: 'unavailable', schema_version: null });
+  }
+});
 
 /**
  * Public interface language (T-010). The sign-in and setup screens are shown

@@ -235,6 +235,20 @@ export async function purgeExpired(
   }
   const total = policies.reduce((sum, outcome) => sum + outcome.deleted, 0);
   if (total > 0) {
+    await database
+      .prepare(
+        `INSERT INTO app_meta (key, value) VALUES ('retention_last_purged_at', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .bind(now.toISOString())
+      .run();
+    await database
+      .prepare(
+        `INSERT INTO app_meta (key, value) VALUES ('retention_last_purged_total', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .bind(String(total))
+      .run();
     const { logActivity } = await import('./audit');
     await logActivity(database, {
       userId: null,
@@ -260,6 +274,17 @@ export interface TableSize {
   bytes: number;
 }
 
+/** Row count and payload estimate for one table, used by the diagnosis screens. */
+export async function estimateTableSize(database: D1Database, table: string): Promise<TableSize> {
+  const info = await database.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+  const columns = (info.results ?? []).map((column) => `LENGTH(CAST(COALESCE(${column.name}, '') AS TEXT))`);
+  const sum = columns.length ? `SUM(${columns.join(' + ')})` : '0';
+  const row = await database
+    .prepare(`SELECT COUNT(*) AS rows, COALESCE(${sum}, 0) AS bytes FROM ${table}`)
+    .first<{ rows: number; bytes: number }>();
+  return { table, rows: Number(row?.rows ?? 0), bytes: Number(row?.bytes ?? 0) };
+}
+
 export interface RetentionReport {
   policies: RetentionPolicy[];
   tables: TableSize[];
@@ -271,13 +296,7 @@ export interface RetentionReport {
 export async function retentionReport(database: D1Database): Promise<RetentionReport> {
   const tables: TableSize[] = [];
   for (const table of RETENTION_TABLES) {
-    const info = await database.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
-    const columns = (info.results ?? []).map((column) => `LENGTH(CAST(COALESCE(${column.name}, '') AS TEXT))`);
-    const sum = columns.length ? `SUM(${columns.join(' + ')})` : '0';
-    const row = await database
-      .prepare(`SELECT COUNT(*) AS rows, COALESCE(${sum}, 0) AS bytes FROM ${table}`)
-      .first<{ rows: number; bytes: number }>();
-    tables.push({ table, rows: Number(row?.rows ?? 0), bytes: Number(row?.bytes ?? 0) });
+    tables.push(await estimateTableSize(database, table));
   }
   return {
     policies: RETENTION_POLICIES,

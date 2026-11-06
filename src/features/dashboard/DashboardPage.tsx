@@ -11,7 +11,7 @@ import { useSession } from '@/lib/session';
 import {
   formatDate, formatLocale, formatLongDate, formatMoney, percentageChange, relativeDays,
 } from '@/lib/format';
-import type { DashboardData } from '@/lib/types';
+import type { DashboardData, ObservabilityData } from '@/lib/types';
 import { PageHeader, SectionCard, Skeleton, StatCard, StatusBadge } from '@/components/ui/Layout';
 import { RevenueChart } from '@/components/ui/Chart';
 import { Button } from '@/components/ui/Button';
@@ -161,6 +161,13 @@ export function DashboardPage() {
   });
 
   const data = dashboard.data;
+  // A-25: the card is only requested by roles that may read activity or the books.
+  const observability = useQuery({
+    queryKey: ['observability'],
+    queryFn: () => api.get<ObservabilityData>('/dashboard/observability'),
+    retry: false,
+    enabled: can('activity.read') || can('accounting.read'),
+  });
   const currency = company?.currency ?? 'XPF';
   const result = (data?.kpis.collected_month ?? 0) - (data?.kpis.expenses_month ?? 0);
   const variant = VARIANTS[variantKeyFor(user?.role)];
@@ -290,6 +297,43 @@ export function DashboardPage() {
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {variant.kpis.map((key) => kpiCard(key))}
           </div>
+
+          {observability.data ? (
+            <div className="mt-4">
+              <SectionCard title={t('observability.title')} subtitle={t('observability.subtitle')}>
+                <div className="grid gap-3 p-5 sm:grid-cols-2 xl:grid-cols-4">
+                  <div>
+                    <p className="text-xs text-muted">{t('observability.integrity')}</p>
+                    <p className="text-lg font-semibold">{observability.data.integrity_gaps}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted">{t('observability.stock')}</p>
+                    <p className="text-lg font-semibold">{observability.data.stock_gaps}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted">{t('observability.backlog')}</p>
+                    <p className="text-lg font-semibold">{observability.data.accounting.backlog}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted">{t('observability.lastRun')}</p>
+                    <p className="text-lg font-semibold">
+                      {observability.data.runs.last_status ? t(`dailyRun.status.${observability.data.runs.last_status}`) : t('observability.never')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted">{t('observability.purge')}</p>
+                    <p className="text-lg font-semibold">{observability.data.purge.last_at ? formatDate(observability.data.purge.last_at.slice(0, 10)) : t('observability.never')}</p>
+                  </div>
+                  <div className="sm:col-span-2 xl:col-span-3">
+                    <p className="text-xs text-muted">{t('observability.biggest')}</p>
+                    <p className="truncate text-sm">
+                      {observability.data.largest_tables.slice(0, 3).map((table) => `${table.table} (${table.rows})`).join(' · ') || t('observability.never')}
+                    </p>
+                  </div>
+                </div>
+              </SectionCard>
+            </div>
+          ) : null}
 
           {variant.dailyRun ? (
             <div className="mt-4">

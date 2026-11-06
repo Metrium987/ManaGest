@@ -199,6 +199,16 @@ Prochaine fiche : **A-24 — rétention et purges**.
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **109 fichiers, 828 tests, 0 échec**.
 
 Prochaine fiche : **A-25 — observabilité métier**.
+
+**6 novembre 2026 — A-25 : observabilité métier.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-25 | **DONE** | `server/lib/observability.ts` : écarts d'intégrité et de stock, retard comptable (compté, sans écriture), dernier passage + échecs récents, état des purges, version de schéma, 10 plus grosses tables. Carte `GET /api/dashboard/observability` réservée à `activity.read`/`accounting.read` (403 sinon) et affichée sur le tableau de bord (fr/en) ; `/api/health` enrichi (statut, version, compteurs, purges) sans aucune donnée personnelle, repli `unavailable` sans base. Aucune migration. `tests/observability.test.ts` **5 cas** sur le vrai worker (écart injecté visible carte + health puis réparé, absence d'e-mail/IP/chemin, 403 viewer, état de purge). Mutation (garde retirée) : **1 cas en échec sur 5**. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **110 fichiers, 833 tests, 0 échec**.
+
+Prochaine fiche : **A-26 — tests d'intégration HTTP sur D1 locale**.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -1156,8 +1166,27 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Critères d'acceptation.** Un écart injecté apparaît sur le tableau de bord et dans
   `/api/health`.
 - **Tests.** `tests/observability.test.ts`.
+- **Livré (2026-11-06).** `server/lib/observability.ts` agrège, en lecture seule, les écarts
+  d'intégrité (A-12), les écarts de stock (A-14), le retard comptable (A-18, calculé sur le
+  même ensemble de candidats que le rattrapage mais **compté** au lieu d'être posté, sans
+  écrire), le dernier passage quotidien et les échecs des 7 derniers jours, l'état des purges
+  (A-24, clés `app_meta.retention_last_purged_*`), la version de schéma (`d1_migrations`) et
+  les **10 plus grosses tables** (octets de charge estimés par `PRAGMA table_info` + longueurs).
+  Carte `GET /api/dashboard/observability`, réservée aux rôles portant `activity.read` **ou**
+  `accounting.read` (403 sinon), affichée sur `DashboardPage` avec libellés fr/en.
+  `GET /api/health` devient enrichi : `status` (`ok`/`degraded`), version et dernière migration,
+  compteurs agrégés, retard, dernier passage, purges — **aucune** adresse, identifiant, chemin
+  ni échantillon (la route est publique). Repli `unavailable` si la base n'existe pas encore.
+  Aucune migration : tout est déjà indexé/stocké.
+  Preuve : `tests/observability.test.ts`, **5 cas** sur le vrai worker —
+  carte servie avec version de schéma et plus grosses tables ; écart injecté (session vers un
+  utilisateur inexistant) visible dans la carte **et** dans `/api/health` (`degraded`), puis
+  `ok` après réparation ; réponse publique sans adresse e-mail, IP, chemin ni clé sensible ;
+  rôle `viewer` refusé en **403 FORBIDDEN** ; purge réelle puis état de purge exposé.
+  Mutation : garde de permission retirée → **1 cas en échec sur 5**. Typecheck 0 erreur ; suite
+  **110 fichiers / 833 tests**.
 - **Pièges.** Aucune donnée personnelle dans `/api/health` (public).
-- **Effort.** M. **Statut.** TODO.
+- **Effort.** M. **Statut.** DONE.
 
 ---
 
@@ -1419,7 +1448,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-22 | Ré-auth MFA | 6 | S | — | DONE |
 | A-23 | Installation verrouillée | 6 | S | A-13 | DONE |
 | A-24 | Rétention et purges | 6 | M | A-15 | DONE |
-| A-25 | Observabilité métier | 6 | M | A-12, A-14 | TODO |
+| A-25 | Observabilité métier | 6 | M | A-12, A-14 | DONE |
 | A-26 | Tests HTTP d'intégration | 6 | L | A-10 | TODO |
 | A-27 | Documentation | 6 | S | A-01…A-31 | TODO |
 | A-28 | Tests de concurrence | 6 | M | A-19, A-23 | TODO |

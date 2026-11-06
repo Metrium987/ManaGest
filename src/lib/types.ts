@@ -591,6 +591,23 @@ export interface DailyRun {
   summary: DailyRunSummary | null;
 }
 
+export interface ObservabilityData {
+  generated_at: string;
+  integrity_gaps: number;
+  integrity_relations: { relation: string; orphans: number }[];
+  stock_gaps: number;
+  accounting: { backlog: number; cursor: string | null };
+  runs: {
+    last_day: string | null;
+    last_status: string | null;
+    error_code: string | null;
+    failed_recent: number;
+  };
+  purge: { last_at: string | null; last_total: number };
+  schema: { version: number | null; last_migration: string | null };
+  largest_tables: { table: string; rows: number; bytes: number }[];
+}
+
 export interface DashboardData {
   today: string;
   contract_notices?: {

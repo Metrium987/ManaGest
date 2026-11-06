@@ -7,6 +7,7 @@ import { alertCounts } from '../lib/stock-alerting';
 import { addMonths, monthStart, todayIn } from '../lib/dates';
 import { logActivity } from '../lib/audit';
 import { integrityReport } from '../lib/integrity';
+import { observabilityReport } from '../lib/observability';
 import { stockBalance } from '../lib/stock-balance';
 import { csvResponse } from '../lib/csv';
 import { fail } from '../lib/errors';
@@ -374,6 +375,15 @@ reportRoutes.get('/revenue-summary', requirePermission('reports.read'), async (c
  * disagrees with the movements are returned, with both gaps, so the report is a
  * to-do list rather than a wall of correct rows.
  */
+// A-25: data health, reserved to the roles that already read activity or the books.
+dashboardRoutes.get('/observability', requireAuth, async (c) => {
+  const permissions = c.get('user')?.permissions ?? [];
+  if (!permissions.includes('activity.read') && !permissions.includes('accounting.read')) {
+    return fail(403, 'FORBIDDEN');
+  }
+  return c.json(await observabilityReport(c.env.DB));
+});
+
 dashboardRoutes.get('/stock-balance', requirePermission('reports.read'), async (c) => {
   const report = await stockBalance(c.env.DB);
   return c.json({ total: report.total, gaps: report.gaps, rows: report.rows.length });

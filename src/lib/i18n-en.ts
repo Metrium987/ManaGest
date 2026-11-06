@@ -485,6 +485,17 @@ export const en: Record<string, unknown> = {
     legalNotice:
       'By creating your workspace you confirm that the information provided is accurate.',
   },
+  observability: {
+    title: 'Data health',
+    subtitle: 'Gaps, accounting lag, last pass and purges — no personal data.',
+    integrity: 'Integrity gaps',
+    stock: 'Stock gaps',
+    backlog: 'Late entries',
+    lastRun: 'Last daily pass',
+    purge: 'Last purge',
+    biggest: 'Largest tables',
+    never: 'Never',
+  },
   dashboard: {
     stockAlerts: 'Stock alerts',
     stockAlertsSubtitle: '{out} out of stock · {low} low on stock',

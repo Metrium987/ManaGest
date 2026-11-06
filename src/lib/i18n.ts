@@ -488,6 +488,17 @@ export const fr = {
     legalNotice:
       'En créant votre espace, vous confirmez que les informations fournies sont exactes.',
   },
+  observability: {
+    title: 'Santé des données',
+    subtitle: 'Écarts, retard comptable, dernier passage et purges — sans donnée personnelle.',
+    integrity: 'Écarts d’intégrité',
+    stock: 'Écarts de stock',
+    backlog: 'Écritures en retard',
+    lastRun: 'Dernier passage',
+    purge: 'Dernière purge',
+    biggest: 'Tables les plus volumineuses',
+    never: 'Jamais',
+  },
   dashboard: {
     stockAlerts: 'Alertes de stock',
     stockAlertsSubtitle: '{out} rupture(s) · {low} stock(s) faible(s)',

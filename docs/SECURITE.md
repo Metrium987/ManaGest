@@ -263,3 +263,17 @@ morceau de pièce vivante n'est jamais supprimé.
 
 Diagnostic en lecture seule : `GET /api/settings/retention` (permission `settings.read`) renvoie
 le nombre de lignes et une estimation des octets de charge par table.
+
+## Observabilité et santé publique (A-25)
+
+La carte « Santé des données » (`GET /api/dashboard/observability`) est réservée aux rôles qui
+portent déjà `activity.read` ou `accounting.read` : écarts d'intégrité (A-12), écarts de stock
+(A-14), retard comptable (A-18, compté sans être posté), dernier passage quotidien et échecs des
+sept derniers jours, état des purges (A-24), version de schéma et dix plus grosses tables.
+
+`GET /api/health` est **public** : il ne renvoie que des agrégats et des versions — statut
+`ok`/`degraded`, version de schéma et dernière migration, nombre d'écarts d'intégrité et de
+stock, retard comptable, statut du dernier passage, date et volume de la dernière purge. Aucune
+adresse e-mail, adresse IP, chemin de requête, identifiant d'utilisateur ou échantillon de ligne
+n'y figure, et aucun contenu de requête n'est journalisé. Sans base initialisée, la route répond
+`unavailable` avec `schema_version: null`.

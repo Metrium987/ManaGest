@@ -644,6 +644,25 @@ export async function accountingCursor(database: D1Database): Promise<string | n
   return row?.value ?? null;
 }
 
+/**
+ * A-25: read-only backlog. The same candidate set as the catch-up, but counted
+ * instead of posted, so the dashboard can show a lag without writing anything.
+ */
+export async function accountingBacklog(
+  database: D1Database,
+): Promise<{ backlog: number; cursor: string | null }> {
+  const cursor = await accountingCursor(database);
+  const from = cursorParts(cursor);
+  const row = await database
+    .prepare(
+      `SELECT COUNT(*) AS n FROM (${CATCH_UP_CANDIDATES})
+       WHERE updated_at > ? OR (updated_at = ? AND id > ?)`,
+    )
+    .bind(from.updatedAt, from.updatedAt, from.id)
+    .first<{ n: number }>();
+  return { backlog: Number(row?.n ?? 0), cursor };
+}
+
 function cursorParts(cursor: string | null): { updatedAt: string; id: string } {
   if (!cursor) return { updatedAt: '', id: '' };
   const cut = cursor.indexOf('|');
