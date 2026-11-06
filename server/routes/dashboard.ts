@@ -17,7 +17,7 @@ import {
 } from '../lib/reports';
 import type { Permission } from '../../shared/domain';
 import { requireAuth, requirePermission } from '../middleware';
-import { ensureInvoiceTaxLines } from '../services/documents';
+import { ensureCreditTaxLines, ensureInvoiceTaxLines } from '../services/documents';
 import {
   aggregateMargin,
   marginSummary,
@@ -200,8 +200,9 @@ reportRoutes.use('*', requireAuth);
  * VAT recap and a monthly turnover statement. Both read the same figures as the
  * invoices (tax mirror + totals), so no figure is re-keyed.
  */
-async function tvaRecapData(db: D1Database, from: string, to: string) {
+export async function tvaRecapData(db: D1Database, from: string, to: string) {
   await ensureInvoiceTaxLines(db, from, to);
+  await ensureCreditTaxLines(db, from, to);
   const [tax, exempt] = await Promise.all([
     db
       .prepare(
@@ -225,7 +226,36 @@ async function tvaRecapData(db: D1Database, from: string, to: string) {
       .bind(from, to)
       .all<ExemptRow>(),
   ]);
-  const periods = mergeTvaRecap(tax.results ?? [], exempt.results ?? []);
+  // A-04: a credit note reverses the VAT it collected. Its mirror is subtracted
+  // here, and only for issued credits — a draft reverses nothing yet.
+  const [creditTax, creditExempt] = await Promise.all([
+    db
+      .prepare(
+        `SELECT substr(cr.date,1,7) AS period, cl.rate AS rate, -SUM(cl.base) AS base,
+                -SUM(cl.amount) AS tax, 0 AS documents
+         FROM credit_tax_lines cl JOIN credits cr ON cr.id = cl.credit_id
+         WHERE cr.deleted_at IS NULL AND cr.status IN ('sent','partial','applied')
+           AND cr.date >= ? AND cr.date <= ?
+         GROUP BY period, rate`,
+      )
+      .bind(from, to)
+      .all<TaxRow>(),
+    db
+      .prepare(
+        `SELECT substr(cr.date,1,7) AS period, -SUM(cr.subtotal - cr.discount_total) AS exempt_base,
+                0 AS documents
+         FROM credits cr
+         WHERE cr.deleted_at IS NULL AND cr.status IN ('sent','partial','applied') AND cr.tax_exempt = 1
+           AND cr.date >= ? AND cr.date <= ?
+         GROUP BY period`,
+      )
+      .bind(from, to)
+      .all<ExemptRow>(),
+  ]);
+  const periods = mergeTvaRecap(
+    [...(tax.results ?? []), ...(creditTax.results ?? [])],
+    [...(exempt.results ?? []), ...(creditExempt.results ?? [])],
+  );
   return { periods, totals: tvaRecapTotals(periods) };
 }
 
@@ -444,6 +474,7 @@ reportRoutes.get('/:type', requirePermission('reports.read'), async (c) => {
     // before it existed (or restored from backup) are repaired here first, then
     // the whole return aggregates in SQL instead of replaying JSON line items.
     await ensureInvoiceTaxLines(db, from, to);
+    await ensureCreditTaxLines(db, from, to);
 
     const rows = await db.prepare(
       `SELECT l.rate, SUM(l.base) AS base, SUM(l.amount) AS tax,
@@ -455,6 +486,29 @@ reportRoutes.get('/:type', requirePermission('reports.read'), async (c) => {
     )
       .bind(from, to)
       .all<{ rate: number; base: number; tax: number; documents: number }>();
+
+    // A-04: the reversal, per rate. Netting here keeps the return honest without a
+    // second code path: the same rows the recap uses, with the credit sign flipped.
+    const creditRows = await db
+      .prepare(
+        `SELECT cl.rate AS rate, -SUM(cl.base) AS base, -SUM(cl.amount) AS tax, 0 AS documents
+         FROM credit_tax_lines cl JOIN credits cr ON cr.id = cl.credit_id
+         WHERE cr.deleted_at IS NULL AND cr.status IN ('sent','partial','applied')
+           AND cr.date >= ? AND cr.date <= ?
+         GROUP BY cl.rate`,
+      )
+      .bind(from, to)
+      .all<{ rate: number; base: number; tax: number; documents: number }>();
+    const byRate = new Map<number, { rate: number; base: number; tax: number; documents: number }>();
+    for (const row of [...(rows.results ?? []), ...(creditRows.results ?? [])]) {
+      const rate = Number(row.rate);
+      const current = byRate.get(rate) ?? { rate, base: 0, tax: 0, documents: 0 };
+      current.base += Number(row.base);
+      current.tax += Number(row.tax);
+      current.documents += Number(row.documents);
+      byRate.set(rate, current);
+    }
+    const netRows = [...byRate.values()].sort((a, b) => b.rate - a.rate);
 
     // T-002d (BK-001): an exempt invoice must never contribute to the taxable
     // base or appear as a 0 % VAT bucket. Taxable and exempt totals are kept
@@ -470,13 +524,24 @@ reportRoutes.get('/:type', requirePermission('reports.read'), async (c) => {
       .bind(from, to)
       .first<{ base: number; tax: number; exempt_base: number; exempt_documents: number }>();
 
+    const creditSummary = await db.prepare(
+      `SELECT COALESCE(SUM(CASE WHEN tax_exempt = 0 THEN subtotal - discount_total END), 0) AS base,
+              COALESCE(SUM(CASE WHEN tax_exempt = 0 THEN tax_total END), 0) AS tax,
+              COALESCE(SUM(CASE WHEN tax_exempt = 1 THEN subtotal - discount_total END), 0) AS exempt_base,
+              SUM(CASE WHEN tax_exempt = 1 THEN 1 ELSE 0 END) AS exempt_documents
+       FROM credits
+       WHERE deleted_at IS NULL AND status IN ('sent','partial','applied') AND date >= ? AND date <= ?`,
+    )
+      .bind(from, to)
+      .first<{ base: number; tax: number; exempt_base: number; exempt_documents: number }>();
+
     return c.json({
-      rows: (rows.results ?? []).filter((row) => Number(row.rate) > 0),
+      rows: netRows.filter((row) => Number(row.rate) > 0),
       summary: {
-        base: summary?.base ?? 0,
-        tax: summary?.tax ?? 0,
-        exempt_base: summary?.exempt_base ?? 0,
-        exempt_documents: summary?.exempt_documents ?? 0,
+        base: (summary?.base ?? 0) - (creditSummary?.base ?? 0),
+        tax: (summary?.tax ?? 0) - (creditSummary?.tax ?? 0),
+        exempt_base: (summary?.exempt_base ?? 0) - (creditSummary?.exempt_base ?? 0),
+        exempt_documents: (summary?.exempt_documents ?? 0) - (creditSummary?.exempt_documents ?? 0),
       },
     });
   }

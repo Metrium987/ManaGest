@@ -13,7 +13,10 @@ import { freezeFx } from '../services/currencies';
 import { lineItemsSchema, offsetOf, paginationSchema, parseInput } from '../lib/validation';
 import { assertPeriodOpen } from '../lib/locks';
 import { requireAuth, requirePermission } from '../middleware';
-import { recalcCredit, recalcInvoice, safeLines, serialiseLines } from '../services/documents';
+import {
+  recalcCredit, recalcInvoice, safeLines, serialiseLines, syncCreditFromRow, syncCreditTaxLines,
+} from '../services/documents';
+import { assertEditable } from '../services/status';
 import { buildDocumentPdf } from '../services/pdf-documents';
 import { resolveLayout } from '../services/pdf-style';
 import { getExtra } from '../lib/settings-extra';
@@ -162,6 +165,9 @@ creditRoutes.post('/', requirePermission('credits.write'), async (c) => {
     )
     .run();
 
+  // A-04: the credit's VAT mirror, from the buckets its totals were computed with.
+  await syncCreditTaxLines(c.env.DB, id, totals.tax_buckets);
+
   await logActivity(c.env.DB, {
     userId: user.id,
     action: 'created',
@@ -172,6 +178,68 @@ creditRoutes.post('/', requirePermission('credits.write'), async (c) => {
   });
 
   return c.json({ id, number }, 201);
+});
+
+/**
+ * A-02: a credit note is editable only while it is a draft. Once issued it is a
+ * tax document — correcting it means cancelling it, never rewriting the VAT it
+ * already reversed.
+ */
+creditRoutes.patch('/:id', requirePermission('credits.write'), async (c) => {
+  const id = c.req.param('id');
+  const user = c.get('user')!;
+  const company = c.get('company')!;
+  const body = parseInput(creditSchema, await c.req.json().catch(() => ({})));
+
+  const existing = await c.env.DB.prepare(
+    `SELECT status, date, currency, tax_exempt FROM credits WHERE id = ? AND deleted_at IS NULL`,
+  )
+    .bind(id)
+    .first<{ status: string; date: string; currency: string; tax_exempt: number }>();
+  if (!existing) return fail(404, 'NOT_FOUND');
+  assertEditable(String(existing.status), 'credit');
+  await assertPeriodOpen(c.env.DB, existing.date, body.date);
+
+  const client = await c.env.DB.prepare(
+    `SELECT id, currency FROM clients WHERE id = ? AND deleted_at IS NULL`,
+  )
+    .bind(body.client_id)
+    .first<{ id: string; currency: string }>();
+  if (!client) return fail(422, 'VALIDATION_ERROR', { client_id: 'not_found' });
+
+  const currency = (body.currency || existing.currency || client.currency).toUpperCase();
+  const fx = await freezeFx(c.env.DB, currency, body.date);
+  // The exemption is the invoice's, not the client's: an credit created from a
+  // taxed invoice stays taxed even if the client later became exempt.
+  const totals = computeTotals(
+    body.line_items,
+    { discount_type: body.discount_type, discount_value: body.discount_value },
+    Boolean(existing.tax_exempt),
+  );
+
+  await c.env.DB.prepare(
+    `UPDATE credits SET client_id = ?, date = ?, currency = ?, exchange_rate = ?, currency_decimals = ?,
+      subtotal = ?, discount_type = ?, discount_value = ?, discount_total = ?, tax_total = ?, total = ?,
+      subtotal_xpf = ?, tax_total_xpf = ?, total_xpf = ?, balance = ?, line_items = ?, notes = ?, terms = ?,
+      updated_at = ? WHERE id = ?`,
+  )
+    .bind(
+      body.client_id, body.date, currency, fx.rate, fx.currency.decimals,
+      totals.subtotal, body.discount_type, body.discount_value, totals.discount_total, totals.tax_total, totals.total,
+      convertToBase(totals.subtotal, fx.currency.decimals, fx.rate),
+      convertToBase(totals.tax_total, fx.currency.decimals, fx.rate),
+      convertToBase(totals.total, fx.currency.decimals, fx.rate),
+      totals.total, serialiseLines(body.line_items), body.notes ?? null, body.terms || company.invoice_terms,
+      nowISO(), id,
+    )
+    .run();
+
+  await syncCreditTaxLines(c.env.DB, id, totals.tax_buckets);
+  await logActivity(c.env.DB, {
+    userId: user.id, action: 'updated', entityType: 'credit', entityId: id,
+    summary: 'activity.credit_updated', meta: { total: totals.total },
+  });
+  return c.json({ ok: true });
 });
 
 creditRoutes.post('/:id/send', requirePermission('credits.write'), async (c) => {
@@ -189,10 +257,14 @@ creditRoutes.post('/:id/send', requirePermission('credits.write'), async (c) => 
   });
   const id = c.req.param('id');
   const credit = await c.env.DB.prepare(
-    `SELECT status, date, currency, subtotal, tax_total, total FROM credits WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT status, date, currency, subtotal, tax_total, total, line_items, discount_type, discount_value, tax_exempt
+     FROM credits WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(id)
-    .first<{ status: string; date: string; currency: string; subtotal: number; tax_total: number; total: number }>();
+    .first<{
+      status: string; date: string; currency: string; subtotal: number; tax_total: number; total: number;
+      line_items: string | null; discount_type: string; discount_value: number; tax_exempt: number;
+    }>();
   if (!credit) return fail(404, 'NOT_FOUND');
   if (credit.status !== 'draft') return fail(409, 'INVALID_TRANSITION');
   await assertPeriodOpen(c.env.DB, credit.date);
@@ -212,6 +284,9 @@ creditRoutes.post('/:id/send', requirePermission('credits.write'), async (c) => 
   await c.env.DB.prepare(`UPDATE credits SET status = 'sent', updated_at = ? WHERE id = ?`)
     .bind(nowISO(), id)
     .run();
+  // A-04: a credit issued before the mirror existed is healed here, from its own
+  // lines, so the VAT return can never miss an issued credit again.
+  await syncCreditFromRow(c.env.DB, { id, ...credit });
   await logActivity(c.env.DB, { userId: user.id, action: 'sent', entityType: 'credit', entityId: id, summary: 'activity.credit_sent' });
   return c.json({ ok: true });
 });

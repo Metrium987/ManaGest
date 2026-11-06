@@ -5,7 +5,7 @@ import { logActivity } from '../lib/audit';
 import { addDays, todayIn } from '../lib/dates';
 import { fail } from '../lib/errors';
 import { nextNumber } from '../lib/numbering';
-import { isExpiredQuote } from '../services/status';
+import { assertEditable, isExpiredQuote } from '../services/status';
 import { computeTotals } from '../lib/tax';
 import { convertToBase } from '../lib/fx';
 import { freezeFx } from '../services/currencies';
@@ -219,23 +219,21 @@ quoteRoutes.patch('/:id', requirePermission('quotes.write'), async (c) => {
     .bind(id)
     .first<{ status: string; is_tax_exempt: number; currency: string; exchange_rate: number; currency_decimals: number }>();
   if (!existing) return fail(404, 'NOT_FOUND');
-  if (['converted', 'rejected'].includes(existing.status)) return fail(409, 'QUOTE_LOCKED');
+  // A-02: a quote is editable only while it is a draft. Once it has been sent,
+  // it is revised by a new quote or a rejection — never by rewriting the offer
+  // the client received.
+  assertEditable(String(existing.status), 'quote');
   if (body.project_template_id) {
     const version = await templateVersionExists(c.env.DB, body.project_template_id, body.project_template_version ?? null);
     if (!version) return fail(422, 'VALIDATION_ERROR', { project_template_id: 'not_found' });
     body.project_template_version = version;
   }
 
-  const locked = existing.status !== 'draft';
-  if (locked && body.currency && body.currency !== existing.currency) return fail(409, 'CURRENCY_LOCKED');
-  const currency = (locked ? existing.currency : (body.currency || existing.currency)).toUpperCase();
-  const fx = locked
-    ? { currency: { code: currency, decimals: 0 }, rate: 1 }
-    : await freezeFx(c.env.DB, currency, body.date);
-  // A sent quote keeps the rate it was sent with; correcting its lines still
-  // converts at that frozen rate instead of silently re-pricing the offer.
-  const rate = locked ? Number(existing.exchange_rate ?? 1) : fx.rate;
-  const decimals = locked ? Number(existing.currency_decimals ?? 0) : fx.currency.decimals;
+  // A draft is priced at its own date; an issued quote never reaches this code.
+  const currency = (body.currency || existing.currency).toUpperCase();
+  const fx = await freezeFx(c.env.DB, currency, body.date);
+  const rate = fx.rate;
+  const decimals = fx.currency.decimals;
   const totals = computeTotals(
     body.line_items,
     { discount_type: body.discount_type, discount_value: body.discount_value },

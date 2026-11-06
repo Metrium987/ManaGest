@@ -10,9 +10,11 @@ import {
   OPENING_SOURCE_ID,
   creditLines,
   expenseLines,
+  expenseReversalLines,
   invoiceLines,
   openingLines,
   paymentLines,
+  paymentReversalLines,
   reversalLines,
   typeFromCode,
   type Account,
@@ -329,6 +331,30 @@ export async function syncAccounting(database: D1Database): Promise<number> {
     })) created += 1;
   }
 
+  // A-05: a voided payment keeps its original entry and gains its mirror. The
+  // event key differs ('voided'), so a second pass never posts it twice.
+  const voided = await database
+    .prepare(
+      `SELECT id, number, date, amount, currency, exchange_rate, amount_xpf, fx_difference
+       FROM payments WHERE status = 'void' OR deleted_at IS NOT NULL`,
+    )
+    .all<{ id: string; number: string | null; date: string; amount: number; currency: string; exchange_rate: number; amount_xpf: number; fx_difference: number }>();
+  for (const row of voided.results ?? []) {
+    const reference = row.number ?? '—';
+    const cash = row.amount_xpf || row.amount;
+    if (await post(database, {
+      id: row.id, source_type: 'payment', source_id: row.id, event: 'voided',
+      date: row.date, reference, label: `Extourne règlement ${reference}`, journal: 'BQ',
+      lines: paymentReversalLines(cash, reference, codes, {
+        currency: row.currency,
+        exchangeRate: row.exchange_rate,
+        originalAmount: row.amount,
+        receivable: cash - (row.fx_difference ?? 0),
+        difference: row.fx_difference ?? 0,
+      }),
+    })) created += 1;
+  }
+
   const expenses = await database
     .prepare(
       `SELECT id, date, amount, tax_amount, COALESCE(reference, category) AS reference
@@ -340,6 +366,22 @@ export async function syncAccounting(database: D1Database): Promise<number> {
       id: row.id, source_type: 'expense', source_id: row.id, event: 'posted',
       date: row.date, reference: row.reference, label: `Dépense ${row.reference}`, journal: 'AC',
       lines: expenseLines(row.amount, row.tax_amount, row.reference, codes),
+    })) created += 1;
+  }
+
+  // A-05: a deleted expense gives back the charge and the deductible VAT, again as
+  // a mirror with its own key rather than a deletion of the original entry.
+  const removed = await database
+    .prepare(
+      `SELECT id, date, amount, tax_amount, COALESCE(reference, category) AS reference
+       FROM expenses WHERE deleted_at IS NOT NULL`,
+    )
+    .all<{ id: string; date: string; amount: number; tax_amount: number; reference: string }>();
+  for (const row of removed.results ?? []) {
+    if (await post(database, {
+      id: row.id, source_type: 'expense', source_id: row.id, event: 'reversed',
+      date: row.date, reference: row.reference, label: `Extourne dépense ${row.reference}`, journal: 'AC',
+      lines: expenseReversalLines(row.amount, row.tax_amount, row.reference, codes),
     })) created += 1;
   }
 

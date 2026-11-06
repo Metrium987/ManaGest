@@ -727,6 +727,19 @@ export const SCHEMA_STATEMENTS: string[] = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_invoice_tax_lines_invoice ON invoice_tax_lines(invoice_id)`,
 
+  // A-04: the same mirror for credit notes, so the VAT return subtracts the tax a
+  // credit reversed instead of declaring VAT the business never kept.
+  `CREATE TABLE IF NOT EXISTS credit_tax_lines (
+    id TEXT PRIMARY KEY,
+    credit_id TEXT NOT NULL,
+    rate INTEGER NOT NULL,
+    base INTEGER NOT NULL,
+    amount INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (credit_id, rate)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_credit_tax_lines_credit ON credit_tax_lines(credit_id)`,
+
   // Dropped: company settings live on the company row, this table was never used.
   `DROP TABLE IF EXISTS company_settings`,
 

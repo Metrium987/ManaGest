@@ -49,10 +49,12 @@ documentée.
 | Tâche | État | Preuve exécutée |
 |---|---|---|
 | A-01 | **DONE** | `server/services/settlements.ts` : un seul chemin d'encaissement — devise de la facture, taux figé, base XPF, écart réalisé, allocation et passage brouillon → émis dans un `batch`. `mark-paid` l'appelle ; plus de règlement sans devise. `tests/settle-invoice.test.ts`, **5 cas** (XPF, USD +5 000 d'écart, EUR à parité fixe donc écart nul, refus annulée/soldée/taux manquant, brouillon encaissé). |
-| A-02 | **IN PROGRESS** | Factures faites : `isEditable()` (`server/services/status.ts`) et `409 DOCUMENT_IMMUTABLE` hors brouillon. Reste : devis et avoirs, bouton d'édition masqué hors brouillon. |
+| A-02 | **DONE** | Garde unique `assertEditable` + `loadDocumentForEdit` (factures, devis, avoirs) : `409 DOCUMENT_IMMUTABLE` avec `{ document, status }`. `PATCH /credits/:id` ajouté pour qu'un brouillon reste éditable ; bouton « Modifier » conditionné au statut réel. `tests/document-immutability.test.ts` — matrice des statuts + refus sans écriture. |
+| A-04 | **DONE** | Table `credit_tax_lines` et miroir écrit à la création, à l'envoi, à l'édition d'un brouillon et depuis un avoir de facture ; récapitulatif TVA et état `tax` soustraient les avoirs émis. `tests/vat-credits.test.ts` — 4 cas. |
+| A-05 | **DONE** | `paymentReversalLines` / `expenseReversalLines` + rattrapage idempotent dans `syncAccounting` (événements `voided` / `reversed`). `tests/accounting-reversals.test.ts` — miroirs équilibrés, double passe sans doublon. |
 | A-03 | **DONE** | `server/lib/credit-note.ts` : avoir prérempli depuis la facture, un bucket par taux, prorata sur un remboursement partiel, devise et taux figés repris, `tax_exempt` hérité au lieu d'être forcé. `tests/credit-note.test.ts`, **6 cas**. |
 
-Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **85 fichiers, 710 tests, 0 échec**.
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **88 fichiers, 720 tests, 0 échec**.
 
 ---
 
@@ -173,8 +175,11 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Pièges.** Les tests existants qui modifient une facture envoyée devront passer par un
   avoir : vérifier `tests/` avant de changer le comportement, et corriger le test, pas le
   garde-fou.
-- **Effort.** S. **Statut.** **IN PROGRESS** — factures : `isEditable` + `409
-  DOCUMENT_IMMUTABLE`, testé. Restent les devis et les avoirs, et le bouton d'édition.
+- **Effort.** S. **Statut.** **DONE** — garde unique `assertEditable`
+  (`server/services/status.ts`) et `loadDocumentForEdit` (`server/services/immutability.ts`),
+  utilisés par `PATCH` factures, devis et avoirs : `409 DOCUMENT_IMMUTABLE` avec
+  `{ document, status }`. Un brouillon reste éditable (nouveau `PATCH /credits/:id`), et le
+  bouton « Modifier » suit `status === 'draft'`. Preuve : `tests/document-immutability.test.ts`.
 
 ### A-03 — Avoir créé depuis une facture : TVA, devise, change
 
@@ -238,7 +243,11 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Pièges.** La marge (`/reports/margin`) soustrait déjà les avoirs : ne pas compter deux
   fois. Un avoir `draft` ne doit pas réduire la TVA déclarée (seulement `sent`/`partial`/
   `applied`).
-- **Effort.** M. **Statut.** TODO.
+- **Effort.** M. **Statut.** **DONE** — table `credit_tax_lines`, `syncCreditTaxLines` /
+  `syncCreditFromRow` / `ensureCreditTaxLines` (`server/services/documents.ts`) ; miroir écrit à
+  la création, à l'envoi, à l'édition d'un brouillon et depuis un avoir de facture. Le
+  récapitulatif TVA et l'état `tax` soustraient les avoirs émis, en nettant par taux ; brouillons
+  et avoirs supprimés sont ignorés. Preuve : `tests/vat-credits.test.ts` (4 cas).
 
 ### A-05 — Contre-écritures des paiements annulés et dépenses supprimées
 
@@ -267,7 +276,10 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   double annulation (pas de seconde écriture), période close (409), solde de balance à zéro.
 - **Pièges.** Ne pas supprimer l'écriture d'origine (le journal est append-only). Ne pas
   inverser un paiement déjà inversé.
-- **Effort.** M. **Statut.** TODO.
+- **Effort.** M. **Statut.** **DONE** — `paymentReversalLines` / `expenseReversalLines`
+  (`server/lib/accounting.ts`) et rattrapage idempotent dans `syncAccounting` : événements
+  `voided` / `reversed` avec leur propre clé, le journal d'origine reste intact.
+  Preuve : `tests/accounting-reversals.test.ts` (miroirs équilibrés, double passe sans doublon).
 
 ### A-06 — Approbations : re-contrôle et nouvelle demande
 
@@ -1030,10 +1042,10 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | ID | Titre | Phase | Effort | Dépend de | Statut |
 |---|---|---|---|---|---|
 | A-01 | Encaissement direct en devise | 1 | M | — | **DONE** |
-| A-02 | Immutabilité des documents émis | 1 | S | — | **IN PROGRESS** (factures) |
+| A-02 | Immutabilité des documents émis | 1 | S | — | **DONE** |
 | A-03 | Avoir : TVA, devise, change | 1 | M | — | **DONE** |
-| A-04 | Miroir TVA des avoirs | 1 | M | A-03 | TODO |
-| A-05 | Contre-écritures paiements/dépenses | 1 | M | — | TODO |
+| A-04 | Miroir TVA des avoirs | 1 | M | A-03 | **DONE** |
+| A-05 | Contre-écritures paiements/dépenses | 1 | M | — | **DONE** |
 | A-06 | Approbations : révision et re-contrôle | 2 | L | A-10 | TODO |
 | A-07 | Agrégats multi-devises | 3 | M | A-01, A-03 | TODO |
 | A-08 | Devise des dépenses et BC | 3 | L | A-07 | TODO |

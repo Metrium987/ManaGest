@@ -176,3 +176,66 @@ export async function rebuildAllInvoiceTaxLines(database: D1Database): Promise<n
   }
   return (rows.results ?? []).length;
 }
+
+/**
+ * A-04: the credit's VAT mirror, written from the same `computeTotals` output as
+ * its stored totals. Like the invoice mirror it is rebuilt, never incremented, so
+ * editing a draft credit cannot leave a stale bucket behind.
+ */
+export async function syncCreditTaxLines(
+  database: D1Database,
+  creditId: string,
+  buckets: TaxBucket[],
+): Promise<void> {
+  const statements: D1PreparedStatement[] = [
+    database.prepare(`DELETE FROM credit_tax_lines WHERE credit_id = ?`).bind(creditId),
+  ];
+  const now = nowISO();
+  for (const bucket of buckets) {
+    statements.push(
+      database
+        .prepare(
+          `INSERT INTO credit_tax_lines (id, credit_id, rate, base, amount, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(credit_id, rate) DO UPDATE SET base = excluded.base, amount = excluded.amount`,
+        )
+        .bind(crypto.randomUUID(), creditId, bucket.rate, bucket.base, bucket.amount, now),
+    );
+  }
+  await database.batch(statements);
+}
+
+/** Rebuilds one credit's mirror from its stored lines. */
+export async function syncCreditFromRow(
+  database: D1Database,
+  row: { id: string; line_items: unknown; discount_type: string; discount_value: number; tax_exempt: number },
+): Promise<void> {
+  const totals = computeTotals(safeLines(row.line_items), {
+    discount_type: row.discount_type === 'amount' ? 'amount' : 'percent',
+    discount_value: row.discount_value,
+  }, Boolean(row.tax_exempt));
+  await syncCreditTaxLines(database, row.id, totals.tax_buckets);
+}
+
+/** Repairs credits written before the mirror existed, or restored from backup. */
+export async function ensureCreditTaxLines(
+  database: D1Database,
+  from: string,
+  to: string,
+): Promise<number> {
+  const rows = await database
+    .prepare(
+      `SELECT cr.id, cr.line_items, cr.discount_type, cr.discount_value, cr.tax_exempt
+       FROM credits cr
+       WHERE cr.deleted_at IS NULL AND cr.status IN ('sent','partial','applied')
+         AND cr.date >= ? AND cr.date <= ? AND (cr.subtotal - cr.discount_total) > 0
+         AND NOT EXISTS (SELECT 1 FROM credit_tax_lines l WHERE l.credit_id = cr.id)`,
+    )
+    .bind(from, to)
+    .all<{ id: string; line_items: unknown; discount_type: string; discount_value: number; tax_exempt: number }>();
+
+  for (const row of rows.results ?? []) {
+    await syncCreditFromRow(database, row);
+  }
+  return (rows.results ?? []).length;
+}

@@ -22,7 +22,7 @@ import { assertPeriodOpen } from '../lib/locks';
 import { diffSnapshot } from '../lib/audit';
 import { clientIp, requireAuth, requirePermission } from '../middleware';
 import {
-  serialiseLines, recalcInvoice, safeLines, syncInvoiceTaxLines,
+  serialiseLines, recalcInvoice, safeLines, syncCreditTaxLines, syncInvoiceTaxLines,
 } from '../services/documents';
 import { buildInvoicePdf } from '../services/pdf';
 import { resolveLayout } from '../services/pdf-style';
@@ -30,7 +30,7 @@ import { getExtra } from '../lib/settings-extra';
 import { convertToBase } from '../lib/fx';
 import { freezeFx } from '../services/currencies';
 import { validateArchipelagoVat } from '../../shared/archipelago';
-import { deriveInvoiceStatus, isEditable, isOverdue, refundableAmount } from '../services/status';
+import { assertEditable, deriveInvoiceStatus, isOverdue, refundableAmount } from '../services/status';
 import { creditNoteFromInvoice } from '../lib/credit-note';
 import { settleInvoice } from '../services/settlements';
 import { recalcCredit } from '../services/documents';
@@ -277,9 +277,7 @@ invoiceRoutes.patch('/:id', requirePermission('invoices.write'), async (c) => {
   if (!existing) return fail(404, 'NOT_FOUND');
   // A-02: an issued document is immutable. Correcting it means a credit note or
   // a cancellation, never rewriting its lines, amounts, client or dates.
-  if (!isEditable(String(existing.status))) {
-    return fail(409, 'DOCUMENT_IMMUTABLE', { document: 'invoice', status: String(existing.status) });
-  }
+  assertEditable(String(existing.status), 'invoice');
   if ((existing.paid_total as number) > 0) return fail(409, 'INVOICE_HAS_PAYMENTS');
   // Both dates: re-dating must not move a document into or out of a closed month.
   await assertPeriodOpen(c.env.DB, existing.date as string, body.date);
@@ -291,12 +289,10 @@ invoiceRoutes.patch('/:id', requirePermission('invoices.write'), async (c) => {
   const patchCheck = await assertArchipelagoEvidence(c, body, (existing.client_tax_id as string | null) ?? null);
   if (patchCheck) return patchCheck;
 
-  const locked = existing.status !== 'draft';
-  if (locked && body.currency && body.currency !== existing.currency) return fail(409, 'CURRENCY_LOCKED');
-  const currency = (locked ? String(existing.currency) : (body.currency || String(existing.currency))).toUpperCase();
-  const fx = locked
-    ? { currency: { code: currency, decimals: Number(existing.currency_decimals ?? 0) }, rate: Number(existing.exchange_rate ?? 1) }
-    : await freezeFx(c.env.DB, currency, body.date);
+  // Only a draft reaches this point (A-02): its currency and rate are frozen at
+  // its own date, because there is no issued rate to preserve any more.
+  const currency = (body.currency || String(existing.currency)).toUpperCase();
+  const fx = await freezeFx(c.env.DB, currency, body.date);
   const toBase = (value: number) => convertToBase(value, fx.currency.decimals, fx.rate);
 
   const totals = computeTotals(
@@ -308,13 +304,13 @@ invoiceRoutes.patch('/:id', requirePermission('invoices.write'), async (c) => {
   await c.env.DB.prepare(
     `UPDATE invoices SET client_id = ?, date = ?, due_date = ?, currency = ?, exchange_rate = ?, currency_decimals = ?,
       subtotal = ?, discount_type = ?, discount_value = ?, discount_total = ?, tax_total = ?, total = ?,
-      subtotal_xpf = ?, tax_total_xpf = ?, total_xpf = ?, balance = ?, po_number = ?, line_items = ?, notes = ?, terms = ?,
+      subtotal_xpf = ?, tax_total_xpf = ?, total_xpf = ?, po_number = ?, line_items = ?, notes = ?, terms = ?,
       footer = ?, archipelago = ?, transport_reference = ?, shipped_by_seller = ?, updated_at = ? WHERE id = ?`,
   )
     .bind(
       body.client_id, body.date, body.due_date, currency, fx.rate, fx.currency.decimals,
       totals.subtotal, body.discount_type, body.discount_value, totals.discount_total, totals.tax_total, totals.total,
-      toBase(totals.subtotal), toBase(totals.tax_total), toBase(totals.total), totals.total,
+      toBase(totals.subtotal), toBase(totals.tax_total), toBase(totals.total),
       body.po_number ?? null,
       serialiseLines(body.line_items), body.notes ?? null, body.terms || company.invoice_terms,
       body.footer || company.invoice_footer,
@@ -324,6 +320,9 @@ invoiceRoutes.patch('/:id', requirePermission('invoices.write'), async (c) => {
     .run();
 
   await syncInvoiceTaxLines(c.env.DB, id, totals.tax_buckets);
+  // A-02: the balance is never assigned by hand; it is rebuilt from the
+  // allocations, so a credit already applied to the draft is not erased.
+  await recalcInvoice(c.env.DB, id);
 
   const changes = diffSnapshot(existing, body, [
     'client_id', 'date', 'due_date', 'subtotal', 'tax_total', 'total', 'po_number', 'notes', 'terms',
@@ -960,6 +959,8 @@ invoiceRoutes.post('/:id/credit-note', requirePermission('credits.write'), async
     draft.totals.total, invoice.tax_exempt, serialiseLines(draft.lines),
     body.notes ?? null, company.invoice_terms, user.id, nowISO(), nowISO(),
   ).run();
+  // A-04: the credit's own VAT mirror, from the very buckets its totals use.
+  await syncCreditTaxLines(c.env.DB, id, draft.totals.tax_buckets);
 
   await logActivity(c.env.DB, {
     userId: user.id, action: 'created', entityType: 'credit', entityId: id,

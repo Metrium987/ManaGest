@@ -209,6 +209,38 @@ export function paymentLines(
   return lines;
 }
 
+/**
+ * A-05: a voided payment is reversed, never erased — the journal is append-only.
+ * The mirror also flips the realised difference, so the gain or loss it booked is
+ * extinguished in the same move.
+ */
+export function paymentReversalLines(
+  amount: number,
+  reference: string,
+  accounts: AccountCodes = DEFAULT_ACCOUNT_CODES,
+  settlement?: Parameters<typeof paymentLines>[3],
+): DraftLine[] {
+  return paymentLines(amount, reference, accounts, settlement).map((entry) => ({
+    ...entry,
+    debit: entry.credit,
+    credit: entry.debit,
+  }));
+}
+
+/** A-05: a deleted expense gives back the charge and the deductible VAT. */
+export function expenseReversalLines(
+  amount: number,
+  taxAmount: number,
+  reference: string,
+  accounts: AccountCodes = DEFAULT_ACCOUNT_CODES,
+): DraftLine[] {
+  return expenseLines(amount, taxAmount, reference, accounts).map((entry) => ({
+    ...entry,
+    debit: entry.credit,
+    credit: entry.debit,
+  }));
+}
+
 /** An expense is recorded at its pre-tax amount plus deductible VAT. */
 export function expenseLines(
   amount: number,

@@ -167,9 +167,11 @@ export function QuoteDetailPage() {
 
           {data.status !== 'converted' && data.status !== 'rejected' && can('quotes.write') ? (
             <SectionCard title={t('common.actions')} bodyClassName="space-y-2 p-4">
-              <Link to={`/devis/${data.id}/modifier`} className="btn btn-secondary w-full justify-start">
-                <Pencil className="h-4 w-4" aria-hidden="true" /> {t('common.edit')}
-              </Link>
+              {data.status === 'draft' ? (
+                <Link to={`/devis/${data.id}/modifier`} className="btn btn-secondary w-full justify-start">
+                  <Pencil className="h-4 w-4" aria-hidden="true" /> {t('common.edit')}
+                </Link>
+              ) : null}
               {can('quotes.delete') ? (
                 <Button
                   variant="ghost"

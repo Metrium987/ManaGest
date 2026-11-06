@@ -1,3 +1,4 @@
+import { ApiError } from '../lib/errors';
 import type { DocumentStatus } from '../../shared/domain';
 
 /**
@@ -38,6 +39,18 @@ export function refundableAmount(status: string, balance: number, paidTotal: num
  */
 export function isEditable(status: string): boolean {
   return status === 'draft';
+}
+
+export type DocumentKind = 'invoice' | 'quote' | 'credit';
+
+/**
+ * A-02: one guard for every write route. It throws the same code and the same
+ * payload — `{ document, status }` — so an invoice, a quote and a credit note
+ * refuse a rewrite in exactly the same way, and the client can translate it.
+ */
+export function assertEditable(status: string, document: DocumentKind): void {
+  if (isEditable(status)) return;
+  throw new ApiError(409, 'DOCUMENT_IMMUTABLE', { document, status });
 }
 
 export function isOverdue(status: string, dueDate: string | null, today: string): boolean {

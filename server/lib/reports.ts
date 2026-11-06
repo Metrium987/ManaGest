@@ -52,12 +52,21 @@ export function mergeTvaRecap(taxRows: TaxRow[], exemptRows: ExemptRow[]): TvaRe
   };
 
   for (const row of taxRows) {
-    if (Number(row.rate) <= 0) continue; // a 0 % line is never a VAT bucket (BK-001)
+    const rate = Number(row.rate);
+    if (rate <= 0) continue; // a 0 % line is never a VAT bucket (BK-001)
     const period = ensure(row.period);
     period.base += Number(row.base);
     period.tax += Number(row.tax);
     period.documents += Number(row.documents);
-    period.rates.push({ rate: Number(row.rate), base: Number(row.base), tax: Number(row.tax) });
+    // A-04: an invoice row and the credit row that reverses it share a rate. They
+    // are netted into one line, so the recap never shows the same rate twice.
+    const bucket = period.rates.find((entry) => entry.rate === rate);
+    if (bucket) {
+      bucket.base += Number(row.base);
+      bucket.tax += Number(row.tax);
+    } else {
+      period.rates.push({ rate, base: Number(row.base), tax: Number(row.tax) });
+    }
   }
 
   for (const row of exemptRows) {
