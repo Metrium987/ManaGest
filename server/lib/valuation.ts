@@ -11,6 +11,12 @@
  * Quantities are thousandths and costs are minor currency units, as everywhere
  * in the app, so the product of the two is scaled by 1000 and must be divided
  * back before being written anywhere.
+ *
+ * A-08: those minor units are **XPF** — `products.cost`, `purchase_price` and
+ * every movement/valuation figure are base money. An import sheet carries
+ * `exchange_rate_micro` (×1e6) for landed-cost precision; documents carry
+ * `exchange_rate REAL`. Receipts follow the document convention and convert
+ * before calling in here (see `receiptUnitCost` in `server/services/stock.ts`).
  */
 
 export interface AverageCostInput {

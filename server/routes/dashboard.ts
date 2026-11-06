@@ -592,8 +592,9 @@ reportRoutes.get('/:type', requirePermission('reports.read'), async (c) => {
 
   if (type === 'expenses') {
     const rows = await db.prepare(
-      `SELECT category, COUNT(*) AS entries, COALESCE(SUM(amount),0) AS amount,
-        COALESCE(SUM(tax_amount),0) AS tax_amount
+      `SELECT category, COUNT(*) AS entries,
+        COALESCE(SUM(${baseAmountSql('amount', 'amount_xpf')}),0) AS amount,
+        COALESCE(SUM(${baseAmountSql('tax_amount', 'tax_amount_xpf')}),0) AS tax_amount
        FROM expenses WHERE deleted_at IS NULL AND date >= ? AND date <= ?
        GROUP BY category ORDER BY amount DESC`,
     ).bind(from, to).all();

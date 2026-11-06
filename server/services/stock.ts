@@ -1,6 +1,7 @@
 import { nowISO } from '../db';
 import { ApiError } from '../lib/errors';
 import { explodeKit } from '../../shared/product-erp';
+import { convertToBase } from '../lib/fx';
 import { landedUnitCost, stockValue, weightedAverageCost } from '../lib/valuation';
 import { pickFefo, tracksLots, type LotPick, type StockLot } from '../lib/lots';
 import { loadLots } from './lots';
@@ -37,12 +38,27 @@ function parseJson<T>(value: unknown, fallback: T): T {
 }
 
 /**
+ * A-08: the XPF unit cost of a received line. A line price is in minor units of
+ * the order's currency, so it is divided by the currency's decimals before the
+ * frozen rate applies; a missing rate means an order entered in XPF.
+ */
+export function receiptUnitCost(unitPrice: unknown, fx?: { rate: number; decimals: number } | null): number {
+  const amount = Math.round(Number(unitPrice ?? 0));
+  return convertToBase(amount, Number(fx?.decimals ?? 0), Number(fx?.rate ?? 1));
+}
+
+/**
  * Receives a purchase order into stock.
  *
  * Only stockable items move: a service has no quantity to receive, and a line
  * without a catalogue reference is a free-text purchase that cannot be stocked.
  * The reference purchase price is refreshed with the price actually received;
  * the landed cost stays a manual figure until the valuation module computes it.
+ *
+ * A-08: `products.cost`, `products.purchase_price` and every movement/valuation
+ * figure are in XPF. A receipt in a foreign currency is converted at the rate
+ * frozen on the order *before* it enters the weighted average, so the stock is
+ * never valued in two units at once.
  *
  * Returns what was actually received so the caller can report it (a reception
  * of a service-only order legitimately returns an empty list).
@@ -55,6 +71,8 @@ export async function receivePurchaseOrder(
     userId: string;
     /** C2: the supplier of the order, so the price actually paid is recorded. */
     vendor_id?: string | null;
+    /** A-08: rate and decimals of the order's currency, to value the goods in XPF. */
+    fx?: { rate: number; decimals: number } | null;
   },
 ): Promise<StockLine[]> {
   const ids = [...new Set(
@@ -106,9 +124,10 @@ export async function receivePurchaseOrder(
       quantity_milli: Number(product.quantity_milli ?? 0),
       cost: Number(product.cost ?? 0),
     };
+    const unitPriceXpf = receiptUnitCost(line.unit_price, input.fx);
     const unitCost = landedUnitCost({
       landed_cost: product.landed_cost,
-      unit_price: line.unit_price,
+      unit_price: unitPriceXpf,
     });
     const valued = weightedAverageCost({
       quantity_milli: state.quantity_milli,
@@ -126,7 +145,7 @@ export async function receivePurchaseOrder(
     // comparison uses the purchase price, not the weighted average, because those
     // two answer different questions ("what did the supplier charge?" vs "what is
     // my stock worth?").
-    const paidPrice = Math.round(Number(line.unit_price ?? 0));
+    const paidPrice = unitPriceXpf;
     if (input.vendor_id && paidPrice > 0 && paidPrice !== Number(product.purchase_price ?? 0)) {
       statements.push(
         database
@@ -151,7 +170,7 @@ export async function receivePurchaseOrder(
           `UPDATE products SET quantity_milli = quantity_milli + ?, cost = ?, purchase_price = ?,
              updated_at = ? WHERE id = ?`,
         )
-        .bind(quantityMilli, valued.cost, Number(line.unit_price ?? 0), now, product.id),
+        .bind(quantityMilli, valued.cost, unitPriceXpf, now, product.id),
       database
         .prepare(
           `INSERT INTO stock_movements

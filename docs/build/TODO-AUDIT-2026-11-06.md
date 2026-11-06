@@ -56,6 +56,15 @@ documentée.
 
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **92 fichiers, 734 tests, 0 échec**.
 
+**6 novembre 2026 — A-08 et A-11 : devise des dépenses/BC et indexation.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-08 | **DONE** | `server/services/expenses.ts` (`expenseFx`, `createExpense`) fige le taux à la date et écrit `currency`/`exchange_rate`/`amount_xpf`/`tax_amount_xpf` ; `POST`/`PATCH /expenses` acceptent `currency` ; `POST /purchase-orders` (et `from-suggestions`) enregistrent `exchange_rate` + `subtotal_xpf`/`tax_total_xpf`/`total_xpf` ; `receiveAgainstBalance` lit le taux figé et `receiptUnitCost()` convertit la ligne **avant** `landedUnitCost`/coût moyen ; rapports dépenses et total d'achat par fournisseur en XPF via `baseAmountSql`. `tests/expenses-fx.test.ts`, **4 cas** : dépense 100,00 USD à 119,33 → `amount_xpf` 11 933, taux figé (un taux postérieur ne réécrit rien), agrégat XPF ≠ somme des devises, réception 25,00 USD → 2 983 XPF par unité. |
+| A-11 | **DONE** | Migration `0005_indexes_and_number_uniqueness` (SQL + `.ts`, enregistrée) : `idx_activities_entity`, `idx_stock_movements_reference`, `idx_sessions_expiry`, `idx_products_deleted`, index partiels `invoices`/`payments`/`credits(client_id, date) WHERE deleted_at IS NULL`, unicité `payments`/`purchase_orders`/`recurring_invoices(number)` ; doublon `idx_stock_count_lines_product` retiré de `schema.ts`. `tests/query-plans.test.ts`, **4 plans** : plus de `SCAN activities` / `SCAN stock_movements` / `SCAN products` / `SCAN sessions`. `tests/number-uniqueness.test.ts`, **3 cas** : doublon refusé, plusieurs `NULL` acceptés. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **95 fichiers, 745 tests, 0 échec**.
+
 **6 novembre 2026 — phases 2 et 3 : approbations, agrégats XPF, décimales, migrations.**
 
 | Tâche | État | Preuve exécutée |
@@ -382,9 +391,7 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   (×1e6) sur `landed_cost_sheets` et `import_sheets`. Suivre la convention des documents pour
   les dépenses et les bons de commande, et **documenter** l'écart (précision des coûts
   d'import) plutôt que d'introduire une troisième forme.
-- **Effort.** L. **Statut.** TODO — non livrée dans le lot du 2026-11-06 : le schéma et la migration 0004 ajoutent bien les colonnes, mais les routes dépenses/BC n'acceptent pas encore `currency`/`exchange_rate`, la réception d'achat ne convertit pas le prix reçu en XPF et `tests/expenses-fx.test.ts` n'existe pas — cocher sans ces trois preuves serait faux.
-
-### A-09 — Décimales : une seule source de vérité
+- **Effort.** L. **Statut.** DONE (2026-11-06). `expenses` accepte `currency` et fige le taux à la date (0004 déjà en place) ; `createExpense`/`expenseFx` stockent `amount_xpf`/`tax_amount_xpf` ; les BC acceptent `currency` et enregistrent `exchange_rate` + `subtotal_xpf`/`tax_total_xpf`/`total_xpf` ; la réception valorise la ligne en XPF (`receiptUnitCost`) avant `landedUnitCost` ; les rapports dépenses/achats agrègent en XPF. Preuve : journal.### A-09 — Décimales : une seule source de vérité
 
 - **But.** Le nombre de décimales affiché est celui de la devise configurée, pas une table
   codée en dur.
@@ -476,9 +483,7 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Pièges.** Une unicité sur `number` casse une base qui contient déjà des doublons :
   détecter et signaler avant de créer l'index (`SELECT number, COUNT(*) … HAVING COUNT(*) > 1`).
   `NULL` reste autorisé plusieurs fois avec un index unique SQLite — comportement voulu.
-- **Effort.** M. **Statut.** TODO.
-
-### A-12 — Intégrité référentielle : décider et appliquer
+- **Effort.** M. **Statut.** DONE (2026-11-06). Migration 0005 : `idx_activities_entity`, `idx_stock_movements_reference`, `idx_sessions_expiry`, `idx_products_deleted`, index partiels `invoices`/`payments`/`credits(client_id, date) WHERE deleted_at IS NULL`, unicités `payments`/`purchase_orders`/`recurring_invoices(number)` ; doublon `idx_stock_count_lines_product` retiré. Écart documenté : les index `products(family, lifecycle_status)` et `clients(account_status, archived)` de la fiche ne sont pas applicables — ces colonnes ne sont pas dans la baseline figée mais ajoutées par le filet de colonnes ; l'index catalogue porte donc sur `deleted_at`. Preuve : journal.### A-12 — Intégrité référentielle : décider et appliquer
 
 - **But.** Le noyau financier ne peut pas contenir d'orphelin, ou l'écart est détecté
   automatiquement.
@@ -1057,10 +1062,10 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-05 | Contre-écritures paiements/dépenses | 1 | M | — | **DONE** |
 | A-06 | Approbations : révision et re-contrôle | 2 | L | A-10 | **DONE** |
 | A-07 | Agrégats multi-devises | 3 | M | A-01, A-03 | **DONE** |
-| A-08 | Devise des dépenses et BC | 3 | L | A-07 | TODO |
+| A-08 | Devise des dépenses et BC | 3 | L | A-07 | **DONE** |
 | A-09 | Décimales, source unique | 3 | S | — | **DONE** |
 | A-10 | Migrations versionnées | 2 | L | — | **DONE** |
-| A-11 | Index manquants et doublon | 2 | M | A-10 | TODO |
+| A-11 | Index manquants et doublon | 2 | M | A-10 | **DONE** |
 | A-12 | Intégrité référentielle | 4 | L | A-10 | TODO |
 | A-13 | Contraintes de cohérence | 4 | M | A-10 | TODO |
 | A-14 | Stock : une vérité | 4 | L | A-10 | TODO |

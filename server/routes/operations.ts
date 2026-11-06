@@ -22,6 +22,10 @@ import {
 import { clientIp, requireAuth, requirePermission } from '../middleware';
 import { DEFAULT_TIMEZONE } from '../../shared/domain';
 import { safeLines, serialiseLines, syncInvoiceFromRow } from '../services/documents';
+import { convertToBase } from '../lib/fx';
+import { baseAmountSql } from '../lib/reports';
+import { freezeFx } from '../services/currencies';
+import { createExpense, expenseFx } from '../services/expenses';
 import type { AppEnv } from '../types';
 
 /* ------------------------------------------------------------------ expenses */
@@ -34,6 +38,8 @@ const expenseSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   amount: z.coerce.number().int().min(0).max(9_999_999_999),
   tax_amount: z.coerce.number().int().min(0).max(9_999_999_999).default(0),
+  // A-08: the receipt's currency; the books keep the XPF base frozen at `date`.
+  currency: z.string().trim().min(3).max(5).default('XPF'),
   payment_method: z.enum(['transfer', 'cash', 'cheque', 'card', 'direct_debit', 'credit', 'other']).default('transfer'),
   reference: optionalText(160),
   notes: optionalText(2000),
@@ -79,18 +85,16 @@ expenseRoutes.post('/', requirePermission('expenses.write'), async (c) => {
     .bind(body.category).first();
   if (!knownCategory) return fail(422, 'VALIDATION_ERROR', { category: 'unknown' });
   await assertPeriodOpen(c.env.DB, body.date);
-  const id = crypto.randomUUID();
-  await c.env.DB.prepare(
-    `INSERT INTO expenses (id, vendor_id, client_id, category, date, amount, tax_amount, payment_method, reference, notes,
-      is_billable, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).bind(
-    id, body.vendor_id || null, body.client_id || null, body.category, body.date, body.amount, body.tax_amount,
-    body.payment_method, body.reference, body.notes, body.is_billable ? 1 : 0, user.id, nowISO(), nowISO(),
-  ).run();
+  const { id, fx } = await createExpense(c.env.DB, {
+    vendor_id: body.vendor_id || null, client_id: body.client_id || null, category: body.category,
+    date: body.date, amount: body.amount, tax_amount: body.tax_amount, payment_method: body.payment_method,
+    reference: body.reference, notes: body.notes, is_billable: body.is_billable, currency: body.currency,
+    createdBy: user.id,
+  });
   await logActivity(c.env.DB, {
     userId: user.id, action: 'created', entityType: 'expense', entityId: id,
-    summary: 'activity.expense_created', meta: { amount: body.amount, category: body.category },
+    summary: 'activity.expense_created',
+    meta: { amount: body.amount, category: body.category, currency: fx.currency, amount_xpf: fx.amount_xpf },
   });
   return c.json({ id }, 201);
 });
@@ -103,19 +107,25 @@ expenseRoutes.patch('/:id', requirePermission('expenses.write'), async (c) => {
     .bind(body.category).first();
   if (!knownCategory) return fail(422, 'VALIDATION_ERROR', { category: 'unknown' });
   const existing = await c.env.DB.prepare(
-    `SELECT id, vendor_id, client_id, category, date, amount, tax_amount, payment_method, reference, notes, is_billable
+    `SELECT id, vendor_id, client_id, category, date, amount, tax_amount, payment_method, reference, notes, is_billable,
+       currency
      FROM expenses WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(id)
     .first<Record<string, unknown>>();
   if (!existing) return fail(404, 'NOT_FOUND');
   await assertPeriodOpen(c.env.DB, existing.date as string, body.date);
+  const fx = await expenseFx(c.env.DB, {
+    currency: body.currency, date: body.date, amount: body.amount, tax_amount: body.tax_amount,
+  });
   await c.env.DB.prepare(
     `UPDATE expenses SET vendor_id = ?, client_id = ?, category = ?, date = ?, amount = ?, tax_amount = ?,
-      payment_method = ?, reference = ?, notes = ?, is_billable = ?, updated_at = ? WHERE id = ?`,
+      payment_method = ?, reference = ?, notes = ?, is_billable = ?, updated_at = ?,
+      currency = ?, exchange_rate = ?, amount_xpf = ?, tax_amount_xpf = ? WHERE id = ?`,
   ).bind(
     body.vendor_id || null, body.client_id || null, body.category, body.date, body.amount, body.tax_amount,
-    body.payment_method, body.reference, body.notes, body.is_billable ? 1 : 0, nowISO(), id,
+    body.payment_method, body.reference, body.notes, body.is_billable ? 1 : 0, nowISO(),
+    fx.currency, fx.exchange_rate, fx.amount_xpf, fx.tax_amount_xpf, id,
   ).run();
 
   const changes = diffSnapshot(existing, {
@@ -123,7 +133,7 @@ expenseRoutes.patch('/:id', requirePermission('expenses.write'), async (c) => {
     vendor_id: body.vendor_id || null,
     client_id: body.client_id || null,
     is_billable: body.is_billable ? 1 : 0,
-  }, ['vendor_id', 'client_id', 'category', 'date', 'amount', 'tax_amount', 'reference', 'is_billable']);
+  }, ['vendor_id', 'client_id', 'category', 'date', 'amount', 'tax_amount', 'currency', 'reference', 'is_billable']);
   await logActivity(c.env.DB, {
     userId: c.get('user')!.id, action: 'updated', entityType: 'expense', entityId: id,
     summary: 'activity.expense_updated',
@@ -181,7 +191,7 @@ vendorRoutes.get('/', requirePermission('vendors.read'), async (c) => {
     .bind(...bindings).first<{ count: number }>();
   const rows = await c.env.DB.prepare(
     `SELECT v.*, (SELECT COUNT(*) FROM purchase_orders po WHERE po.vendor_id = v.id AND po.deleted_at IS NULL) AS po_count,
-      (SELECT COALESCE(SUM(po.total), 0) FROM purchase_orders po WHERE po.vendor_id = v.id AND po.deleted_at IS NULL) AS po_total
+      (SELECT COALESCE(SUM(${baseAmountSql('po.total', 'po.total_xpf')}), 0) FROM purchase_orders po WHERE po.vendor_id = v.id AND po.deleted_at IS NULL) AS po_total
      FROM vendors v ${where} ORDER BY v.name COLLATE NOCASE ASC LIMIT ? OFFSET ?`,
   ).bind(...bindings, per_page, offsetOf(page, per_page)).all();
   const total = count?.count ?? 0;
@@ -232,6 +242,8 @@ const purchaseOrderSchema = z.object({
   discount_type: z.enum(['percent', 'amount']).default('percent'),
   discount_value: z.coerce.number().int().min(0).default(0),
   notes: optionalText(2000),
+  // A-08: an order placed abroad keeps its currency and its frozen XPF base.
+  currency: z.string().trim().min(3).max(5).nullish(),
 });
 
 export const purchaseOrderRoutes = new Hono<AppEnv>();
@@ -265,7 +277,10 @@ async function receiptRows(database: D1Database, purchaseOrderId: string) {
  */
 async function receiveAgainstBalance(
   database: D1Database,
-  po: { id: string; number: string | null; line_items: string | null; vendor_id?: string | null },
+  po: {
+    id: string; number: string | null; line_items: string | null; vendor_id?: string | null;
+    currency?: string | null; exchange_rate?: number | null;
+  },
   requested: { line_id: string; quantity_milli: number }[],
   userId: string,
 ): Promise<
@@ -295,11 +310,20 @@ async function receiveAgainstBalance(
     for (const row of rows.results ?? []) costs.set(row.id, Number(row.cost ?? 0));
   }
 
+  // A-08: the receipt is valued in XPF at the rate frozen on the order, so a
+  // purchase abroad enters the weighted average as base money, not as raw units.
+  const currency = await database
+    .prepare(`SELECT decimals FROM currencies WHERE code = ?`)
+    .bind(po.currency ?? 'XPF')
+    .first<{ decimals: number }>();
+  const fx = { rate: Number(po.exchange_rate ?? 1), decimals: Number(currency?.decimals ?? 0) };
+
   const received = await receivePurchaseOrder(database, {
     reference: po.number,
     lines: wanted.map((row) => ({ ...byId.get(row.line_id)!, quantity: row.quantity_milli / 1000 })),
     userId,
     vendor_id: po.vendor_id ?? null,
+    fx,
   });
 
   const now = nowISO();
@@ -307,7 +331,7 @@ async function receiveAgainstBalance(
   const statements: D1PreparedStatement[] = [];
   for (const row of wanted) {
     const line = byId.get(row.line_id)!;
-    const unitPrice = Math.round(Number(line.unit_price ?? 0));
+    const unitPrice = convertToBase(Number(line.unit_price ?? 0), fx.decimals, fx.rate);
     const costBefore = line.product_id ? (costs.get(line.product_id) ?? 0) : 0;
     const gap = line.product_id
       ? Math.round((unitPrice - costBefore) * (row.quantity_milli / 1000))
@@ -467,14 +491,20 @@ purchaseOrderRoutes.post('/from-suggestions', requirePermission('purchase_orders
   const id = crypto.randomUUID();
   const number = await nextSimpleNumber(c.env.DB, 'purchase_order', 'BC');
 
+  // The books' currency is the base: a suggestion is already valued in XPF.
+  const suggestionBase = await freezeFx(c.env.DB, company.currency, date);
   await c.env.DB.prepare(
     `INSERT INTO purchase_orders (id, vendor_id, number, status, date, expected_date, currency, subtotal, discount_type,
-      discount_value, discount_total, tax_total, total, line_items, notes, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, 'percent', 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      discount_value, discount_total, tax_total, total, line_items, notes, created_by, created_at, updated_at,
+      exchange_rate, subtotal_xpf, tax_total_xpf, total_xpf)
+     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, 'percent', 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
-    id, body.vendor_id, number, date, expected, company.currency, totals.subtotal,
+    id, body.vendor_id, number, date, expected, suggestionBase.currency.code, totals.subtotal,
     totals.discount_total, totals.tax_total, totals.total, serialiseLines(enriched),
-    'Propositions d\'achat', user.id, nowISO(), nowISO(),
+    'Propositions d\'achat', user.id, nowISO(), nowISO(), suggestionBase.rate,
+    convertToBase(totals.subtotal, suggestionBase.currency.decimals, suggestionBase.rate),
+    convertToBase(totals.tax_total, suggestionBase.currency.decimals, suggestionBase.rate),
+    convertToBase(totals.total, suggestionBase.currency.decimals, suggestionBase.rate),
   ).run();
 
   await logActivity(c.env.DB, {
@@ -525,7 +555,7 @@ purchaseOrderRoutes.post('/:id/receive', requirePermission('purchase_orders.writ
   );
 
   const po = await c.env.DB
-    .prepare(`SELECT id, number, status, vendor_id, line_items FROM purchase_orders WHERE id = ? AND deleted_at IS NULL`)
+    .prepare(`SELECT id, number, status, vendor_id, line_items, currency, exchange_rate FROM purchase_orders WHERE id = ? AND deleted_at IS NULL`)
     .bind(id)
     .first<{ id: string; number: string | null; status: string; vendor_id: string | null; line_items: string | null }>();
   if (!po) return fail(404, 'NOT_FOUND');
@@ -573,16 +603,22 @@ purchaseOrderRoutes.post('/', requirePermission('purchase_orders.write'), async 
   );
 
   const totals = computeTotals(body.line_items, { discount_type: body.discount_type, discount_value: body.discount_value }, false);
+  // A-08: the order keeps its own currency and the XPF base frozen at its date.
+  const fx = await freezeFx(c.env.DB, body.currency ?? company.currency, body.date);
   const id = crypto.randomUUID();
   const number = await nextSimpleNumber(c.env.DB, 'purchase_order', 'BC');
   await c.env.DB.prepare(
     `INSERT INTO purchase_orders (id, vendor_id, number, status, date, expected_date, currency, subtotal, discount_type,
-      discount_value, discount_total, tax_total, total, line_items, notes, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      discount_value, discount_total, tax_total, total, line_items, notes, created_by, created_at, updated_at,
+      exchange_rate, subtotal_xpf, tax_total_xpf, total_xpf)
+     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
-    id, body.vendor_id, number, body.date, body.expected_date, company.currency, totals.subtotal, body.discount_type,
+    id, body.vendor_id, number, body.date, body.expected_date, fx.currency.code, totals.subtotal, body.discount_type,
     body.discount_value, totals.discount_total, totals.tax_total, totals.total, serialiseLines(body.line_items),
-    body.notes, user.id, nowISO(), nowISO(),
+    body.notes, user.id, nowISO(), nowISO(), fx.rate,
+    convertToBase(totals.subtotal, fx.currency.decimals, fx.rate),
+    convertToBase(totals.tax_total, fx.currency.decimals, fx.rate),
+    convertToBase(totals.total, fx.currency.decimals, fx.rate),
   ).run();
   await logActivity(c.env.DB, { userId: user.id, action: 'created', entityType: 'purchase_order', entityId: id, summary: 'activity.po_created', meta: { number, total: totals.total } });
   return c.json({ id, number }, 201);
@@ -596,10 +632,10 @@ purchaseOrderRoutes.post('/:id/status', requirePermission('purchase_orders.write
     await c.req.json().catch(() => ({})),
   );
   const po = await c.env.DB.prepare(
-    `SELECT id, number, status, vendor_id, line_items FROM purchase_orders WHERE id = ? AND deleted_at IS NULL`,
+    `SELECT id, number, status, vendor_id, line_items, currency, exchange_rate FROM purchase_orders WHERE id = ? AND deleted_at IS NULL`,
   )
     .bind(id)
-    .first<{ id: string; number: string | null; status: string; vendor_id: string | null; line_items: string }>();
+    .first<{ id: string; number: string | null; status: string; vendor_id: string | null; line_items: string; currency: string | null; exchange_rate: number | null }>();
   if (!po) return fail(404, 'NOT_FOUND');
   // A reception is final: receiving twice would double the stock. Going back to
   // another status is allowed (correction), receiving again is refused loudly

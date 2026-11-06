@@ -82,7 +82,7 @@ describe('versioned migrations — A-10', () => {
 
     const applied = await runMigrations(db);
     expect(applied).toBe(MIGRATIONS.length);
-    expect(await appliedVersions(db)).toEqual(new Set([1, 2, 3, 4]));
+    expect(await appliedVersions(db)).toEqual(new Set(MIGRATIONS.map((migration) => migration.version)));
 
     // A-04 table arrived, A-06 revision columns arrived, A-08 currency arrived.
     expect(raw.prepare(`SELECT COUNT(*) AS n FROM credit_tax_lines`).get()).toMatchObject({ n: 0 });
