@@ -54,7 +54,16 @@ documentée.
 | A-05 | **DONE** | `paymentReversalLines` / `expenseReversalLines` + rattrapage idempotent dans `syncAccounting` (événements `voided` / `reversed`). `tests/accounting-reversals.test.ts` — miroirs équilibrés, double passe sans doublon. |
 | A-03 | **DONE** | `server/lib/credit-note.ts` : avoir prérempli depuis la facture, un bucket par taux, prorata sur un remboursement partiel, devise et taux figés repris, `tax_exempt` hérité au lieu d'être forcé. `tests/credit-note.test.ts`, **6 cas**. |
 
-Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **88 fichiers, 720 tests, 0 échec**.
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **92 fichiers, 734 tests, 0 échec**.
+
+**6 novembre 2026 — phases 2 et 3 : approbations, agrégats XPF, décimales, migrations.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-06 | **DONE** | `approvals` reconstruite par la migration 0003 (`revision`, `controlled_amount`, `controlled_discount`, `superseded_at`, `UNIQUE(entity_type, entity_id, revision)`). `requireApprovalIfNeeded` compare montant et remise **courants** aux valeurs contrôlées : dépassement après approbation ou re-soumission après refus → révision `pending` + `409 APPROVAL_REQUIRED` avec `previous`/`revision` ; `approvalOf` lit `ORDER BY revision DESC LIMIT 1` ; `decideApproval` refuse une révision périmée (`409 ALREADY_DECIDED`) et l'auto-approbation (`403 SAME_APPROVER`). `tests/approvals-revision.test.ts`, **4 cas** : remise 15 % → 35 % rouvre une demande, montant contrôlé accepté tel quel, refus puis correction, révision périmée. |
+| A-07 | **DONE** | Règle unique `baseAmountSql()` / `baseBalanceSql()` (`server/lib/reports.ts`), utilisée par tous les KPI, `revenue-summary`, `aging` et `client-sales`. `RevenuePeriod` expose `taxable_xpf` / `exempt_xpf` / `total_xpf` / `collected_xpf` ; `aging` renvoie `balance_xpf` au prorata du taux figé, à côté de `balance` et `currency` d'origine ; en-têtes CSV « (XPF) ». `tests/reports-multicurrency.test.ts`, **3 cas** : 1 000 EUR à 119,33 + 100 000 XPF = **219 330**, `taxable + exempt = total`, solde âgé = 59 665 + 40 000, total nul non écrasé. |
+| A-09 | **DONE** | `currencyDecimals(currency, decimals?)` (`shared/money.ts`) : la valeur configurée 0–4 fait foi, la map XPF/JPY n'est qu'un repli hors ligne ; `toMinor`/`fromMinor`/`formatMoney` et `src/lib/format.ts` prennent le même paramètre. `tests/money-decimals.test.ts` : XPF, EUR, KWD (3 décimales), devise inconnue. |
+| A-10 | **DONE** | `server/db/migrations/` : baseline figée sans seeds + `0002_credit_tax_lines`, `0003_approvals_revision`, `0004_expense_po_currency` ; `runMigrations()` (`server/db/migrate.ts`) journalise dans `d1_migrations` et renvoie **0** quand tout est appliqué ; `provision()` exécute les fichiers puis garde `applyColumnMigrations` en filet ; `db:migrate:local` = `wrangler d1 migrations apply`. `tests/schema-migrations.test.ts` : base **ancienne** migrée **sans perte**, rejeu = 0, structure finale identique à `SCHEMA_STATEMENTS`. |
 
 ---
 
@@ -313,7 +322,7 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   conservé, `decideApproval` sur révision périmée (409).
 - **Pièges.** L'unicité sert aussi d'idempotence : la remplacer par `(…, revision)` impose de
   recalculer « la dernière révision » explicitement (`ORDER BY revision DESC LIMIT 1`).
-- **Effort.** L. **Statut.** TODO.
+- **Effort.** L. **Statut.** DONE (2026-11-06). Révisions `(entity_type, entity_id, revision)` ; preuve dans le journal d'exécution.
 
 ---
 
@@ -343,7 +352,7 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   mixte ; vérifier l'égalité `taxable + exempt = total` et la somme de la balance âgée.
 - **Pièges.** Un document XPF a `total_xpf = total` : le CASE ne doit pas écraser un `0`
   légitime (document à total zéro). Les avoirs doivent suivre la même règle.
-- **Effort.** M. **Statut.** TODO.
+- **Effort.** M. **Statut.** DONE (2026-11-06). `baseAmountSql`/`baseBalanceSql` sont la règle unique ; preuve dans le journal.
 
 ### A-08 — Devise des dépenses et des bons de commande
 
@@ -373,7 +382,7 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   (×1e6) sur `landed_cost_sheets` et `import_sheets`. Suivre la convention des documents pour
   les dépenses et les bons de commande, et **documenter** l'écart (précision des coûts
   d'import) plutôt que d'introduire une troisième forme.
-- **Effort.** L. **Statut.** TODO.
+- **Effort.** L. **Statut.** TODO — non livrée dans le lot du 2026-11-06 : le schéma et la migration 0004 ajoutent bien les colonnes, mais les routes dépenses/BC n'acceptent pas encore `currency`/`exchange_rate`, la réception d'achat ne convertit pas le prix reçu en XPF et `tests/expenses-fx.test.ts` n'existe pas — cocher sans ces trois preuves serait faux.
 
 ### A-09 — Décimales : une seule source de vérité
 
@@ -394,7 +403,7 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   XPF reste sans décimale.
 - **Tests.** `tests/money-decimals.test.ts` : XPF, EUR, KWD (3), devise inconnue (repli 2).
 - **Pièges.** Les montants déjà stockés ne changent pas ; ne pas « corriger » rétroactivement.
-- **Effort.** S. **Statut.** TODO.
+- **Effort.** S. **Statut.** DONE (2026-11-06). `currencyDecimals(currency, decimals?)` ; preuve dans le journal.
 
 ---
 
@@ -578,7 +587,7 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   `tests/search-limits.test.ts`.
 - **Pièges.** `chunks` doit préserver l'ordre attendu par les appelants ; certaines requêtes
   font `Map` sur les résultats, d'autres un tableau — vérifier chaque site.
-- **Effort.** M. **Statut.** TODO.
+- **Effort.** M. **Statut.** DONE (2026-11-06). `server/db/migrations/` + `runMigrations()` ; preuve dans le journal.
 
 ---
 
@@ -1046,11 +1055,11 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-03 | Avoir : TVA, devise, change | 1 | M | — | **DONE** |
 | A-04 | Miroir TVA des avoirs | 1 | M | A-03 | **DONE** |
 | A-05 | Contre-écritures paiements/dépenses | 1 | M | — | **DONE** |
-| A-06 | Approbations : révision et re-contrôle | 2 | L | A-10 | TODO |
-| A-07 | Agrégats multi-devises | 3 | M | A-01, A-03 | TODO |
+| A-06 | Approbations : révision et re-contrôle | 2 | L | A-10 | **DONE** |
+| A-07 | Agrégats multi-devises | 3 | M | A-01, A-03 | **DONE** |
 | A-08 | Devise des dépenses et BC | 3 | L | A-07 | TODO |
-| A-09 | Décimales, source unique | 3 | S | — | TODO |
-| A-10 | Migrations versionnées | 2 | L | — | TODO |
+| A-09 | Décimales, source unique | 3 | S | — | **DONE** |
+| A-10 | Migrations versionnées | 2 | L | — | **DONE** |
 | A-11 | Index manquants et doublon | 2 | M | A-10 | TODO |
 | A-12 | Intégrité référentielle | 4 | L | A-10 | TODO |
 | A-13 | Contraintes de cohérence | 4 | M | A-10 | TODO |
