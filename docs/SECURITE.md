@@ -196,3 +196,11 @@ En HTTPS :
 > **Limite assumée.** Le déclencheur externe reste à la charge du propriétaire (PQ-1) : cet hébergement
 > n'attache aucun planificateur, et aucun appelant réel n'a été configuré. La limitation de débit a été
 > mesurée depuis une seule adresse.
+
+## Iframe de préversion (A-21)
+
+La préversion est la seule iframe supportée, et seulement pour sa propre origine : sur un hôte
+`.style.dev`, la CSP porte `frame-ancestors https://<hôte>` et `X-Frame-Options` est retiré (il
+contredirait la politique). Partout ailleurs, `X-Frame-Options: DENY` et
+`frame-ancestors 'none'` restent la règle. Les cookies de session suivent la même décision
+(`SameSite=None; Secure; Partitioned` sur la préversion, `Lax` sinon).

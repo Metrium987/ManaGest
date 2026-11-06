@@ -159,6 +159,16 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **105 fichie
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **106 fichiers, 809 tests, 0 échec**.
 
 Prochaine fiche : **A-21 — en-têtes de sécurité sur l'origine réelle**.
+
+**6 novembre 2026 — A-21 : en-têtes de sécurité sur l'origine réelle.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-21 | **DONE** | `securityHeaders` déduit l'origine réelle (`url.protocol`, `x-forwarded-proto: https`, hôte `.style.dev`) : CSP/HSTS émis derrière le proxy, HSTS absent en clair sur localhost. Préversion supportée pour sa seule origine (`frame-ancestors https://<hôte>`, sans `X-Frame-Options`), ailleurs `DENY` + `frame-ancestors 'none'` — cohérent avec les cookies `SameSite=None; Partitioned`. En-têtes posés après `next()`, donc sur succès et erreurs. Décision documentée dans `docs/SECURITE.md`. `tests/security-headers.test.ts` **6 cas** sur les réponses réelles de `server/worker` : https complet, 404, 409, préversion, proxy, localhost. Mutation (HSTS retiré) : **4 cas en échec sur 6**. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **107 fichiers, 815 tests, 0 échec**.
+
+Prochaine fiche : **A-22 — ré-authentification pour changer un facteur**.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -951,7 +961,23 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Tests.** `tests/security-headers.test.ts` (matrice origine × en-têtes).
 - **Pièges.** Ne pas élargir `frame-ancestors` à `*`. Vérifier que le PDF et les assets
   gardent `nosniff`.
-- **Effort.** M. **Statut.** TODO.
+- **Livré (2026-11-06).** Choix (a) : l'iframe de préversion est **supportée**, mais seulement
+  pour sa propre origine. `securityHeaders` calcule l'origine réelle (`https` de l'URL, ou
+  `x-forwarded-proto: https`, ou un hôte `.style.dev`) : CSP et HSTS sont émis derrière le
+  proxy, HSTS reste absent en clair sur `localhost`. Sur `.style.dev`, la politique devient
+  `frame-ancestors https://<hôte>` et `X-Frame-Options` est retiré (il contredisait la
+  politique) — cohérent avec `cookieSecurity()` qui pose déjà `SameSite=None; Secure;
+  Partitioned` sur cette origine. Ailleurs : `X-Frame-Options: DENY` +
+  `frame-ancestors 'none'`. En-têtes appliqués après `next()`, donc sur les succès **et** les
+  erreurs (404, 409, 429…), assets compris. `docs/SECURITE.md` documente la décision.
+  Preuve : `tests/security-headers.test.ts` (**6 cas**) sur les vraies réponses de
+  `server/worker` — matrice origine × en-têtes : document https complet (CSP avec
+  `style-src`, `img-src`, `font-src`, `connect-src` réellement utilisés, aucun
+  `frame-ancestors *`), 404 et 409 avec les mêmes en-têtes, préversion `frame-ancestors
+  https://preview-abc.style.dev` sans `X-Frame-Options`, proxy `x-forwarded-proto: https`,
+  `localhost` sans HSTS ni CSP mais avec `nosniff`. Mutation : suppression de l'émission HSTS
+  → **4 cas en échec sur 6**. Typecheck 0 erreur ; suite **107 fichiers / 815 tests**.
+- **Effort.** M. **Statut.** DONE.
 
 ### A-22 — Ré-authentification pour changer un facteur
 
@@ -1289,7 +1315,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-18 | Comptabilité incrémentale | 5 | L | A-05 | DONE |
 | A-19 | Chaîne d'audit sans course | 4 | M | — | DONE |
 | A-20 | Limitation par IP et compte | 6 | S | — | DONE |
-| A-21 | En-têtes de sécurité cohérents | 6 | M | — | TODO |
+| A-21 | En-têtes de sécurité cohérents | 6 | M | — | DONE |
 | A-22 | Ré-auth MFA | 6 | S | — | TODO |
 | A-23 | Installation verrouillée | 6 | S | A-13 | TODO |
 | A-24 | Rétention et purges | 6 | M | A-15 | TODO |

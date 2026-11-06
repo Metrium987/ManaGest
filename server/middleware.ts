@@ -20,15 +20,29 @@ export const securityHeaders: MiddlewareHandler<AppEnv> = async (c, next) => {
   // header is written onto a fresh copy instead of the original object.
   const headers = new Headers(c.res.headers);
   headers.set('X-Content-Type-Options', 'nosniff');
-  headers.set('X-Frame-Options', 'DENY');
   headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
   const url = new URL(c.req.url);
-  const isHttps = url.protocol === 'https:';
-  const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
-  if (isHttps && !isLocal) {
+  const forwarded = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim().toLowerCase();
+  const host = url.hostname.toLowerCase();
+  const isLocal = host === 'localhost' || host === '127.0.0.1';
+  // A-21: behind the platform proxy the Worker sees http even when the browser
+  // used https, and the preview host serves an iframe. Both are real origins.
+  const isPreview = host.endsWith('.style.dev');
+  const secure = url.protocol === 'https:' || forwarded === 'https' || isPreview;
+
+  if (isPreview) {
+    // The preview iframe is the only frame allowed: the preview origin itself.
+    // `X-Frame-Options: DENY` would contradict `frame-ancestors`, so it goes.
+    headers.delete('X-Frame-Options');
+  } else {
+    headers.set('X-Frame-Options', 'DENY');
+  }
+  if (secure && !isLocal) {
     headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  if (secure) {
     headers.set(
       'Content-Security-Policy',
       [
@@ -38,7 +52,7 @@ export const securityHeaders: MiddlewareHandler<AppEnv> = async (c, next) => {
         "img-src 'self' data: blob:",
         "font-src 'self' data:",
         "connect-src 'self'",
-        "frame-ancestors 'none'",
+        isPreview ? `frame-ancestors https://${host}` : "frame-ancestors 'none'",
         "base-uri 'self'",
         "form-action 'self'",
       ].join('; '),
