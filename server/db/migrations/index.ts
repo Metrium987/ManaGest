@@ -7,6 +7,7 @@ import { STATEMENTS as INTEGRITY_CONSTRAINTS } from './0006_integrity_constraint
 import { STATEMENTS as SEARCH_DOCUMENTS } from './0007_search_documents';
 import { STATEMENTS as AUDIT_CHAIN } from './0008_audit_chain';
 import { STATEMENTS as LOGIN_ATTEMPTS_IP } from './0009_login_attempts_ip';
+import { STATEMENTS as RETENTION_INDEXES } from './0010_retention_indexes';
 
 export interface Migration {
   version: number;
@@ -30,4 +31,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 7, name: 'search_documents', statements: SEARCH_DOCUMENTS },
   { version: 8, name: 'audit_chain', statements: AUDIT_CHAIN },
   { version: 9, name: 'login_attempts_ip', statements: LOGIN_ATTEMPTS_IP },
+  { version: 10, name: 'retention_indexes', statements: RETENTION_INDEXES },
 ];

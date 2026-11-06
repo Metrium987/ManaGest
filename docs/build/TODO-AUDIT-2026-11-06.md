@@ -189,6 +189,16 @@ Prochaine fiche : **A-23 — installation : verrou et limitation**.
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **108 fichiers, 822 tests, 0 échec**.
 
 Prochaine fiche : **A-24 — rétention et purges**.
+
+**6 novembre 2026 — A-24 : rétention et purges.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-24 | **DONE** | Politiques dans `server/lib/retention.ts` (activities 10 ans, login_attempts 90 j, sessions expirées 30 j, public_link_access 12 mois, mfa_challenges 7 j, password_reset_tokens 24 h, morceaux orphelins 1 j), purge par lots de 500 (20 max) via `DELETE … RETURNING`, idempotente et sûre en concurrence, `summary.purged` dans `daily_runs.summary_json` + entrée d'audit `retention_purged`, diagnostic `GET /api/settings/retention`. Migration 0010 (index de purge) sans table nouvelle ; chaîne d'audit préservée par ancre `audit_chain_anchor`. `tests/retention-purge.test.ts` **6 cas** (bornes de chaque politique, idempotence, 1 050 lignes en 3 lots, morceaux vivants/orphelins, chaîne vérifiée après purge, rapport). Mutation (fenêtres à zéro) : **3 cas en échec sur 6**. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **109 fichiers, 828 tests, 0 échec**.
+
+Prochaine fiche : **A-25 — observabilité métier**.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -1098,9 +1108,37 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Critères d'acceptation.** Un jeu de données ancien est purgé selon la politique, sans
   jamais toucher aux documents financiers ; la purge est journalisée.
 - **Tests.** `tests/retention-purge.test.ts` (chaque politique, bornes, idempotence).
+- **Livré (2026-11-06).** Table de politiques dans `server/lib/retention.ts` :
+  `activities` 10 ans, `login_attempts` 90 j, `sessions` (sur `expires_at`) 30 j,
+  `public_link_access` 12 mois, `mfa_challenges` 7 j, `password_reset_tokens` 24 h, morceaux
+  d'attachement orphelins 1 j. `purgeExpired()` supprime par lots de **500**, au plus **20**
+  lots par passe, avec `DELETE … WHERE rowid IN (SELECT … LIMIT 500) RETURNING rowid` : chaque
+  passage est idempotent, deux passages concurrents suppriment des lignes disjointes et le
+  compte est exact. Le passage quotidien appelle la purge avant tout le reste, publie
+  `summary.purged` (stocké dans `daily_runs.summary_json`) et la purge écrit elle-même une
+  entrée d'audit `activity.retention_purged` avec les comptes par politique. Route de
+  diagnostic en lecture seule `GET /api/settings/retention` (`settings.read`) : lignes et
+  octets de charge par table. Migration **0010** : index `sessions(expires_at)`,
+  `public_link_access(created_at)`, `mfa_challenges(created_at)`,
+  `password_reset_tokens(created_at)`, `attachments(deleted_at)` (+ alignement
+  `SCHEMA_STATEMENTS`, fichier `.sql` de référence) ; aucune table nouvelle, donc
+  sauvegarde/restauration inchangées et toujours vertes.
+  **Chaîne d'audit.** Purger d'anciennes `activities` cassait A-19 (numérotation depuis 1) :
+  la suppression suit `seq`, le plus récent retiré devient l'ancre `app_meta.audit_chain_anchor`
+  (mise à jour seulement vers l'avant), `verifyActivityChain` repart de cette ancre et
+  `previousHash` s'y raccroche quand le prédécesseur a disparu.
+  **Écart assumé.** Un morceau n'a pas d'horodatage : la règle « 1 j » est lue sur la pièce
+  (parent absent = orphelin ; parent supprimé depuis plus d'un jour). Un morceau de pièce
+  vivante n'est jamais touché.
+  Preuve : `tests/retention-purge.test.ts`, **6 cas** — purge de chaque politique avec bornes
+  (91 j vs 89 j, session expirée 31 j vs active, etc.), lignes financières hors politiques,
+  idempotence (2e passe = 0), **1 050 lignes → 3 lots de 500**, morceaux (vivant et supprimé
+  récemment gardés, orphelin et supprimé depuis 2 j purgés), chaîne d'audit ancrée puis
+  vérifiée après une nouvelle écriture, rapport de diagnostic. Mutation : fenêtres ramenées à
+  zéro → **3 cas en échec sur 6**. Typecheck 0 erreur ; suite **109 fichiers / 828 tests**.
 - **Pièges.** Ne jamais purger `activities` avant la durée comptable ; ne pas supprimer un
   morceau d'attachement référencé.
-- **Effort.** M. **Statut.** TODO.
+- **Effort.** M. **Statut.** DONE.
 
 ### A-25 — Observabilité métier
 
@@ -1380,7 +1418,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-21 | En-têtes de sécurité cohérents | 6 | M | — | DONE |
 | A-22 | Ré-auth MFA | 6 | S | — | DONE |
 | A-23 | Installation verrouillée | 6 | S | A-13 | DONE |
-| A-24 | Rétention et purges | 6 | M | A-15 | TODO |
+| A-24 | Rétention et purges | 6 | M | A-15 | DONE |
 | A-25 | Observabilité métier | 6 | M | A-12, A-14 | TODO |
 | A-26 | Tests HTTP d'intégration | 6 | L | A-10 | TODO |
 | A-27 | Documentation | 6 | S | A-01…A-31 | TODO |

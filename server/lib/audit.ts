@@ -1,4 +1,5 @@
 import { nowISO } from '../db';
+import { auditChainAnchor } from './retention';
 import { sha256Hex } from './crypto';
 
 export interface ActivityInput {
@@ -118,6 +119,10 @@ async function previousHash(database: D1Database, seq: number | null): Promise<s
         .first<{ hash: string | null }>();
       if (row) return row.hash;
     }
+    // A-24: the predecessor may have been purged; the purge records its seq and
+    // hash as the chain anchor, so a new entry still links to the last known one.
+    const anchor = await auditChainAnchor(database);
+    if (anchor && anchor.seq === seq - 1) return anchor.hash;
   }
   const last = await database
     .prepare(
@@ -187,9 +192,12 @@ export async function verifyActivityChain(database: D1Database): Promise<ChainVe
     )
     .all<ActivityRow & { seq: number | null }>();
 
-  let prevHash: string | null = null;
+  // A-24: a purge removes the oldest entries but leaves an anchor; verification
+  // starts after it instead of reporting the deleted prefix as a gap.
+  const anchor = await auditChainAnchor(database);
+  let prevHash: string | null = anchor?.hash ?? null;
   let checked = 0;
-  let expectedSeq = 1;
+  let expectedSeq = anchor ? anchor.seq + 1 : 1;
   for (const row of rows.results ?? []) {
     // Entries written before the chain existed carry no hash; they are the
     // starting point, not a break.

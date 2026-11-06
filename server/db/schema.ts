@@ -91,6 +91,7 @@ export const SCHEMA_STATEMENTS: string[] = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_public_link_access_link ON public_link_access(link_id, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_public_link_access_created ON public_link_access(created_at)`,
 
   `CREATE TABLE IF NOT EXISTS app_meta (
     key TEXT PRIMARY KEY,
@@ -181,6 +182,7 @@ export const SCHEMA_STATEMENTS: string[] = [
     absolute_expires_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`,
 
   `CREATE TABLE IF NOT EXISTS login_attempts (
     id TEXT PRIMARY KEY,
@@ -709,6 +711,7 @@ export const SCHEMA_STATEMENTS: string[] = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_mfa_challenges_user ON mfa_challenges(user_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_mfa_challenges_created ON mfa_challenges(created_at)`,
 
   // Single-use password reset links: only the SHA-256 of the token is stored,
   // so a database read cannot be replayed against a real account.
@@ -723,6 +726,7 @@ export const SCHEMA_STATEMENTS: string[] = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id)`,
   `CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_ip ON password_reset_tokens(requested_ip, created_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_created ON password_reset_tokens(created_at)`,
 
   // Closed accounting periods: no document dated inside may be written.
   `CREATE TABLE IF NOT EXISTS period_locks (
@@ -793,6 +797,7 @@ export const SCHEMA_STATEMENTS: string[] = [
     deleted_at TEXT
   )`,
   `CREATE INDEX IF NOT EXISTS idx_attachments_entity ON attachments(entity_type, entity_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_attachments_deleted ON attachments(deleted_at)`,
   `CREATE TABLE IF NOT EXISTS attachment_chunks (
     attachment_id TEXT NOT NULL,
     seq INTEGER NOT NULL,

@@ -3,7 +3,7 @@ import { logActivity } from '../lib/audit';
 import { assertPeriodOpen } from '../lib/locks';
 import { getExtra } from '../lib/settings-extra';
 import { integrityReport } from '../lib/integrity';
-import { purgeLoginAttempts } from '../lib/limits';
+import { purgeExpired } from '../lib/retention';
 import { stockBalance } from '../lib/stock-balance';
 import { advanceRunDate, generateRecurringInvoice } from './recurring';
 import { DEFAULT_REMINDER_INTERVAL_DAYS, runReminderPass } from './reminders';
@@ -37,6 +37,8 @@ export interface RunSummary {
   integrity_gaps?: number;
   /** A-14: articles whose stock cache or shelf ledger drifted, 0 when consistent. */
   stock_gaps?: number;
+  /** A-24: rows deleted by the retention pass, by policy. */
+  purged?: Record<string, number>;
 }
 
 /** A pass is only successful when every template it touched produced an invoice. */
@@ -202,8 +204,17 @@ export async function runDailyPipeline(
 ): Promise<RunSummary> {
   const { day } = options;
   const summary: RunSummary = { day, generated: [], failed: [], templates: 0, reminders: 0, truncated: false };
-  // A-20: attempts older than the retention window leave on the daily pass.
-  await purgeLoginAttempts(database);
+  // A-20/A-24: the daily pass applies every retention policy, in bounded batches,
+  // and reports what left in `summary_json` (the purge also writes its own
+  // `retention_purged` audit entry).
+  const purge = await purgeExpired(database);
+  if (purge.total > 0) {
+    summary.purged = Object.fromEntries(
+      purge.policies
+        .filter((outcome) => outcome.deleted > 0)
+        .map((outcome) => [outcome.policy, outcome.deleted]),
+    );
+  }
 
   if (!(await periodOpen(database, day))) {
     summary.skipped_reason = 'PERIOD_LOCKED';

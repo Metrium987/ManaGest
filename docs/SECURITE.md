@@ -231,3 +231,35 @@ sa comparaison à temps constant et son marqueur `owner_recovery_used` à usage 
 **Préversion non configurée.** Le premier visiteur qui atteint `/install` crée la société et
 devient propriétaire. Une préversion non configurée ne doit donc jamais être exposée
 publiquement : installez-la ou laissez-la hors ligne.
+
+## Rétention et purges (A-24)
+
+Les données ont une durée, appliquée par le passage quotidien (`purgeExpired`) et jamais par une
+requête utilisateur :
+
+| Donnée | Durée | Base de la coupure |
+|---|---|---|
+| `activities` (journal d'audit) | 10 ans | `created_at` — exigence comptable |
+| `login_attempts` | 90 jours | `created_at` |
+| `sessions` expirées | 30 jours | `expires_at` |
+| `public_link_access` | 12 mois | `created_at` |
+| `mfa_challenges` | 7 jours | `created_at` |
+| `password_reset_tokens` | 24 h | `created_at` |
+| morceaux d'attachement orphelins | 1 jour | pièce absente, ou supprimée depuis plus d'un jour |
+
+La suppression se fait par lots de 500, au plus 20 lots par passe, en une instruction
+`DELETE … WHERE rowid IN (SELECT … LIMIT 500) RETURNING` : la passe est idempotente et deux
+passes concurrentes ne se marchent pas dessus. Chaque passe écrit une entrée
+`activity.retention_purged` avec ses comptes. Les documents financiers (factures, paiements,
+avoirs, dépenses, grand livre) ne figurent dans aucune politique et ne peuvent donc pas être
+purgés.
+
+Purger d'anciennes entrées du journal ne doit pas casser la chaîne de hachage : les lignes
+partent dans l'ordre de `seq`, la plus récente retirée devient l'ancre
+`app_meta.audit_chain_anchor` (mise à jour uniquement vers l'avant), et la vérification repart
+de cette ancre. Un morceau d'attachement n'a pas d'horodatage propre : la règle d'un jour est
+lue sur la pièce (parent absent = orphelin ; parent supprimé depuis plus d'un jour), et un
+morceau de pièce vivante n'est jamais supprimé.
+
+Diagnostic en lecture seule : `GET /api/settings/retention` (permission `settings.read`) renvoie
+le nombre de lignes et une estimation des octets de charge par table.

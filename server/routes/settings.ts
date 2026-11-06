@@ -29,6 +29,7 @@ import {
   vatRegimeDetailFromLegacy,
 } from '../../shared/client-profile';
 import { clientIp, requireAuth, requirePermission } from '../middleware';
+import { retentionReport } from '../lib/retention';
 import { rebuildAllInvoiceTaxLines } from '../services/documents';
 import { encryptMailSecret, ensureMailConfig, publicMailConfig, readMailConfig, validateSmtpHost } from '../services/email';
 import type { AppEnv, UserRow } from '../types';
@@ -361,6 +362,11 @@ settingsRoutes.put('/extras/:key', requirePermission('settings.write'), async (c
     meta: { key, value: body.value },
   });
   return c.json({ ok: true });
+});
+
+// A-24: read-only diagnosis of what the retention pass keeps and how big it is.
+settingsRoutes.get('/retention', requirePermission('settings.read'), async (c) => {
+  return c.json(await retentionReport(c.env.DB));
 });
 
 settingsRoutes.get('/', requirePermission('settings.read'), async (c) => {
