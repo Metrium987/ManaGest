@@ -82,3 +82,23 @@ n'est pas couvert par cette version et doit être traité comme un module sépar
 - OPH — mentions des factures : <https://www.oph.pf/p/mentions-factures>
 - CCISM — facturation électronique : <https://www.ccism.pf/infos-entreprises-une-enquete-sur-la-facturation-electronique-destination-des-professionnels>
 - IEOM — monnaie et arrondis : <https://www.ieom.fr/Les-pieces-et-billets-en-circulation?lang=en>
+
+## 8. Valeurs de règle et où les changer
+
+Tout seuil qui décide d'un refus est un réglage d'espace de travail (A-29), livré avec le
+comportement historique. La colonne « réglage » est la clé utilisée par
+`GET/PUT /api/settings/extras` et par Paramètres → Sécurité.
+
+| Valeur | Défaut | Source | Réglage |
+|---|---|---|---|
+| Fenêtre des échecs de connexion | 15 minutes | Pratique usuelle de verrouillage progressif (A-20) | `login_window_minutes` |
+| Échecs avant blocage d'un compte | 8 | Idem : bloque un verrouillage ciblé sans bloquer une faute de frappe | `login_max_per_account` |
+| Échecs avant blocage d'une adresse IP | 50 | Idem : arrête l'aspersion de nombreux comptes depuis un hôte | `login_max_per_ip` |
+| Conservation des tentatives échouées | 90 jours | Politique de rétention A-20/A-24 | `login_attempt_retention_days` |
+| Fenêtre d'installation / récupération | 15 minutes | A-23, même fenêtre que la connexion | `setup_window_minutes` |
+| Tentatives d'installation par IP | 5 | A-23 : `install` et `recover-owner` sont à usage unique | `setup_max_attempts_per_ip` |
+
+Les autres réglages (TVA, comptes, approbations, tarifs, rétention, pièces jointes) sont
+décrits dans leurs sections et dans `docs/build/PENDING.md`. Un **garde-fou technique** n'est
+pas un réglage : le plafond de 200 lignes d'un document (`server/lib/validation.ts`) et les
+100 paramètres liés de D1 (C-3) restent des constantes commentées.

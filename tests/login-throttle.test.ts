@@ -11,7 +11,7 @@ import { authRoutes } from '../server/routes/auth';
 import { Hono } from 'hono';
 import { ApiError } from '../server/lib/errors';
 import { setupRoutes } from '../server/routes/setup';
-import { purgeLoginAttempts, LOGIN_ATTEMPT_RETENTION_DAYS } from '../server/lib/limits';
+import { purgeLoginAttempts } from '../server/lib/limits';
 import {
   CLIENT_PAYMENT_METHODS,
   CLIENT_PAYMENT_TERMS,
@@ -186,7 +186,7 @@ describe('A-20 login throttling', () => {
   it('the daily purge drops attempts past the retention window', async () => {
     await ready();
     await login('wrong-password');
-    const old = new Date(Date.now() - (LOGIN_ATTEMPT_RETENTION_DAYS + 1) * 86_400_000).toISOString();
+    const old = new Date(Date.now() - 91 * 86_400_000).toISOString();
     database.prepare(`UPDATE login_attempts SET created_at = ?`).run(old);
 
     expect(await purgeLoginAttempts(d1)).toBe(1);

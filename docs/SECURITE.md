@@ -223,8 +223,16 @@ tracés, avec l'IP.
 `company.singleton` (A-13) reste le dernier rempart au niveau base.
 
 Les deux routes sans session, `/install` et `/recover-owner`, partagent la fenêtre de A-20 sous
-des clés réservées : 5 tentatives par IP et par tranche de 15 minutes, puis
-`429 TOO_MANY_ATTEMPTS` avec `retry_after`. Chaque requête est enregistrée dans
+des clés réservées : 5 tentatives par IP et par tranche de 15 minutes par défaut, puis
+`429 TOO_MANY_ATTEMPTS` avec `retry_after`.
+
+**Limites paramétrables (A-29).** Les seuils qui décident d'un refus sont des réglages
+d'espace de travail, livrés avec le comportement historique : `login_window_minutes` (15),
+`login_max_per_account` (8), `login_max_per_ip` (50), `login_attempt_retention_days` (90),
+`setup_window_minutes` (15), `setup_max_attempts_per_ip` (5). Ils se lisent via `getExtra` dans
+`server/lib/limits.ts` et se changent dans Paramètres → Sécurité ; une valeur hors bornes est
+refusée par `EXTRA_RULES`. Le plafond de 200 lignes d'un document et les 100 paramètres liés de
+D1 restent des garde-fous techniques, non réglables. Chaque requête est enregistrée dans
 `login_attempts` ; aucun secret, jeton ni mot de passe n'y est écrit. `recover-owner` conserve
 sa comparaison à temps constant et son marqueur `owner_recovery_used` à usage unique.
 

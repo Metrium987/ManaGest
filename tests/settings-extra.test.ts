@@ -38,6 +38,28 @@ describe('settings extras validation', () => {
     expect(isValidExtraValue('separation_of_duties', 'yes')).toBe(false);
   });
 
+  it('ships the login and setup throttling as settings with their historical defaults', () => {
+    expect(EXTRA_DEFAULTS.login_window_minutes).toBe('15');
+    expect(EXTRA_DEFAULTS.login_max_per_account).toBe('8');
+    expect(EXTRA_DEFAULTS.login_max_per_ip).toBe('50');
+    expect(EXTRA_DEFAULTS.login_attempt_retention_days).toBe('90');
+    expect(EXTRA_DEFAULTS.setup_window_minutes).toBe('15');
+    expect(EXTRA_DEFAULTS.setup_max_attempts_per_ip).toBe('5');
+  });
+
+  it('bounds every throttling setting', () => {
+    expect(isValidExtraValue('login_window_minutes', '1')).toBe(true);
+    expect(isValidExtraValue('login_window_minutes', '0')).toBe(false);
+    expect(isValidExtraValue('login_window_minutes', '1441')).toBe(false);
+    expect(isValidExtraValue('login_max_per_account', '100')).toBe(true);
+    expect(isValidExtraValue('login_max_per_account', '101')).toBe(false);
+    expect(isValidExtraValue('login_max_per_ip', '1000')).toBe(true);
+    expect(isValidExtraValue('login_max_per_ip', '1001')).toBe(false);
+    expect(isValidExtraValue('setup_max_attempts_per_ip', '0')).toBe(false);
+    expect(isValidExtraValue('login_attempt_retention_days', '3650')).toBe(true);
+    expect(isValidExtraValue('login_attempt_retention_days', '3651')).toBe(false);
+  });
+
   it('refuses an unknown language, layout or ceiling', () => {
     expect(isValidExtraValue('ui_language', 'de')).toBe(false);
     expect(isValidExtraValue('pdf_layout', 'fancy')).toBe(false);

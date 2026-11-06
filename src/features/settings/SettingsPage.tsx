@@ -103,6 +103,10 @@ export function SettingsPage() {
   const [periodNote, setPeriodNote] = useState('');
   const [reopenReason, setReopenReason] = useState('');
   const [tokenLimits, setTokenLimits] = useState<{ lifetime: string; max: string } | null>(null);
+  // A-29: throttling thresholds are settings, not constants in server/lib/limits.ts.
+  const [accessLimits, setAccessLimits] = useState<{
+    window: string; account: string; ip: string; setupWindow: string; setupAttempts: string;
+  } | null>(null);
 
   const settings = useQuery({ queryKey: ['settings'], queryFn: () => api.get<SettingsPayload>('/settings') });
   const extras = useQuery({
@@ -127,6 +131,13 @@ export function SettingsPage() {
       setTokenLimits({
         lifetime: read('api_token_lifetime_days'),
         max: read('api_token_max_per_user'),
+      });
+      setAccessLimits({
+        window: read('login_window_minutes'),
+        account: read('login_max_per_account'),
+        ip: read('login_max_per_ip'),
+        setupWindow: read('setup_window_minutes'),
+        setupAttempts: read('setup_max_attempts_per_ip'),
       });
       setPurchasing({
         price_history_months: read('price_history_months'),
@@ -165,6 +176,22 @@ export function SettingsPage() {
       api_token_lifetime_days: input.lifetime,
       api_token_max_per_user: input.max,
     }),
+    onSuccess: () => {
+      toast.success(t('settings.saved'));
+      queryClient.invalidateQueries({ queryKey: ['settings-extras'] });
+    },
+    onError: (error) => toast.error(errorMessage(error)),
+  });
+
+  const saveAccessLimits = useMutation({
+    mutationFn: (input: { window: string; account: string; ip: string; setupWindow: string; setupAttempts: string }) =>
+      api.patch('/settings/extras', {
+        login_window_minutes: input.window,
+        login_max_per_account: input.account,
+        login_max_per_ip: input.ip,
+        setup_window_minutes: input.setupWindow,
+        setup_max_attempts_per_ip: input.setupAttempts,
+      }),
     onSuccess: () => {
       toast.success(t('settings.saved'));
       queryClient.invalidateQueries({ queryKey: ['settings-extras'] });
@@ -1137,6 +1164,36 @@ export function SettingsPage() {
                   <Input id="session_absolute" type="number" min="1" max="72" value={form.session_absolute_hours} onChange={(event) => set('session_absolute_hours', Number(event.target.value))} disabled={readOnly} />
                 </Field>
               </FormGrid>
+              <SectionCard title={t('settings.loginLimits')} subtitle={t('settings.loginLimitsHint')} bodyClassName="space-y-4 p-5">
+                {accessLimits ? (
+                  <>
+                    <FormGrid>
+                      <Field label={t('settings.loginWindow')} htmlFor="login_window_minutes">
+                        <Input id="login_window_minutes" type="number" min="1" max="1440" value={accessLimits.window} onChange={(event) => setAccessLimits({ ...accessLimits, window: event.target.value })} disabled={readOnly} />
+                      </Field>
+                      <Field label={t('settings.loginMaxAccount')} htmlFor="login_max_per_account">
+                        <Input id="login_max_per_account" type="number" min="1" max="100" value={accessLimits.account} onChange={(event) => setAccessLimits({ ...accessLimits, account: event.target.value })} disabled={readOnly} />
+                      </Field>
+                      <Field label={t('settings.loginMaxIp')} htmlFor="login_max_per_ip">
+                        <Input id="login_max_per_ip" type="number" min="1" max="1000" value={accessLimits.ip} onChange={(event) => setAccessLimits({ ...accessLimits, ip: event.target.value })} disabled={readOnly} />
+                      </Field>
+                      <Field label={t('settings.setupWindow')} htmlFor="setup_window_minutes">
+                        <Input id="setup_window_minutes" type="number" min="1" max="1440" value={accessLimits.setupWindow} onChange={(event) => setAccessLimits({ ...accessLimits, setupWindow: event.target.value })} disabled={readOnly} />
+                      </Field>
+                      <Field label={t('settings.setupMaxAttempts')} htmlFor="setup_max_attempts_per_ip">
+                        <Input id="setup_max_attempts_per_ip" type="number" min="1" max="100" value={accessLimits.setupAttempts} onChange={(event) => setAccessLimits({ ...accessLimits, setupAttempts: event.target.value })} disabled={readOnly} />
+                      </Field>
+                    </FormGrid>
+                    {can('settings.write') ? (
+                      <Button variant="secondary" loading={saveAccessLimits.isPending} onClick={() => saveAccessLimits.mutate(accessLimits)} icon={<Save className="h-4 w-4" aria-hidden="true" />}>
+                        {t('common.save')}
+                      </Button>
+                    ) : null}
+                  </>
+                ) : (
+                  <Skeleton className="h-20" />
+                )}
+              </SectionCard>
               <SectionCard title={t('tokens.title')} subtitle={t('tokens.lifetimeHint')} bodyClassName="space-y-4 p-5">
                 {tokenLimits ? (
                   <>

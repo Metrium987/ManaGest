@@ -166,3 +166,13 @@ Un retour client écrit désormais le lot, son emplacement et la ligne de valori
 n'importe quelle entrée. Un kit dont un composant a été supprimé est refusé
 (`422 KIT_COMPONENT_MISSING`), et une nomenclature ne peut pas être enregistrée si elle
 référence un produit absent.
+
+## Réglages d'espace de travail (A-29)
+
+`server/lib/settings-extra.ts` est le registre unique : `EXTRA_KEYS`, `EXTRA_DEFAULTS` (défaut
+sourcé), `EXTRA_RULES` (borne de validation) et `getExtra`. Les seuils de sécurité de
+`server/lib/limits.ts` (fenêtre et quotas de connexion, budget d'installation, rétention des
+échecs) y sont consommés dans la décision elle-même : aucune valeur métier littérale ne décide
+d'un refus. Les garde-fous techniques — 200 lignes par document, 100 paramètres liés de D1 — ne
+sont pas des réglages. La correspondance valeur / défaut / source / réglage est tenue en section
+8 de `docs/CONFORMITE.md`.

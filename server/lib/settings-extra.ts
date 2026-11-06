@@ -13,7 +13,7 @@ import {
   type AccountCodes,
 } from '../../shared/accounts';
 
-export const EXTRA_KEYS = ['retention_years', 'ui_language', 'franchise_threshold', 'pdf_layout', 'attachment_max_mb', 'reminder_interval_days', 'api_token_lifetime_days', 'api_token_max_per_user', 'approval_credit_amount', 'approval_expense_amount', 'approval_discount_percent', 'separation_of_duties', 'item_accounts', 'archipelago_excluded_families', 'account_client', 'account_supplier', 'account_sales', 'account_deferred', 'account_bank', 'account_expense', 'account_vat_due', 'account_vat_deductible', 'account_retained_earnings', 'account_fx_gain', 'account_fx_loss', 'price_history_months', 'price_alert_percent', 'price_alert_days'] as const;
+export const EXTRA_KEYS = ['retention_years', 'ui_language', 'franchise_threshold', 'pdf_layout', 'attachment_max_mb', 'reminder_interval_days', 'api_token_lifetime_days', 'api_token_max_per_user', 'login_window_minutes', 'login_max_per_account', 'login_max_per_ip', 'login_attempt_retention_days', 'setup_window_minutes', 'setup_max_attempts_per_ip', 'approval_credit_amount', 'approval_expense_amount', 'approval_discount_percent', 'separation_of_duties', 'item_accounts', 'archipelago_excluded_families', 'account_client', 'account_supplier', 'account_sales', 'account_deferred', 'account_bank', 'account_expense', 'account_vat_due', 'account_vat_deductible', 'account_retained_earnings', 'account_fx_gain', 'account_fx_loss', 'price_history_months', 'price_alert_percent', 'price_alert_days'] as const;
 
 export type ExtraKey = (typeof EXTRA_KEYS)[number];
 
@@ -36,6 +36,18 @@ export const EXTRA_DEFAULTS: Record<ExtraKey, string> = {
   // are ordinary settings, editable without redeploying.
   api_token_lifetime_days: '365',
   api_token_max_per_user: '10',
+  // A-29 (A-20): the login window and both quotas were literals in
+  // `server/lib/limits.ts`. The defaults keep the shipped behaviour — 15 minutes,
+  // 8 failures per account and 50 per address, the usual account lockout and
+  // anti-spraying practice. A workspace can tighten or relax them.
+  login_window_minutes: '15',
+  login_max_per_account: '8',
+  login_max_per_ip: '50',
+  // Retention of failed attempts, applied by the daily purge (A-20/A-24).
+  login_attempt_retention_days: '90',
+  // A-29 (A-23): installation and break-glass recovery budget.
+  setup_window_minutes: '15',
+  setup_max_attempts_per_ip: '5',
   // T-302: approval thresholds. `0` disables a rule, and all three ship off:
   // the owner settles these cases case by case (decision 2026-11-02), so a
   // fresh workspace never refuses a credit note, an expense or a discount.
@@ -94,6 +106,12 @@ const EXTRA_RULES: Record<ExtraKey, (value: string) => boolean> = {
   reminder_interval_days: (value) => intBetween(value, 1, 365),
   api_token_lifetime_days: (value) => intBetween(value, 1, 3650),
   api_token_max_per_user: (value) => intBetween(value, 1, 100),
+  login_window_minutes: (value) => intBetween(value, 1, 1440),
+  login_max_per_account: (value) => intBetween(value, 1, 100),
+  login_max_per_ip: (value) => intBetween(value, 1, 1000),
+  login_attempt_retention_days: (value) => intBetween(value, 1, 3650),
+  setup_window_minutes: (value) => intBetween(value, 1, 1440),
+  setup_max_attempts_per_ip: (value) => intBetween(value, 1, 100),
   approval_credit_amount: (value) => /^\d{1,12}$/.test(value),
   approval_expense_amount: (value) => /^\d{1,12}$/.test(value),
   approval_discount_percent: (value) => intBetween(value, 0, 100),

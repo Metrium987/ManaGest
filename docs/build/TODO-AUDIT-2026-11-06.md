@@ -230,9 +230,15 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **112 fichie
 |---|---|---|
 | A-28 | **DONE** | `tests/concurrency/http-concurrency.test.ts` : vrai worker, base migrée par cas, barrière sur l'instruction critique (les deux requêtes lisent le même état avant la première écriture). Double envoi : `UPDATE … WHERE status = 'draft'` réclamé, perdant `409 INVALID_TRANSITION` avant tout mouvement, brouillon restauré si le stock refuse ; un seul mouvement, quantité 10 → 9. Double encaissement : `UPDATE … WHERE balance >= ?` par affectation, second `409 AMOUNT_EXCEEDS_BALANCE`, un paiement, `paid_total` = total, solde 0. Clôture de période : écriture déjà engagée acceptée, écritures suivantes `409 PERIOD_LOCKED` (fenêtre documentée). Double installation et 50 écritures d'audit : déjà prouvés par A-23/A-19. Aucune migration. Mutations : chaque garde neutralisée → **1 cas sur 3 en échec**. |
 
-Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **113 fichiers, 847 tests, 0 échec**.
+**6 novembre 2026 — A-29 : les seuils de sécurité sont des réglages.**
 
-Prochaine fiche : **A-29 — aucune valeur métier en dur**.
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-29 | **DONE** | Six seuils de `server/lib/limits.ts` deviennent des clés de réglages (`login_window_minutes` 15, `login_max_per_account` 8, `login_max_per_ip` 50, `login_attempt_retention_days` 90, `setup_window_minutes` 15, `setup_max_attempts_per_ip` 5), consommées par `getExtra` dans la décision, avec bornes, libellés FR/EN et champs Paramètres → Sécurité. Garde-fous techniques inchangés (200 lignes, 100 paramètres D1). `tests/settings-coverage.test.ts` : **6 cas** ; `tests/settings-extra.test.ts` : **8 cas**. Mutation (`perAccount: 8` en dur) → **1 cas sur 6 en échec**, restauré → 6/6. Aucune migration. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **114 fichiers, 855 tests, 0 échec**.
+
+Prochaine fiche : **A-30 — autorité sur les paramètres**.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -1361,12 +1367,34 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Critères d'acceptation.** Aucune valeur métier littérale dans une décision (revue + test de
   recherche) ; chaque réglage a un défaut sourcé, une plage et un effet prouvé ; une
   installation neuve se comporte comme aujourd'hui, sauf correction documentée.
-- **Tests.** `tests/settings-coverage.test.ts` (clé par clé : défaut, validation, effet) ;
-  extension de `tests/settings-extra.test.ts`.
+- **Tests.** `tests/settings-coverage.test.ts` (registre + effets réels) ; extension de
+  `tests/settings-extra.test.ts`.
 - **Pièges.** Ne pas transformer un garde-fou technique en réglage (les 100 paramètres liés de
   D1 ne se négocient pas). Ne pas changer un défaut sans décider du sort des lectures passées :
   un réglage livré à une nouvelle valeur peut modifier un état déjà calculé.
-- **Effort.** M. **Statut.** TODO.
+- **Effort.** M. **Statut.** **DONE** (6/11/2026).
+- **Livré.** Inventaire : les valeurs de règle restantes étaient les six seuils de limitation de
+  `server/lib/limits.ts` (fenêtre et quotas de connexion, budget et fenêtre d'installation,
+  rétention des tentatives). Les six sont désormais des clés `EXTRA_KEYS` —
+  `login_window_minutes` (15), `login_max_per_account` (8), `login_max_per_ip` (50),
+  `login_attempt_retention_days` (90), `setup_window_minutes` (15),
+  `setup_max_attempts_per_ip` (5) — avec défaut sourcé dans `EXTRA_DEFAULTS`, bornes dans
+  `EXTRA_RULES`, libellés FR/EN et champs dans Paramètres → Sécurité. `loginThrottle`,
+  `recordLoginFailure`, `setupThrottle` et `purgeLoginAttempts` lisent `getExtra` : plus aucun
+  littéral ne décide d'un refus. Les garde-fous techniques restent des constantes commentées :
+  200 lignes par document (`server/lib/validation.ts:79`) et 100 paramètres liés de D1 (C-3).
+  Table « valeur → défaut → source → réglage » en section 8 de `docs/CONFORMITE.md`. Aucune
+  migration : les clés absentes retombent sur leur défaut, une installation neuve se comporte
+  comme avant.
+- **Preuve.** `tests/settings-coverage.test.ts`, **6 cas** : chaque clé du registre a un défaut
+  accepté ; quota de compte (8 par défaut → 9e refusé ; réglé à 2 → 3e refusé) ; fenêtre
+  (8 échecs vieux de 20 min ignorés à 15 min, comptés à 60 min) ; quota d'adresse (2 réglé →
+  3e compte refusé) ; budget d'installation (2 réglages → 3e tentative refusée) ; purge
+  (rétention 1 j supprime la ligne de 48 h, garde la récente). `tests/settings-extra.test.ts`
+  passe à **8 cas** (défauts historiques + bornes). Mutation : `perAccount: 8` réintroduit dans
+  `loginLimits` → **1 cas sur 6 en échec** (« takes the account quota from the setting, not a
+  literal »), restauré → **6/6**. Porte : typecheck **0 erreur**, suite **114 fichiers /
+  855 tests, 0 échec**.
 
 ### A-30 — Autorité sur les paramètres (R-4)
 
@@ -1529,6 +1557,6 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-26 | Tests HTTP d'intégration | 6 | L | A-10 | DONE |
 | A-27 | Documentation | 6 | S | A-01…A-31 | DONE |
 | A-28 | Tests de concurrence | 6 | M | A-19, A-23 | DONE |
-| A-29 | Aucune valeur métier en dur | 6 | M | A-10 | TODO |
+| A-29 | Aucune valeur métier en dur | 6 | M | A-10 | **DONE** |
 | A-30 | Autorité sur les paramètres | 6 | M | — | TODO |
 | A-31 | Réévaluation de change de clôture | 3 | L | A-01, A-08 | TODO (conditionnelle) |
