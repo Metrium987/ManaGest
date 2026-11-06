@@ -1258,7 +1258,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-16 | Projections des listes | 5 | M | — | DONE |
 | A-17 | FTS5 + sauvegarde | 5 | L | A-10, A-11 | DONE |
 | A-18 | Comptabilité incrémentale | 5 | L | A-05 | DONE |
-| A-19 | Chaîne d'audit sans course | 4 | M | — | TODO |
+| A-19 | Chaîne d'audit sans course | 4 | M | — | DONE |
 | A-20 | Limitation par IP et compte | 6 | S | — | TODO |
 | A-21 | En-têtes de sécurité cohérents | 6 | M | — | TODO |
 | A-22 | Ré-auth MFA | 6 | S | — | TODO |
