@@ -65,6 +65,15 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **92 fichier
 
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **95 fichiers, 745 tests, 0 échec**.
 
+**6 novembre 2026 — A-12 et A-13 : intégrité mesurée, contraintes dans la base.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-12 | **DONE** | `server/lib/integrity.ts` : huit relations (`payment_allocations.invoice_id`, `credit_allocations.credit_id`, `credit_allocations.invoice_id`, `invoice_tax_lines.invoice_id`, `journal_lines.entry_id`, `stock_movements.product_id`, `stock_lots.product_id`, `sessions.user_id`) comptées par `NOT EXISTS`, avec échantillons d'ids ; `GET /dashboard/integrity` (`reports.read`) ; le passage quotidien journalise `integrity_gap` et renseigne `RunSummary.integrity_gaps`. `tests/integrity.test.ts`, **4 cas** : 8 relations déclarées, 0 écart sur base saine, 1 écart nommé sur allocation orpheline, suppression logique d'un client non comptée. |
+| A-13 | **DONE** | Migration `0006_integrity_constraints` : `journal_lines` reconstruite avec `CHECK (debit >= 0)`, `CHECK (credit >= 0)` et `CHECK (debit = 0 OR credit = 0)` (index recréés) ; `idx_currencies_single_base` partiel après normalisation sur XPF ; `company.singleton` + `idx_company_singleton` ; déclencheurs `BEFORE INSERT/UPDATE` refusant un montant négatif sur `payments.amount`, `invoices.balance`, `credits.total`, `expenses.amount`. `tests/db-constraints.test.ts`, **4 cas** : débit+crédit simultanés, montants négatifs (journal, paiement, solde, avoir, dépense), deuxième devise de base, deuxième société — et `0` accepté. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **97 fichiers, 753 tests, 0 échec**.
+
 **6 novembre 2026 — phases 2 et 3 : approbations, agrégats XPF, décimales, migrations.**
 
 | Tâche | État | Preuve exécutée |
@@ -510,9 +519,7 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Pièges.** `ON DELETE CASCADE` n'a de sens que si les suppressions physiques existent ;
   ici tout est logique, donc `RESTRICT` est le bon défaut. Ne pas activer de cascade sur des
   documents financiers.
-- **Effort.** L. **Statut.** TODO.
-
-### A-13 — Contraintes de cohérence dans la base
+- **Effort.** L. **Statut.** DONE (2026-11-06). Variante (b) retenue et motivée : reconstruire huit tables financières sur une base vivante est plus risqué que mesurer l'écart, et D1 n'applique que les FK déclarées. `server/lib/integrity.ts` (`INTEGRITY_RELATIONS`, `relationGaps`, `integrityReport`) vérifie les 8 relations par `NOT EXISTS` ; `GET /dashboard/integrity` expose la carte et `runDailyPipeline` journalise `integrity_gap` + `RunSummary.integrity_gaps` quand le total n'est pas nul. Preuve : journal d'exécution.### A-13 — Contraintes de cohérence dans la base
 
 - **But.** La base refuse ce que le code ne devrait jamais écrire.
 - **Pourquoi.** Aucun `CHECK` sur les montants, le grand livre, la cardinalité `company` ni
@@ -535,9 +542,7 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Pièges.** Les tests existants insèrent des montants `0` : vérifier que les `CHECK`
   autorisent `0`. Attention aux lignes de journal d'annulation (débit et crédit peuvent être
   nuls tous les deux pour un montant nul — décider et tester).
-- **Effort.** M. **Statut.** TODO.
-
-### A-14 — Stock : une vérité, ou un écart mesuré
+- **Effort.** M. **Statut.** DONE (2026-11-06). Migration 0006 : `journal_lines` reconstruite avec `CHECK (debit >= 0)`, `CHECK (credit >= 0)` et `CHECK (debit = 0 OR credit = 0)` ; `UNIQUE INDEX currencies(is_base) WHERE is_base = 1` (après normalisation sur XPF) ; colonne `company.singleton` + index unique ; montants négatifs refusés par déclencheurs sur `payments.amount`, `invoices.balance`, `credits.total`, `expenses.amount`. Écart documenté : l'étape 2 utilise des déclencheurs (refus au niveau base) au lieu de reconstruire quatre tables financières — même garantie sans copie risquée ; `0` reste autorisé, y compris l'extourne à débit et crédit nuls. Preuve : journal d'exécution.### A-14 — Stock : une vérité, ou un écart mesuré
 
 - **But.** `products.quantity_milli` n'est plus une troisième comptabilité parallèle.
 - **Pourquoi.** Trois quantités coexistent ; le retour client met à jour `stock_lots` mais
@@ -1066,8 +1071,8 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-09 | Décimales, source unique | 3 | S | — | **DONE** |
 | A-10 | Migrations versionnées | 2 | L | — | **DONE** |
 | A-11 | Index manquants et doublon | 2 | M | A-10 | **DONE** |
-| A-12 | Intégrité référentielle | 4 | L | A-10 | TODO |
-| A-13 | Contraintes de cohérence | 4 | M | A-10 | TODO |
+| A-12 | Intégrité référentielle | 4 | L | A-10 | **DONE** |
+| A-13 | Contraintes de cohérence | 4 | M | A-10 | **DONE** |
 | A-14 | Stock : une vérité | 4 | L | A-10 | TODO |
 | A-15 | Plafonds D1 (IN, LIKE) | 3 | M | — | TODO |
 | A-16 | Projections des listes | 5 | M | — | TODO |
