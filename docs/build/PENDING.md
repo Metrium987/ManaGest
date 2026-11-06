@@ -173,6 +173,15 @@ Le détail, la preuve et les limites de chaque tâche sont dans [`TODO.md`](TODO
 [`../archive/audit-2026-10-28/`](../archive/audit-2026-10-28/), ses constats à jour dans
 [`../AUDIT-2026-11-06.md`](../AUDIT-2026-11-06.md) ; l'ancien `AUDIT.md` y est archivé, figé.
 
+## Harnais des tests d'intégration HTTP (A-26)
+
+**CONSTAT DE VÉRIFICATION.** Les tests d'intégration appellent le vrai worker sur une base
+`node:sqlite` **migrée par les migrations A-10**, recréée à chaque cas. `@cloudflare/vitest-pool-workers`
+n'est pas une dépendance du projet et `wrangler dev --local` n'est pas utilisable dans le runner :
+le harnais est donc l'adaptateur D1 du projet. Les différences propres à D1 (limite de 100
+paramètres liés, atomicité de `batch`, clés étrangères appliquées) ne sont pas reproduites ; la
+validation sur une base D1 hébergée reste à faire par le propriétaire.
+
 ## 7. Règle de tenue
 
 1. Toute chose repoussée est ajoutée **ici**, avec son statut et la raison.

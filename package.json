@@ -14,6 +14,7 @@
     "build:worker": "esbuild server/worker.ts --bundle --format=esm --platform=browser --main-fields=module,main --target=es2022 --outfile=dist/worker/index.js --external:node:* --external:cloudflare:*",
     "typecheck": "tsc -p tsconfig.app.json --noEmit --pretty false && tsc -p tsconfig.server.json --noEmit --pretty false && tsc -p tsconfig.ui-tests.json --noEmit --pretty false",
     "test": "vitest run",
+    "test:integration": "vitest run tests/integration",
     "test:watch": "vitest",
     "test:ui": "node scripts/verify-ui-local.mjs",
     "check:concurrency": "node scripts/concurrency-check.mjs",

@@ -9,12 +9,22 @@ let schemaReady: Promise<void> | null = null;
 
 export function ensureSchema(database: D1Database): Promise<void> {
   if (!schemaReady) {
-    schemaReady = provision(database).then(() => seedSystemRoles(database)).catch((error) => {
+    schemaReady = provisionDatabase(database).catch((error) => {
       schemaReady = null;
       throw error;
     });
   }
   return schemaReady;
+}
+
+/**
+ * A-26: the same migrations and seeds as the request path, callable once per
+ * database. The integration tests use it to build a freshly migrated D1 base for
+ * every case, instead of the per-isolate memo `ensureSchema` keeps.
+ */
+export async function provisionDatabase(database: D1Database): Promise<void> {
+  await provision(database);
+  await seedSystemRoles(database);
 }
 
 /**

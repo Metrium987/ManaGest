@@ -277,3 +277,10 @@ stock, retard comptable, statut du dernier passage, date et volume de la derniè
 adresse e-mail, adresse IP, chemin de requête, identifiant d'utilisateur ou échantillon de ligne
 n'y figure, et aucun contenu de requête n'est journalisé. Sans base initialisée, la route répond
 `unavailable` avec `schema_version: null`.
+
+## Tests d'intégration HTTP (A-26)
+
+`tests/integration/p0-http.test.ts` exerce le vrai worker sur une base D1 locale migrée, recréée
+pour chaque cas. Les fixtures sont **synthétiques** (`example.test`, `10.6.0.x`) : aucun e-mail,
+jeton, identifiant, chemin ni adresse réelle n'est écrit dans un test ou un journal. Les cas
+d'intégration vérifient aussi les refus (403, 404, 409) et les effets persistés.

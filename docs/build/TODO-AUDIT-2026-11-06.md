@@ -208,7 +208,15 @@ Prochaine fiche : **A-25 — observabilité métier**.
 
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **110 fichiers, 833 tests, 0 échec**.
 
-Prochaine fiche : **A-26 — tests d'intégration HTTP sur D1 locale**.
+**6 novembre 2026 — A-26 : les P0 prouvés en HTTP sur une base migrée.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-26 | **DONE** | `tests/integration/p0-http.test.ts` : le vrai worker sur une base `node:sqlite` recréée et migrée par cas (`provisionDatabase()`, migrations A-10 + colonnes + rôles), sans mock de handler. 8 cas : encaissement/solde, immutabilité (409 + ligne inchangée), avoir TVA (totaux + `credit_tax_lines` + écriture), contre-écriture (suppression du règlement restaure le solde), approbation d'avoir (409, demande en attente, auto-approbation 403, inconnu 404), stock persisté, rapport EUR+XPF en XPF. Statuts, corps **et** lignes persistées. Aucune migration ; `npm run test:integration`. Défaut réel trouvé et corrigé : parenthèse en trop dans l'`INSERT` clients. Mutation (`requireApprovalIfNeeded` court-circuité) : **1 cas en échec sur 8**. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **111 fichiers, 841 tests, 0 échec**.
+
+Prochaine fiche : **A-27 — documentation remise d'aplomb**.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -1208,10 +1216,29 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   5. Brancher dans `npm test` ou une commande séparée `npm run test:integration` documentée.
 - **Critères d'acceptation.** Les six tests échouent sur le code actuel (preuve), passent
   après correctifs.
-- **Tests.** Ce sont eux.
+- **Tests.** `tests/integration/p0-http.test.ts`.
+- **Livré (2026-11-06).** Harnais retenu : le vrai worker Hono (`worker.request`) sur une base
+  `node:sqlite` **recréée et migrée à chaque cas** par `provisionDatabase()` (nouvel export de
+  `server/db/index.ts` : migrations A-10, rattrapage des colonnes, rôles système). Aucun mock de
+  handler : routes, permissions, sessions, CSRF, validation, SQL et effets persistés sont ceux de
+  l'application. Écart documenté : `@cloudflare/vitest-pool-workers` n'est pas une dépendance du
+  projet et `wrangler dev --local` n'est pas utilisable dans le runner ; l'adaptateur D1 du projet
+  sur une base réellement migrée remplace donc le pool Workers (cf. `PENDING.md`).
+  Huit cas : encaissement et solde soldé, immutabilité d'une facture émise (409, ligne inchangée),
+  totaux d'un avoir TVA, ligne de TVA d'avoir **et** son écriture comptable, suppression de
+  règlement qui restaure le solde, seuil d'approbation d'un avoir (409 `APPROVAL_REQUIRED`,
+  demande en attente, auto-approbation refusée 403, identifiant inconnu 404), ajustement de stock
+  persisté, rapport de chiffre d'affaires EUR + XPF agrégé en XPF. Chaque assertion lit le statut,
+  le corps **et** les lignes persistées. Aucune migration ; `npm run test:integration` ajouté et
+  les fichiers restent exécutés par `npx vitest run`. La couverture a trouvé un vrai défaut : une
+  parenthèse en trop dans l'`INSERT` des clients (`server/routes/clients.ts`) faisait échouer
+  toute création de client en erreur de syntaxe SQL — corrigé.
+  Preuve : **8 cas**, suite complète **111 fichiers / 841 tests**, typecheck 0 erreur.
+  Mutation : `requireApprovalIfNeeded` court-circuité pour les avoirs → **1 cas en échec sur 8**.
+  Fixtures synthétiques uniquement (`example.test`, `10.6.0.x`).
 - **Pièges.** Une base D1 locale doit être migrée par A-10 avant ; ne pas dépendre d'un état
   résiduel (recréer la base à chaque exécution).
-- **Effort.** L. **Statut.** TODO.
+- **Effort.** L. **Statut.** DONE.
 
 ### A-27 — Documentation remise d'aplomb
 
@@ -1449,7 +1476,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-23 | Installation verrouillée | 6 | S | A-13 | DONE |
 | A-24 | Rétention et purges | 6 | M | A-15 | DONE |
 | A-25 | Observabilité métier | 6 | M | A-12, A-14 | DONE |
-| A-26 | Tests HTTP d'intégration | 6 | L | A-10 | TODO |
+| A-26 | Tests HTTP d'intégration | 6 | L | A-10 | DONE |
 | A-27 | Documentation | 6 | S | A-01…A-31 | TODO |
 | A-28 | Tests de concurrence | 6 | M | A-19, A-23 | TODO |
 | A-29 | Aucune valeur métier en dur | 6 | M | A-10 | TODO |
