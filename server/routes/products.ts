@@ -1,3 +1,4 @@
+import { selectIn } from '../lib/sql';
 import { Hono } from 'hono';
 import { unresolvedReferences } from '../lib/product-links';
 import { z } from 'zod';
@@ -440,11 +441,10 @@ async function assertProductReferences(
     ...(body.accessories ?? []),
   ].filter((id): id is string => typeof id === 'string' && id.length > 0);
   if (!wanted.length) return;
-  const rows = await database
-    .prepare(`SELECT id FROM products WHERE deleted_at IS NULL AND id IN (${wanted.map(() => '?').join(',')})`)
-    .bind(...[...new Set(wanted)])
-    .all<{ id: string }>();
-  const missing = unresolvedReferences(body, (rows.results ?? []).map((row) => row.id));
+  const rows = await selectIn<{ id: string }>(wanted, (list, chunk) =>
+    database.prepare(`SELECT id FROM products WHERE deleted_at IS NULL AND id IN (${list})`).bind(...chunk),
+  );
+  const missing = unresolvedReferences(body, rows.map((row) => row.id));
   if (missing.length) {
     throw new ApiError(422, 'VALIDATION_ERROR', { references: missing.join(' | ') });
   }
@@ -1303,11 +1303,12 @@ productRoutes.put('/:id/links', requirePermission('products.write'), async (c) =
   const wanted = [...new Set([...body.substitutes, ...body.accessories])];
   if (wanted.includes(id)) return fail(422, 'VALIDATION_ERROR', { links: 'self' });
   if (wanted.length > 0) {
-    const found = await c.env.DB
-      .prepare(`SELECT id FROM products WHERE id IN (${wanted.map(() => '?').join(',')}) AND deleted_at IS NULL`)
-      .bind(...wanted)
-      .all<{ id: string }>();
-    const known = new Set((found.results ?? []).map((row) => row.id));
+    const found = await selectIn<{ id: string }>(wanted, (list, chunk) =>
+      c.env.DB
+        .prepare(`SELECT id FROM products WHERE id IN (${list}) AND deleted_at IS NULL`)
+        .bind(...chunk),
+    );
+    const known = new Set(found.map((row) => row.id));
     const missing = wanted.filter((ref) => !known.has(ref));
     if (missing.length > 0) return fail(422, 'VALIDATION_ERROR', { links: 'not_found' });
   }
@@ -1360,13 +1361,11 @@ productRoutes.get('/:id', requirePermission('products.read'), async (c) => {
   const componentIds = [...new Set(bom.map((line) => line.product_id))];
   let components: Record<string, unknown>[] = [];
   if (componentIds.length) {
-    const placeholders = componentIds.map(() => '?').join(', ');
-    const componentRows = await c.env.DB.prepare(
-      `SELECT id, name, product_key, quantity_milli FROM products WHERE id IN (${placeholders})`,
-    )
-      .bind(...componentIds)
-      .all<Record<string, unknown>>();
-    components = componentRows.results ?? [];
+    components = await selectIn<Record<string, unknown>>(componentIds, (list, chunk) =>
+      c.env.DB
+        .prepare(`SELECT id, name, product_key, quantity_milli FROM products WHERE id IN (${list})`)
+        .bind(...chunk),
+    );
   }
   const stockMilli: Record<string, number> = {};
   for (const component of components) {

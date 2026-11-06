@@ -1,3 +1,4 @@
+import { selectIn } from '../lib/sql';
 import { nowISO } from '../db';
 import { ApiError } from '../lib/errors';
 import {
@@ -54,14 +55,15 @@ export async function loadLots(
 ): Promise<Map<string, StockLot[]>> {
   const byProduct = new Map<string, StockLot[]>();
   if (!productIds.length) return byProduct;
-  const rows = await database
-    .prepare(
-      `SELECT id, product_id, lot_code, expiry_date, quantity_milli, created_at FROM stock_lots
-       WHERE product_id IN (${productIds.map(() => '?').join(', ')}) AND quantity_milli > 0`,
-    )
-    .bind(...productIds)
-    .all<StockLot & { product_id: string }>();
-  for (const row of rows.results ?? []) {
+  const rows = await selectIn<StockLot & { product_id: string }>(productIds, (list, chunk) =>
+    database
+      .prepare(
+        `SELECT id, product_id, lot_code, expiry_date, quantity_milli, created_at FROM stock_lots
+       WHERE product_id IN (${list}) AND quantity_milli > 0`,
+      )
+      .bind(...chunk),
+  );
+  for (const row of rows) {
     const list = byProduct.get(row.product_id) ?? [];
     list.push(row);
     byProduct.set(row.product_id, list);

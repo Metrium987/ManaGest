@@ -1,3 +1,4 @@
+import { selectIn } from '../lib/sql';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { COUNT_SCOPES, adjustmentsOf, countSummary, pendingLines, staleLines } from '../lib/stock-count';
@@ -276,13 +277,13 @@ stockCountRoutes.post('/:id/validate', requirePermission('stock.adjust'), async 
   const adjustments = adjustmentsOf(shaped);
   const costs = new Map(lines.map((line) => [line.product_id, Number(line.expected_cost ?? 0)]));
   const locations = new Map(
-    (
-      await c.env.DB.prepare(
-        `SELECT id, warehouse_location FROM products WHERE id IN (${lines.map(() => '?').join(', ') || 'NULL'})`,
-      )
-        .bind(...lines.map((line) => line.product_id))
-        .all<{ id: string; warehouse_location: string | null }>()
-    ).results?.map((row) => [row.id, row.warehouse_location]) ?? [],
+    (await selectIn<{ id: string; warehouse_location: string | null }>(
+      lines.map((line) => line.product_id),
+      (list, chunk) =>
+        c.env.DB
+          .prepare(`SELECT id, warehouse_location FROM products WHERE id IN (${list})`)
+          .bind(...chunk),
+    )).map((row) => [row.id, row.warehouse_location] as [string, string | null]),
   );
   const counted = new Map(lines.map((line) => [line.product_id, Number(line.counted_milli ?? 0)]));
   const now = nowISO();

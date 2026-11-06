@@ -91,6 +91,12 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **97 fichier
 |---|---|---|
 | A-14 | **DONE** | `server/lib/stock-balance.ts` (`stockBalanceRows`, `stockBalanceReport`, `stockBalance`) compare mouvements signés, `products.quantity_milli`, `stock_lots` et `lot_balances` ; `GET /dashboard/stock-balance` et le passage quotidien (`stock_gaps`, activité `stock_gap`) **signalent** sans réécrire. Le retour client écrit `lot_balances` + `stock_valuations` ; `consumeInvoiceStock` refuse `422 KIT_COMPONENT_MISSING` ; `unresolvedReferences` + `assertProductReferences` refusent une nomenclature pointant sur un produit supprimé. `docs/ARCHITECTURE.md` fixe la source de vérité. `tests/stock-integrity.test.ts`, **5 cas** : réception 10 → assemblage 2 kits → vente 1 → désassemblage 1 avec quatre quantités égales à chaque étape ; compteur trafiqué (`+5`) → 1 écart `counter_gap_milli` conservé ; casier ≠ lot → `shelf_gap_milli` ; kit au composant supprimé refusé ; références manquantes nommées. Mutations : garde kit neutralisée et écart de casier forcé à 0 → 2 cas en échec. |
 
+**6 novembre 2026 — A-15 : les plafonds D1 sont tenus par construction.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-15 | **DONE** | `server/lib/sql.ts` (`chunks`/90, `placeholders`, `selectIn`, `runInChunks`, `firstIn`) remplace les 28 listes `IN (${…})` de `server/` ; `server/lib/search.ts` normalise et refuse > 50 octets en `422 VALIDATION_ERROR { q: 'too_long' }` avant requête ; `MAX_LINE_ITEMS = 200` nommé et 201e ligne refusée. `tests/sql-chunking.test.ts`, **5 cas** (90/91/200, ordre, 200 identifiants en 3 statements 90/90/20 en lecture et en écriture, `firstIn`) ; `tests/search-limits.test.ts`, **5 cas** (trim/minuscules, 50 vs 51 octets, accents en octets, 120 caractères, 200 vs 201 lignes). Mutations : `MAX_BOUND_PARAMS = 1000` et `MAX_SEARCH_BYTES = 500` → **5 cas en échec**. |
+
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -462,9 +468,16 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Pièges.** `SCHEMA_STATEMENTS` contient un `DROP TABLE` et des `UPDATE` : ne pas les
   copier dans la baseline. Les seeds doivent rester rejouables après restauration de
   sauvegarde (A-17).
-- **Effort.** L. **Statut.** TODO. `apply --remote` ne concerne qu'un déploiement Cloudflare,
-  hors périmètre de ce projet (B-1) : tout le travail — fichiers de migration, tests, base
-  locale — est livrable et vérifiable ici.
+- **Effort.** L. **Statut.** DONE (2026-11-06). Statut « TODO » retiré : le travail est livré
+  et prouvé, comme le disaient déjà le tableau de bord et le journal. `server/db/migrations/`
+  porte la baseline figée sans seeds plus `0002_credit_tax_lines`, `0003_approvals_revision`,
+  `0004_expense_po_currency` ; `runMigrations()` (`server/db/migrate.ts`) journalise dans
+  `d1_migrations` et renvoie **0** au rejeu ; `provision()` exécute les fichiers puis garde
+  `applyColumnMigrations` en filet ; `ensureSchema` reste un filet de développement.
+  `tests/schema-migrations.test.ts` (base ancienne migrée sans perte, rejeu = 0, structure
+  finale identique à `SCHEMA_STATEMENTS`). Écart : `wrangler d1 migrations apply --remote`
+  n'est pas exécutable ici (déploiement Cloudflare, B-1) ; la commande locale et la
+  documentation sont en place.
 
 ### A-11 — Indexation : ajouter les manquants, retirer le doublon
 
@@ -615,20 +628,23 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   `tests/search-limits.test.ts`.
 - **Pièges.** `chunks` doit préserver l'ordre attendu par les appelants ; certaines requêtes
   font `Map` sur les résultats, d'autres un tableau — vérifier chaque site.
-- **Effort.** M. **Statut.** TODO (statut « DONE » retiré le 2026-11-06 : le texte recopié
-  décrivait les migrations de A-10, pas cette fiche ; rien n'est implémenté et le tableau de
-  bord la donne TODO). Reste à faire : `server/lib/sql.ts` (`chunks`, `inClause`), conversion
-  des **28** sites `IN (${…})` recensés dans `server/` (routes `operations`/`invoices`/
-  `products`/`stock-counts`/`import-sheets`, libs `product-links`/`catalogue`/`settings-extra`/
-  `expertise`/`client-pricing`, services `stock`/`accounting`/`stock-counts`/`lots`), refus
-  `422 VALIDATION_ERROR { q: 'too_long' }` au-delà de 50 octets de recherche, contrôle de
-  taille des `line_items`, et les tests `tests/sql-chunking.test.ts` +
-  `tests/search-limits.test.ts`.
-
----
-
-## 6. Phase 4 — Requêtes et performance
-
+- **Effort.** M. **Statut.** DONE (2026-11-06). `server/lib/sql.ts` fournit `chunks` (90),
+  `placeholders`, `selectIn`, `runInChunks` et `firstIn` ; les **28** sites `IN (${…})` de
+  `server/` passent par ce helper (routes `operations`/`invoices`/`products`/`stock-counts`/
+  `import-sheets`, libs `product-links`/`catalogue`/`settings-extra`/`expertise`/
+  `client-pricing`, services `stock`/`accounting`/`stock-counts`/`lots`), donc une facture de
+  200 lignes ne dépasse jamais 90 paramètres liés. `server/lib/search.ts` normalise la
+  recherche (trim, minuscules) et refuse au-delà de 50 octets en
+  `422 VALIDATION_ERROR { q: 'too_long' }` **avant** toute requête. `MAX_LINE_ITEMS = 200` est
+  nommé, la 201e ligne est refusée, et le maximum sérialisé reste très en dessous des 2 Mo.
+  Preuve : `tests/sql-chunking.test.ts` (5 cas : 90/91/200, ordre préservé, 200 identifiants
+  lus puis écrits en 3 statements 90/90/20, `firstIn` trouvé au dernier lot) et
+  `tests/search-limits.test.ts` (5 cas : trim/minuscules, 50 vs 51 octets, accents comptés en
+  octets — 26 « é » = 52 octets refusés, 120 caractères refusés, 200 lignes acceptées / 201
+  refusées). Mutations : plafond de découpage porté à 1000 et plafond de recherche à 500 octets
+  → **5 cas en échec**. Écart documenté : l'étape 5 (compter les requêtes par invocation) n'est
+  pas instrumentée, faute de compteur de requêtes dans le projet ; la borne est prouvée par les
+  tests de découpage plutôt que par une mesure de production.
 ### A-16 — Projections au lieu de `SELECT *` sur les listes
 
 - **But.** Les listes ne lisent plus le JSON `line_items` de chaque document.
@@ -1100,7 +1116,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-12 | Intégrité référentielle | 4 | L | A-10 | **DONE** |
 | A-13 | Contraintes de cohérence | 4 | M | A-10 | **DONE** |
 | A-14 | Stock : une vérité | 4 | L | A-10 | DONE |
-| A-15 | Plafonds D1 (IN, LIKE) | 3 | M | — | TODO |
+| A-15 | Plafonds D1 (IN, LIKE) | 3 | M | — | DONE |
 | A-16 | Projections des listes | 5 | M | — | TODO |
 | A-17 | FTS5 + sauvegarde | 5 | L | A-10, A-11 | TODO |
 | A-18 | Comptabilité incrémentale | 5 | L | A-05 | TODO |

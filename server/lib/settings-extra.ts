@@ -1,3 +1,4 @@
+import { selectIn } from './sql';
 /**
  * Key/value workspace settings added by the build phases. Kept in one module so
  * the routes that read them (PDF layout, language, retention, franchise
@@ -142,11 +143,10 @@ export async function getExtra(database: D1Database, key: ExtraKey): Promise<str
  */
 export async function getAccountCodes(database: D1Database): Promise<AccountCodes> {
   const keys = ACCOUNT_ROLES.map((role) => ACCOUNT_SETTING_KEYS[role]);
-  const rows = await database
-    .prepare(`SELECT key, value FROM settings_extra WHERE key IN (${keys.map(() => '?').join(',')})`)
-    .bind(...keys)
-    .all<{ key: string; value: string }>();
-  const stored = new Map((rows.results ?? []).map((row) => [row.key, row.value]));
+  const rows = await selectIn<{ key: string; value: string }>(keys, (list, chunk) =>
+    database.prepare(`SELECT key, value FROM settings_extra WHERE key IN (${list})`).bind(...chunk),
+  );
+  const stored = new Map(rows.map((row) => [row.key, row.value]));
   const overrides: Partial<Record<keyof AccountCodes, string>> = {};
   for (const role of ACCOUNT_ROLES) overrides[role] = stored.get(ACCOUNT_SETTING_KEYS[role]);
   return accountCodesWith(overrides);

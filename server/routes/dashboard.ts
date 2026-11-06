@@ -1,3 +1,4 @@
+import { searchTerm } from '../lib/search';
 import { Hono } from 'hono';
 import { lastDailyRun } from '../services/daily-run';
 import { loadStockAlerts } from '../services/stock-alerts';
@@ -632,7 +633,9 @@ export const searchRoutes = new Hono<AppEnv>();
 searchRoutes.use('*', requireAuth);
 
 searchRoutes.get('/', async (c) => {
-  const query = (c.req.query('q') ?? '').trim();
+  const search = searchTerm(c.req.query('q'));
+  if (!search.ok) return fail(422, 'VALIDATION_ERROR', search.fields);
+  const query = search.term;
   if (query.length < 2) return c.json({ clients: [], invoices: [], quotes: [] });
   const like = `%${query}%`;
   const [clients, invoices, quotes] = await Promise.all([

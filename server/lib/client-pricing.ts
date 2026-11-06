@@ -1,3 +1,4 @@
+import { selectIn } from './sql';
 import { linePriceFor } from '../../shared/product-erp';
 
 export interface PricedProduct {
@@ -56,15 +57,16 @@ export async function applyClientPricingForClient<T extends PricedLine>(
     .first<{ price_tier: string | null }>();
   if (!client) return lines;
 
-  const rows = await db
-    .prepare(
-      `SELECT id, unit_price, price_pro, price_member, volume_discounts FROM products
-       WHERE id IN (${ids.map(() => '?').join(',')})`,
-    )
-    .bind(...ids)
-    .all<PricedProduct & { volume_discounts: string | null }>();
+  const rows = await selectIn<PricedProduct & { volume_discounts: string | null }>(ids, (list, chunk) =>
+    db
+      .prepare(
+        `SELECT id, unit_price, price_pro, price_member, volume_discounts FROM products
+       WHERE id IN (${list})`,
+      )
+      .bind(...chunk),
+  );
 
-  const products = new Map<string, PricedProduct>((rows.results ?? []).map((row) => [
+  const products = new Map<string, PricedProduct>(rows.map((row) => [
     row.id,
     { ...row, volume_discounts: parseSteps(row.volume_discounts) },
   ]));

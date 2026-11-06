@@ -1,3 +1,4 @@
+import { runInChunks, selectIn } from '../lib/sql';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { nowISO } from '../db';
@@ -303,11 +304,10 @@ async function receiveAgainstBalance(
   // valuation variance, and it is worth saying out loud at reception time.
   const costs = new Map<string, number>();
   if (productIds.length) {
-    const rows = await database
-      .prepare(`SELECT id, cost FROM products WHERE id IN (${productIds.map(() => '?').join(', ')})`)
-      .bind(...productIds)
-      .all<{ id: string; cost: number }>();
-    for (const row of rows.results ?? []) costs.set(row.id, Number(row.cost ?? 0));
+    const rows = await selectIn<{ id: string; cost: number }>(productIds, (list, chunk) =>
+      database.prepare(`SELECT id, cost FROM products WHERE id IN (${list})`).bind(...chunk),
+    );
+    for (const row of rows) costs.set(row.id, Number(row.cost ?? 0));
   }
 
   // A-08: the receipt is valued in XPF at the rate frozen on the order, so a
@@ -412,15 +412,15 @@ async function vendorLinksFor(
   productIds: string[],
 ): Promise<VendorLink[]> {
   if (!productIds.length) return [];
-  const rows = await database
-    .prepare(
-      `SELECT product_id, vendor_id, price, currency, moq_milli, lead_time_days, vendor_ref, is_preferred
+  return selectIn<VendorLink>(productIds, (list, chunk) =>
+    database
+      .prepare(
+        `SELECT product_id, vendor_id, price, currency, moq_milli, lead_time_days, vendor_ref, is_preferred
        FROM product_vendors
-       WHERE vendor_id = ? AND product_id IN (${productIds.map(() => '?').join(', ')})`,
-    )
-    .bind(vendorId, ...productIds)
-    .all<VendorLink>();
-  return rows.results ?? [];
+       WHERE vendor_id = ? AND product_id IN (${list})`,
+      )
+      .bind(vendorId, ...chunk),
+  );
 }
 
 const replenishSelect = `SELECT p.id, p.name, p.item_type, p.track_quantity, p.replenish_mode, p.supplier_id,
@@ -457,16 +457,15 @@ purchaseOrderRoutes.post('/from-suggestions', requirePermission('purchase_orders
     .first<{ id: string; name: string }>();
   if (!vendor) return fail(422, 'VALIDATION_ERROR', { vendor_id: 'not_found' });
 
-  const rows = await c.env.DB
-    .prepare(
-      `${replenishSelect} AND p.supplier_id = ? AND p.id IN (${body.product_ids.map(() => '?').join(', ')})`,
-    )
-    .bind(body.vendor_id, ...body.product_ids)
-    .all<ReplenishProduct>();
+  const rows = await selectIn<ReplenishProduct>(body.product_ids, (list, chunk) =>
+    c.env.DB
+      .prepare(`${replenishSelect} AND p.supplier_id = ? AND p.id IN (${list})`)
+      .bind(body.vendor_id, ...chunk),
+  );
   const demand = await pendingDemand(c.env.DB);
   // The quantities are recomputed here, never read from the request: a draft can
   // only contain numbers the server derived from the sheet it just read.
-  const proposals = (rows.results ?? [])
+  const proposals = rows
     .map((row) => proposalFor(row, { demand_milli: demand.get(row.id) ?? 0 }))
     .filter((proposal): proposal is ReplenishProposal => proposal !== null);
   if (!proposals.length) return fail(422, 'NO_PROPOSAL', { vendor_id: vendor.name });
@@ -894,18 +893,20 @@ taskRoutes.post('/invoice', requirePermission('invoices.write'), async (c) => {
     await c.req.json().catch(() => ({})),
   );
 
-  const placeholders = body.task_ids.map(() => '?').join(',');
-  const rows = await c.env.DB.prepare(
-    `SELECT id, title, client_id, minutes, hourly_rate, billable, invoice_id, status,
-            product_id, service_level, premium_label, premium_percent
-     FROM tasks WHERE deleted_at IS NULL AND id IN (${placeholders})`,
-  ).bind(...body.task_ids).all<{
+  const tasks = await selectIn<{
     id: string; title: string; client_id: string | null; minutes: number;
     hourly_rate: number; billable: number; invoice_id: string | null; status: string;
     product_id: string | null; service_level: string | null;
     premium_label: string | null; premium_percent: number;
-  }>();
-  const tasks = rows.results ?? [];
+  }>(body.task_ids, (list, chunk) =>
+    c.env.DB
+      .prepare(
+        `SELECT id, title, client_id, minutes, hourly_rate, billable, invoice_id, status,
+            product_id, service_level, premium_label, premium_percent
+     FROM tasks WHERE deleted_at IS NULL AND id IN (${list})`,
+      )
+      .bind(...chunk),
+  );
 
   // The catalogue supplies the rate: the expertise level's TJM wins, then the
   // entry's own rate, then the service price. The minimum billable quantity is
@@ -916,14 +917,18 @@ taskRoutes.post('/invoice', requirePermission('invoices.write'), async (c) => {
     expertise_levels: string | null; invoice_label: string | null;
   }>();
   if (productIds.length) {
-    const productRows = await c.env.DB.prepare(
-      `SELECT id, name, unit_price, min_billable_milli, expertise_levels, invoice_label
-       FROM products WHERE deleted_at IS NULL AND id IN (${productIds.map(() => '?').join(',')})`,
-    ).bind(...productIds).all<{
+    const productRows = await selectIn<{
       id: string; name: string; unit_price: number; min_billable_milli: number;
       expertise_levels: string | null; invoice_label: string | null;
-    }>();
-    for (const product of productRows.results ?? []) products.set(product.id, product);
+    }>(productIds, (list, chunk) =>
+      c.env.DB
+        .prepare(
+          `SELECT id, name, unit_price, min_billable_milli, expertise_levels, invoice_label
+       FROM products WHERE deleted_at IS NULL AND id IN (${list})`,
+        )
+        .bind(...chunk),
+    );
+    for (const product of productRows) products.set(product.id, product);
   }
 
   const pricing = new Map<string, LinePricing>();
@@ -979,9 +984,13 @@ taskRoutes.post('/invoice', requirePermission('invoices.write'), async (c) => {
 
   // Billed minutes are frozen with the invoice: an entry edited afterwards must
   // not change what the customer was charged.
-  await c.env.DB.prepare(
-    `UPDATE tasks SET invoice_id = ?, billed_minutes = minutes, updated_at = ? WHERE id IN (${placeholders})`,
-  ).bind(id, nowISO(), ...body.task_ids).run();
+  await runInChunks(body.task_ids, (list, chunk) =>
+    c.env.DB
+      .prepare(
+        `UPDATE tasks SET invoice_id = ?, billed_minutes = minutes, updated_at = ? WHERE id IN (${list})`,
+      )
+      .bind(id, nowISO(), ...chunk),
+  );
 
   // The VAT mirror is rebuilt from the stored lines, so it cannot disagree with
   // what the invoice actually carries.

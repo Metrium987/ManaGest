@@ -1,3 +1,4 @@
+import { selectIn } from './sql';
 import { expertisePrice } from '../../shared/product-erp';
 import { ApiError } from './errors';
 
@@ -60,12 +61,11 @@ export async function applyExpertiseForLines<T extends ExpertiseLine>(
   const ids = [...new Set(lines.map((line) => line.product_id).filter((id): id is string => Boolean(id)))];
   if (ids.length === 0) return lines;
 
-  const rows = await db
-    .prepare(`SELECT id, expertise_levels FROM products WHERE id IN (${ids.map(() => '?').join(',')})`)
-    .bind(...ids)
-    .all<ExpertiseProduct & { expertise_levels: string | null }>();
+  const rows = await selectIn<ExpertiseProduct & { expertise_levels: string | null }>(ids, (list, chunk) =>
+    db.prepare(`SELECT id, expertise_levels FROM products WHERE id IN (${list})`).bind(...chunk),
+  );
 
-  const products = new Map<string, ExpertiseProduct>((rows.results ?? []).map((row) => [
+  const products = new Map<string, ExpertiseProduct>(rows.map((row) => [
     row.id,
     { id: row.id, expertise_levels: parseLevels(row.expertise_levels) },
   ]));

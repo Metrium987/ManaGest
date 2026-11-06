@@ -1,3 +1,4 @@
+import { selectIn } from './sql';
 export interface LinkedProduct {
   id: string;
   name: string;
@@ -58,18 +59,19 @@ export async function attachProductLinks<T extends { id: string; links?: Product
   const ids = products.map((product) => product.id);
   if (ids.length === 0) return products;
 
-  const rows = await db
-    .prepare(
-      `SELECT pl.product_id, pl.kind, p.id, p.name, p.product_key, p.unit_price, p.quantity_milli, p.track_quantity
+  const rows = await selectIn<LinkedRow>(ids, (list, chunk) =>
+    db
+      .prepare(
+        `SELECT pl.product_id, pl.kind, p.id, p.name, p.product_key, p.unit_price, p.quantity_milli, p.track_quantity
          FROM product_links pl JOIN products p ON p.id = pl.linked_id
-        WHERE pl.product_id IN (${ids.map(() => '?').join(',')}) AND p.deleted_at IS NULL
+        WHERE pl.product_id IN (${list}) AND p.deleted_at IS NULL
         ORDER BY p.name COLLATE NOCASE`,
-    )
-    .bind(...ids)
-    .all<LinkedRow>();
+      )
+      .bind(...chunk),
+  );
 
   const byProduct = new Map<string, ProductLinks>();
-  for (const row of rows.results ?? []) {
+  for (const row of rows) {
     const bucket = byProduct.get(row.product_id) ?? empty();
     if (row.kind === 'substitute') bucket.substitutes.push(toLinked(row));
     else if (row.kind === 'accessory') bucket.accessories.push(toLinked(row));

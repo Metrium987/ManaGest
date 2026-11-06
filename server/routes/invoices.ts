@@ -1,3 +1,4 @@
+import { selectIn } from '../lib/sql';
 import { discountPercentOf } from '../lib/approvals';
 import { assertSeparation, requireApprovalIfNeeded } from '../services/approvals';
 import { Hono, type Context } from 'hono';
@@ -535,11 +536,10 @@ async function invoiceReturnLedger(database: D1Database, reference: string) {
 
   const ids = lines.map((line) => line.product_id);
   const names = new Map<string, string>();
-  const products = await database
-    .prepare(`SELECT id, name FROM products WHERE id IN (${ids.map(() => '?').join(',')})`)
-    .bind(...ids)
-    .all<{ id: string; name: string }>();
-  for (const product of products.results ?? []) names.set(product.id, product.name);
+  const products = await selectIn<{ id: string; name: string }>(ids, (list, chunk) =>
+    database.prepare(`SELECT id, name FROM products WHERE id IN (${list})`).bind(...chunk),
+  );
+  for (const product of products) names.set(product.id, product.name);
 
   return {
     lines,
@@ -610,14 +610,17 @@ invoiceRoutes.post('/:id/returns', requirePermission('invoices.write'), async (c
   }
 
   const ids = [...new Set(requested.map((line) => line.product_id))];
-  const products = await c.env.DB
-    .prepare(
-      `SELECT id, name, cost, lot_tracking, warehouse_location FROM products
-       WHERE id IN (${ids.map(() => '?').join(',')})`,
-    )
-    .bind(...ids)
-    .all<{ id: string; name: string; cost: number; lot_tracking: string | null; warehouse_location: string | null }>();
-  const byId = new Map((products.results ?? []).map((product) => [product.id, product]));
+  const products = await selectIn<{
+    id: string; name: string; cost: number; lot_tracking: string | null; warehouse_location: string | null;
+  }>(ids, (list, chunk) =>
+    c.env.DB
+      .prepare(
+        `SELECT id, name, cost, lot_tracking, warehouse_location FROM products
+       WHERE id IN (${list})`,
+      )
+      .bind(...chunk),
+  );
+  const byId = new Map(products.map((product) => [product.id, product]));
 
   // B2: goods come back to the batch they left from. The invoice ledger already
   // says which lot was picked, so the return asks it instead of guessing — and

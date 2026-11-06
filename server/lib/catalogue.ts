@@ -1,3 +1,4 @@
+import { selectIn } from './sql';
 import { ApiError } from './errors';
 import type { LineItem } from './tax';
 
@@ -41,16 +42,16 @@ export async function enrichLines(
   )];
   if (!ids.length) return lines;
 
-  const placeholders = ids.map(() => '?').join(', ');
-  const rows = await database
-    .prepare(
-      `SELECT id, product_key, name, item_type, family, billing_unit
-       FROM products WHERE id IN (${placeholders}) AND deleted_at IS NULL`,
-    )
-    .bind(...ids)
-    .all<CatalogueRow>();
+  const rows = await selectIn<CatalogueRow>(ids, (list, chunk) =>
+    database
+      .prepare(
+        `SELECT id, product_key, name, item_type, family, billing_unit
+       FROM products WHERE id IN (${list}) AND deleted_at IS NULL`,
+      )
+      .bind(...chunk),
+  );
 
-  const byId = new Map((rows.results ?? []).map((row) => [row.id, row]));
+  const byId = new Map(rows.map((row) => [row.id, row]));
   const missing = ids.filter((id) => !byId.has(id));
   if (missing.length) {
     throw new ApiError(422, 'VALIDATION_ERROR', { line_items: 'product_not_found' });

@@ -1,3 +1,4 @@
+import { firstIn } from '../lib/sql';
 /**
  * The one thing other modules need to know about a count (B1): which products
  * are currently frozen. Manual quantity edits are refused on those items so the
@@ -11,14 +12,15 @@ export async function openCountReference(
 ): Promise<string | null> {
   const ids = [...new Set(productIds.filter(Boolean))];
   if (!ids.length) return null;
-  const row = await database
-    .prepare(
-      `SELECT sc.reference FROM stock_count_lines l
+  const row = await firstIn<{ reference: string }>(ids, (list, chunk) =>
+    database
+      .prepare(
+        `SELECT sc.reference FROM stock_count_lines l
        JOIN stock_counts sc ON sc.id = l.count_id
-       WHERE sc.status = 'open' AND l.product_id IN (${ids.map(() => '?').join(', ')})
+       WHERE sc.status = 'open' AND l.product_id IN (${list})
        LIMIT 1`,
-    )
-    .bind(...ids)
-    .first<{ reference: string }>();
+      )
+      .bind(...chunk),
+  );
   return row?.reference ?? null;
 }

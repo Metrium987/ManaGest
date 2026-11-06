@@ -1,3 +1,4 @@
+import { selectIn } from '../lib/sql';
 import { nowISO } from '../db';
 import { groupRevenue, resolveAccount } from '../lib/account-resolution';
 import { lineNetAmounts } from '../lib/margin';
@@ -413,13 +414,12 @@ export async function journalEntries(
     .bind(...bindings, filters.limit ?? 200)
     .all<JournalRow>();
   const ids = (entries.results ?? []).map((entry) => entry.id);
-  const lines = ids.length
-    ? await database
-        .prepare(`SELECT entry_id, account_code, label, debit, credit, currency, original_amount, exchange_rate FROM journal_lines WHERE entry_id IN (${ids.map(() => '?').join(',')}) ORDER BY account_code ASC`)
-        .bind(...ids)
-        .all()
-    : { results: [] };
-  return { entries: entries.results ?? [], lines: lines.results ?? [] };
+  const lines = await selectIn<unknown>(ids, (list, chunk) =>
+    database
+      .prepare(`SELECT entry_id, account_code, label, debit, credit, currency, original_amount, exchange_rate FROM journal_lines WHERE entry_id IN (${list}) ORDER BY account_code ASC`)
+      .bind(...chunk),
+  );
+  return { entries: entries.results ?? [], lines };
 }
 
 export async function allLines(

@@ -1,3 +1,4 @@
+import { selectIn } from '../lib/sql';
 import { nowISO } from '../db';
 import { ApiError } from '../lib/errors';
 import { explodeKit } from '../../shared/product-erp';
@@ -25,8 +26,6 @@ interface StockProduct {
   bom_mode: string | null;
   cost: number;
 }
-
-const placeholdersOf = (ids: string[]) => ids.map(() => '?').join(', ');
 
 function parseJson<T>(value: unknown, fallback: T): T {
   if (typeof value !== 'string' || !value) return fallback;
@@ -80,30 +79,31 @@ export async function receivePurchaseOrder(
   )];
   if (!ids.length) return [];
 
-  const rows = await database
-    .prepare(
-      `SELECT id, item_type, warehouse_location, quantity_milli, cost, landed_cost, purchase_price
+  const rows = await selectIn<{
+    id: string;
+    item_type: string;
+    warehouse_location: string | null;
+    quantity_milli: number;
+    cost: number;
+    landed_cost: number;
+    purchase_price: number;
+  }>(ids, (list, chunk) =>
+    database
+      .prepare(
+        `SELECT id, item_type, warehouse_location, quantity_milli, cost, landed_cost, purchase_price
        FROM products
-       WHERE id IN (${placeholdersOf(ids)}) AND deleted_at IS NULL`,
-    )
-    .bind(...ids)
-    .all<{
-      id: string;
-      item_type: string;
-      warehouse_location: string | null;
-      quantity_milli: number;
-      cost: number;
-      landed_cost: number;
-      purchase_price: number;
-    }>();
+       WHERE id IN (${list}) AND deleted_at IS NULL`,
+      )
+      .bind(...chunk),
+  );
 
-  const byId = new Map((rows.results ?? []).map((row) => [row.id, row]));
+  const byId = new Map(rows.map((row) => [row.id, row]));
 
   // Weighted average (B3): each reception re-prices the stock at what the goods
   // really cost, landed cost included. The running figures are kept per product
   // so two lines of the same item still average correctly in one reception.
   const running = new Map(
-    (rows.results ?? []).map((row) => [
+    rows.map((row) => [
       row.id,
       { quantity_milli: Number(row.quantity_milli ?? 0), cost: Number(row.cost ?? 0) },
     ]),
@@ -240,15 +240,16 @@ export async function consumeInvoiceStock(
   if ((already?.count ?? 0) > 0) return [];
 
   const soldIds = [...new Set(lines.map((line) => line.product_id as string))];
-  const soldRows = await database
-    .prepare(
-      `SELECT id, name, item_type, quantity_milli, track_quantity, allow_negative_stock, lot_tracking,
+  const soldRows = await selectIn<StockProduct>(soldIds, (list, chunk) =>
+    database
+      .prepare(
+        `SELECT id, name, item_type, quantity_milli, track_quantity, allow_negative_stock, lot_tracking,
               warehouse_location, bom, bom_mode, cost
-       FROM products WHERE id IN (${placeholdersOf(soldIds)}) AND deleted_at IS NULL`,
-    )
-    .bind(...soldIds)
-    .all<StockProduct>();
-  const byId = new Map((soldRows.results ?? []).map((row) => [row.id, row]));
+       FROM products WHERE id IN (${list}) AND deleted_at IS NULL`,
+      )
+      .bind(...chunk),
+  );
+  const byId = new Map(soldRows.map((row) => [row.id, row]));
 
   const wanted = new Map<string, number>();
   for (const line of lines) {
@@ -271,15 +272,16 @@ export async function consumeInvoiceStock(
   // Components of a kit were not in the sold lines, so their rows are missing.
   const missingIds = [...wanted.keys()].filter((id) => !byId.has(id));
   if (missingIds.length) {
-    const extra = await database
-      .prepare(
-        `SELECT id, name, item_type, quantity_milli, track_quantity, allow_negative_stock, lot_tracking,
+    const extra = await selectIn<StockProduct>(missingIds, (list, chunk) =>
+      database
+        .prepare(
+          `SELECT id, name, item_type, quantity_milli, track_quantity, allow_negative_stock, lot_tracking,
                 warehouse_location, bom, bom_mode, cost, deleted_at
-         FROM products WHERE id IN (${placeholdersOf(missingIds)})`,
-      )
-      .bind(...missingIds)
-      .all<StockProduct>();
-    for (const row of extra.results ?? []) byId.set(row.id, row);
+         FROM products WHERE id IN (${list})`,
+        )
+        .bind(...chunk),
+    );
+    for (const row of extra) byId.set(row.id, row);
   }
 
   // A-14: a kit whose component vanished must be refused, not silently built
@@ -463,15 +465,16 @@ async function loadKit(
     throw new ApiError(422, 'VALIDATION_ERROR', { item_type: 'not_a_kit' });
   }
   const ids = [...new Set(bom.map((line) => line.product_id))];
-  const rows = await database
-    .prepare(
-      `SELECT id, name, item_type, quantity_milli, track_quantity, allow_negative_stock, lot_tracking,
+  const rows = await selectIn<StockProduct>(ids, (list, chunk) =>
+    database
+      .prepare(
+        `SELECT id, name, item_type, quantity_milli, track_quantity, allow_negative_stock, lot_tracking,
               warehouse_location, bom, bom_mode, cost
-       FROM products WHERE id IN (${placeholdersOf(ids)}) AND deleted_at IS NULL`,
-    )
-    .bind(...ids)
-    .all<StockProduct>();
-  return { kit, bom, components: rows.results ?? [] };
+       FROM products WHERE id IN (${list}) AND deleted_at IS NULL`,
+      )
+      .bind(...chunk),
+  );
+  return { kit, bom, components: rows };
 }
 
 /**

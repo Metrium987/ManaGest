@@ -76,7 +76,11 @@ export const lineItemSchema = z.object({
     .optional(),
 });
 
-export const lineItemsSchema = z.array(lineItemSchema).min(1).max(200);
+// A-15: D1 caps a row at 2 MB. 200 lines of 500 characters stay far below it
+// (about 100 kB), so the line count is the real ceiling and a 201st line is
+// refused here with a clear message rather than by the driver.
+export const MAX_LINE_ITEMS = 200;
+export const lineItemsSchema = z.array(lineItemSchema).min(1).max(MAX_LINE_ITEMS);
 
 export const discountSchema = {
   discount_type: z.enum(['percent', 'amount']).default('percent'),

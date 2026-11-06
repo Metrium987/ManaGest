@@ -1,3 +1,4 @@
+import { selectIn } from '../lib/sql';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { CURRENCIES } from '../../shared/domain';
@@ -116,10 +117,11 @@ importSheetRoutes.post('/', requirePermission('products.write'), async (c) => {
   if (emptyLine >= 0) return fail(422, 'VALIDATION_ERROR', { [`lines.${emptyLine}.goods_amount`]: 'required' });
 
   const ids = [...new Set(body.lines.map((line) => line.product_id))];
-  const placeholders = ids.map(() => '?').join(', ');
-  const products = (await c.env.DB.prepare(
-    `SELECT id, name, customs_code FROM products WHERE id IN (${placeholders}) AND deleted_at IS NULL`,
-  ).bind(...ids).all<{ id: string; name: string; customs_code: string | null }>()).results ?? [];
+  const products = await selectIn<{ id: string; name: string; customs_code: string | null }>(ids, (list, chunk) =>
+    c.env.DB
+      .prepare(`SELECT id, name, customs_code FROM products WHERE id IN (${list}) AND deleted_at IS NULL`)
+      .bind(...chunk),
+  );
   const byId = new Map(products.map((product) => [product.id, product]));
   const unknown = ids.filter((id) => !byId.has(id));
   if (unknown.length) return fail(422, 'VALIDATION_ERROR', { product_id: unknown[0] });
@@ -127,12 +129,14 @@ importSheetRoutes.post('/', requirePermission('products.write'), async (c) => {
   // Q6: the heading of each article decides its duty rate; the rate typed on the
   // line stays the fallback for an article without a heading.
   const codes = [...new Set(products.map((product) => product.customs_code).filter(Boolean))] as string[];
-  const tariffs = codes.length
-    ? (await c.env.DB.prepare(
-      `SELECT code, duty_rate_bp, duty_rate_eu_bp, duty_rate_oceania_bp FROM tariff_codes
-        WHERE code IN (${codes.map(() => '?').join(', ')}) AND is_active = 1`,
-    ).bind(...codes).all<TariffRow>()).results ?? []
-    : [];
+  const tariffs = await selectIn<TariffRow>(codes, (list, chunk) =>
+    c.env.DB
+      .prepare(
+        `SELECT code, duty_rate_bp, duty_rate_eu_bp, duty_rate_oceania_bp FROM tariff_codes
+        WHERE code IN (${list}) AND is_active = 1`,
+      )
+      .bind(...chunk),
+  );
   const tariffByCode = new Map(tariffs.map((row) => [row.code, row]));
 
   const taxRules = (await c.env.DB.prepare(
