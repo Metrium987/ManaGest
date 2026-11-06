@@ -12,7 +12,7 @@ approvalRoutes.use('*', requireAuth);
 
 approvalRoutes.get('/', requirePermission('approvals.read'), async (c) => {
   const status = c.req.query('status') ?? '';
-  const allowed = ['pending', 'approved', 'rejected'];
+  const allowed = ['pending', 'approved', 'rejected', 'superseded'];
   if (status && !allowed.includes(status)) return fail(422, 'VALIDATION_ERROR', { status: 'unknown' });
   return c.json({ data: await listApprovals(c.env.DB, status || null) });
 });

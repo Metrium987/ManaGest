@@ -1,4 +1,5 @@
 import { SYSTEM_ROLES, ensureSystemRoles } from '../services/roles';
+import { runMigrations } from './migrate';
 import { SCHEMA_STATEMENTS, SCHEMA_VERSION } from './schema';
 
 export type SqlValue = string | number | null;
@@ -46,19 +47,14 @@ async function backfillBaseTotals(database: D1Database): Promise<void> {
 }
 
 async function provision(database: D1Database): Promise<void> {
-  const existing = await database
-    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'app_meta'`)
-    .first<{ name: string }>();
+  // A-10: the schema is created and upgraded by the frozen migrations recorded in
+  // `d1_migrations`. On an up-to-date database this path is reads only: no DDL runs
+  // on a user request. `applyColumnMigrations` stays as a net for a base restored
+  // from an old backup, where the migration list says "done" but a column is absent.
+  const pending = await runMigrations(database);
+  const healed = await applyColumnMigrations(database);
+  if (pending === 0 && healed === 0) return;
 
-  if (existing) {
-    const version = await database
-      .prepare(`SELECT value FROM app_meta WHERE key = 'schema_version'`)
-      .first<{ value: string }>();
-    if (version?.value === String(SCHEMA_VERSION)) return;
-  }
-
-  await database.batch(SCHEMA_STATEMENTS.map((statement) => database.prepare(statement)));
-  await applyColumnMigrations(database);
   await backfillBaseTotals(database);
   await grantCostPermission(database);
 
@@ -305,15 +301,26 @@ const COLUMN_MIGRATIONS: { table: string; column: string; definition: string }[]
   { table: 'product_vendor_prices', column: 'source_ref', definition: 'TEXT' },
 ];
 
-async function applyColumnMigrations(database: D1Database): Promise<void> {
+async function applyColumnMigrations(database: D1Database): Promise<number> {
+  let healed = 0;
   for (const migration of COLUMN_MIGRATIONS) {
     const columns = await database.prepare(`PRAGMA table_info(${migration.table})`).all<{ name: string }>();
     if (!(columns.results ?? []).some((column) => column.name === migration.column)) {
       await database
         .prepare(`ALTER TABLE ${migration.table} ADD COLUMN ${migration.column} ${migration.definition}`)
         .run();
+      healed += 1;
     }
   }
+  return healed;
+}
+
+/**
+ * Development fallback only: rebuilds a schema from `SCHEMA_STATEMENTS`. It is no
+ * longer part of the request path (A-10) — migrations are the authority.
+ */
+export async function bootstrapSchema(database: D1Database): Promise<void> {
+  await database.batch(SCHEMA_STATEMENTS.map((statement) => database.prepare(statement)));
 }
 
 /**

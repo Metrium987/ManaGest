@@ -138,18 +138,35 @@ export function tvaRecapCsv(periods: TvaRecapPeriod[]): string {
   return toCsv(columns, rows);
 }
 
+/**
+ * A-07: the single aggregation rule of the application.
+ *
+ * Every report adds XPF, never a mix of two units. A document keeps its own
+ * currency and the XPF base computed at its own exchange rate; XPF documents
+ * carry `total_xpf = total`, and a genuine zero total must stay zero (hence
+ * `> 0` and not `<> 0`). Balances are scaled pro rata of the document so a
+ * partial payment keeps the same rate.
+ */
+export function baseAmountSql(own: string, xpf: string): string {
+  return `CASE WHEN ${xpf} > 0 THEN ${xpf} ELSE ${own} END`;
+}
+
+export function baseBalanceSql(balance: string, own: string, xpf: string): string {
+  return `CASE WHEN ${xpf} > 0 AND ${own} > 0 THEN ROUND(${balance} * 1.0 * ${xpf} / ${own}) ELSE ${balance} END`;
+}
+
 export interface RevenuePeriod {
   period: string;
-  taxable: number;
-  exempt: number;
-  total: number;
-  collected: number;
+  taxable_xpf: number;
+  exempt_xpf: number;
+  total_xpf: number;
+  collected_xpf: number;
   documents: number;
 }
 
 export function mergeRevenue(
-  invoiceRows: { period: string; taxable: number; exempt: number; total: number; documents: number }[],
-  paymentRows: { period: string; collected: number }[],
+  invoiceRows: { period: string; taxable_xpf: number; exempt_xpf: number; total_xpf: number; documents: number }[],
+  paymentRows: { period: string; collected_xpf: number }[],
 ): RevenuePeriod[] {
   const periods = new Map<string, RevenuePeriod>();
   const ensure = (period: string): RevenuePeriod => {
@@ -157,10 +174,10 @@ export function mergeRevenue(
     if (existing) return existing;
     const created: RevenuePeriod = {
       period,
-      taxable: 0,
-      exempt: 0,
-      total: 0,
-      collected: 0,
+      taxable_xpf: 0,
+      exempt_xpf: 0,
+      total_xpf: 0,
+      collected_xpf: 0,
       documents: 0,
     };
     periods.set(period, created);
@@ -169,14 +186,14 @@ export function mergeRevenue(
 
   for (const row of invoiceRows) {
     const period = ensure(row.period);
-    period.taxable += Number(row.taxable);
-    period.exempt += Number(row.exempt);
-    period.total += Number(row.total);
+    period.taxable_xpf += Number(row.taxable_xpf);
+    period.exempt_xpf += Number(row.exempt_xpf);
+    period.total_xpf += Number(row.total_xpf);
     period.documents += Number(row.documents);
   }
   for (const row of paymentRows) {
     const period = ensure(row.period);
-    period.collected += Number(row.collected);
+    period.collected_xpf += Number(row.collected_xpf);
   }
 
   return [...periods.values()].sort((a, b) => a.period.localeCompare(b.period));
@@ -186,10 +203,10 @@ export function revenueCsv(periods: RevenuePeriod[]): string {
   return toCsv(
     [
       { key: 'period', label: 'période' },
-      { key: 'taxable', label: 'CA taxable (TTC)' },
-      { key: 'exempt', label: 'CA exonéré (TTC)' },
-      { key: 'total', label: 'CA total (TTC)' },
-      { key: 'collected', label: 'encaissé' },
+      { key: 'taxable_xpf', label: 'CA taxable (XPF)' },
+      { key: 'exempt_xpf', label: 'CA exonéré (XPF)' },
+      { key: 'total_xpf', label: 'CA total (XPF)' },
+      { key: 'collected_xpf', label: 'encaissé (XPF)' },
       { key: 'documents', label: 'documents' },
     ],
     periods as unknown as Record<string, unknown>[],

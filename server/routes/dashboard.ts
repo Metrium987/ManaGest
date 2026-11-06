@@ -7,6 +7,8 @@ import { logActivity } from '../lib/audit';
 import { csvResponse } from '../lib/csv';
 import { fail } from '../lib/errors';
 import {
+  baseAmountSql,
+  baseBalanceSql,
   mergeRevenue,
   mergeTvaRecap,
   revenueCsv,
@@ -87,12 +89,12 @@ dashboardRoutes.get('/', requirePermission('reports.read'), async (c) => {
     clientsCount,
     openInvoices,
   ] = await Promise.all([
-    scalarQuery(`SELECT COALESCE(SUM(CASE WHEN total_xpf > 0 THEN total_xpf ELSE total END),0) AS value FROM invoices WHERE deleted_at IS NULL AND status <> 'cancelled' AND date >= ? AND date < ?`, [current.start, current.end]),
-    scalarQuery(`SELECT COALESCE(SUM(CASE WHEN amount_xpf > 0 THEN amount_xpf ELSE amount END),0) AS value FROM payments WHERE deleted_at IS NULL AND status = 'completed' AND date >= ? AND date < ?`, [current.start, current.end]),
-    scalarQuery(`SELECT COALESCE(SUM(CASE WHEN total_xpf > 0 THEN total_xpf ELSE total END),0) AS value FROM invoices WHERE deleted_at IS NULL AND status <> 'cancelled' AND date >= ? AND date < ?`, [previous.start, previous.end]),
-    scalarQuery(`SELECT COALESCE(SUM(CASE WHEN amount_xpf > 0 THEN amount_xpf ELSE amount END),0) AS value FROM payments WHERE deleted_at IS NULL AND status = 'completed' AND date >= ? AND date < ?`, [previous.start, previous.end]),
-    scalarQuery(`SELECT COALESCE(SUM(CASE WHEN total_xpf > 0 AND total > 0 THEN ROUND(balance * 1.0 * total_xpf / total) ELSE balance END),0) AS value FROM invoices WHERE deleted_at IS NULL AND status IN ('sent','partial')`),
-    scalarQuery(`SELECT COALESCE(SUM(CASE WHEN total_xpf > 0 AND total > 0 THEN ROUND(balance * 1.0 * total_xpf / total) ELSE balance END),0) AS value FROM invoices WHERE deleted_at IS NULL AND status IN ('sent','partial') AND due_date IS NOT NULL AND due_date < ?`, [today]),
+    scalarQuery(`SELECT COALESCE(SUM(${baseAmountSql('total', 'total_xpf')}),0) AS value FROM invoices WHERE deleted_at IS NULL AND status <> 'cancelled' AND date >= ? AND date < ?`, [current.start, current.end]),
+    scalarQuery(`SELECT COALESCE(SUM(${baseAmountSql('amount', 'amount_xpf')}),0) AS value FROM payments WHERE deleted_at IS NULL AND status = 'completed' AND date >= ? AND date < ?`, [current.start, current.end]),
+    scalarQuery(`SELECT COALESCE(SUM(${baseAmountSql('total', 'total_xpf')}),0) AS value FROM invoices WHERE deleted_at IS NULL AND status <> 'cancelled' AND date >= ? AND date < ?`, [previous.start, previous.end]),
+    scalarQuery(`SELECT COALESCE(SUM(${baseAmountSql('amount', 'amount_xpf')}),0) AS value FROM payments WHERE deleted_at IS NULL AND status = 'completed' AND date >= ? AND date < ?`, [previous.start, previous.end]),
+    scalarQuery(`SELECT COALESCE(SUM(${baseBalanceSql('balance', 'total', 'total_xpf')}),0) AS value FROM invoices WHERE deleted_at IS NULL AND status IN ('sent','partial')`),
+    scalarQuery(`SELECT COALESCE(SUM(${baseBalanceSql('balance', 'total', 'total_xpf')}),0) AS value FROM invoices WHERE deleted_at IS NULL AND status IN ('sent','partial') AND due_date IS NOT NULL AND due_date < ?`, [today]),
     scalarQuery(`SELECT COALESCE(SUM(amount),0) AS value FROM expenses WHERE deleted_at IS NULL AND date >= ? AND date < ?`, [current.start, current.end]),
     scalarQuery(`SELECT COUNT(*) AS value FROM clients WHERE deleted_at IS NULL`),
     scalarQuery(`SELECT COUNT(*) AS value FROM invoices WHERE deleted_at IS NULL AND status IN ('sent','partial')`),
@@ -103,10 +105,10 @@ dashboardRoutes.get('/', requirePermission('reports.read'), async (c) => {
   const seriesEnd = months[months.length - 1].end;
 
   const [invoiceSeries, paymentSeries, expenseSeries] = await Promise.all([
-    db.prepare(`SELECT substr(date,1,7) AS bucket, SUM(CASE WHEN total_xpf > 0 THEN total_xpf ELSE total END) AS value FROM invoices
+    db.prepare(`SELECT substr(date,1,7) AS bucket, SUM(${baseAmountSql('total', 'total_xpf')}) AS value FROM invoices
       WHERE deleted_at IS NULL AND status <> 'cancelled' AND date >= ? AND date < ? GROUP BY bucket`)
       .bind(seriesStart, seriesEnd).all<{ bucket: string; value: number }>(),
-    db.prepare(`SELECT substr(date,1,7) AS bucket, SUM(CASE WHEN amount_xpf > 0 THEN amount_xpf ELSE amount END) AS value FROM payments
+    db.prepare(`SELECT substr(date,1,7) AS bucket, SUM(${baseAmountSql('amount', 'amount_xpf')}) AS value FROM payments
       WHERE deleted_at IS NULL AND status = 'completed' AND date >= ? AND date < ? GROUP BY bucket`)
       .bind(seriesStart, seriesEnd).all<{ bucket: string; value: number }>(),
     db.prepare(`SELECT substr(date,1,7) AS bucket, SUM(amount) AS value FROM expenses
@@ -125,7 +127,7 @@ dashboardRoutes.get('/', requirePermission('reports.read'), async (c) => {
     db.prepare(`SELECT i.id, i.number, i.date, i.total, i.balance, i.status, c.display_name AS client_name
       FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.deleted_at IS NULL
       ORDER BY i.created_at DESC LIMIT 6`).all(),
-    db.prepare(`SELECT c.id, c.display_name AS client_name, COALESCE(SUM(CASE WHEN i.total_xpf > 0 AND i.total > 0 THEN ROUND(i.paid_total * 1.0 * i.total_xpf / i.total) ELSE i.paid_total END),0) AS revenue
+    db.prepare(`SELECT c.id, c.display_name AS client_name, COALESCE(SUM(${baseBalanceSql('i.paid_total', 'i.total', 'i.total_xpf')}),0) AS revenue
       FROM clients c JOIN invoices i ON i.client_id = c.id AND i.deleted_at IS NULL
       WHERE c.deleted_at IS NULL GROUP BY c.id ORDER BY revenue DESC LIMIT 5`).all(),
     db.prepare(`SELECT a.id, a.summary, a.entity_type, a.created_at, a.meta, u.first_name, u.last_name
@@ -264,23 +266,23 @@ async function revenueData(db: D1Database, from: string, to: string) {
     db
       .prepare(
         `SELECT substr(date,1,7) AS period,
-                SUM(CASE WHEN tax_exempt = 0 THEN total ELSE 0 END) AS taxable,
-                SUM(CASE WHEN tax_exempt = 1 THEN total ELSE 0 END) AS exempt,
-                SUM(CASE WHEN total_xpf > 0 THEN total_xpf ELSE total END) AS total, COUNT(*) AS documents
+                SUM(CASE WHEN tax_exempt = 0 THEN ${baseAmountSql('total', 'total_xpf')} END) AS taxable_xpf,
+                SUM(CASE WHEN tax_exempt = 1 THEN ${baseAmountSql('total', 'total_xpf')} END) AS exempt_xpf,
+                SUM(${baseAmountSql('total', 'total_xpf')}) AS total_xpf, COUNT(*) AS documents
          FROM invoices
          WHERE deleted_at IS NULL AND status <> 'cancelled' AND date >= ? AND date <= ?
          GROUP BY period`,
       )
       .bind(from, to)
-      .all<{ period: string; taxable: number; exempt: number; total: number; documents: number }>(),
+      .all<{ period: string; taxable_xpf: number; exempt_xpf: number; total_xpf: number; documents: number }>(),
     db
       .prepare(
-        `SELECT substr(date,1,7) AS period, SUM(CASE WHEN amount_xpf > 0 THEN amount_xpf ELSE amount END) AS collected
+        `SELECT substr(date,1,7) AS period, SUM(${baseAmountSql('amount', 'amount_xpf')}) AS collected_xpf
          FROM payments WHERE deleted_at IS NULL AND status = 'completed' AND date >= ? AND date <= ?
          GROUP BY period`,
       )
       .bind(from, to)
-      .all<{ period: string; collected: number }>(),
+      .all<{ period: string; collected_xpf: number }>(),
   ]);
   return mergeRevenue(invoices.results ?? [], payments.results ?? []);
 }
@@ -340,10 +342,10 @@ reportRoutes.get('/revenue-summary', requirePermission('reports.read'), async (c
   return c.json({
     rows: periods,
     summary: {
-      taxable: periods.reduce((sum, row) => sum + row.taxable, 0),
-      exempt: periods.reduce((sum, row) => sum + row.exempt, 0),
-      total: periods.reduce((sum, row) => sum + row.total, 0),
-      collected: periods.reduce((sum, row) => sum + row.collected, 0),
+      taxable_xpf: periods.reduce((sum, row) => sum + row.taxable_xpf, 0),
+      exempt_xpf: periods.reduce((sum, row) => sum + row.exempt_xpf, 0),
+      total_xpf: periods.reduce((sum, row) => sum + row.total_xpf, 0),
+      collected_xpf: periods.reduce((sum, row) => sum + row.collected_xpf, 0),
     },
   });
 });
@@ -436,10 +438,10 @@ reportRoutes.get('/:type', requirePermission('reports.read'), async (c) => {
       months.push(range);
     }
     const [invoices, payments, expenses] = await Promise.all([
-      db.prepare(`SELECT substr(date,1,7) AS bucket, SUM(CASE WHEN total_xpf > 0 THEN total_xpf ELSE total END) AS value FROM invoices
+      db.prepare(`SELECT substr(date,1,7) AS bucket, SUM(${baseAmountSql('total', 'total_xpf')}) AS value FROM invoices
         WHERE deleted_at IS NULL AND status <> 'cancelled' AND date >= ? AND date <= ? GROUP BY bucket`)
         .bind(months[0].start, to).all<{ bucket: string; value: number }>(),
-      db.prepare(`SELECT substr(date,1,7) AS bucket, SUM(CASE WHEN amount_xpf > 0 THEN amount_xpf ELSE amount END) AS value FROM payments
+      db.prepare(`SELECT substr(date,1,7) AS bucket, SUM(${baseAmountSql('amount', 'amount_xpf')}) AS value FROM payments
         WHERE deleted_at IS NULL AND status = 'completed' AND date >= ? AND date <= ? GROUP BY bucket`)
         .bind(months[0].start, to).all<{ bucket: string; value: number }>(),
       db.prepare(`SELECT substr(date,1,7) AS bucket, SUM(amount) AS value FROM expenses
@@ -548,11 +550,11 @@ reportRoutes.get('/:type', requirePermission('reports.read'), async (c) => {
 
   if (type === 'aging') {
     const invoices = await db.prepare(
-      `SELECT i.id, i.number, i.due_date, i.balance, i.status, c.display_name AS client_name
+      `SELECT i.id, i.number, i.due_date, i.balance, ${baseBalanceSql('i.balance', 'i.total', 'i.total_xpf')} AS balance_xpf, i.currency, i.status, c.display_name AS client_name
        FROM invoices i JOIN clients c ON c.id = i.client_id
        WHERE i.deleted_at IS NULL AND i.status IN ('sent','partial') AND i.balance > 0
        ORDER BY i.due_date ASC`,
-    ).all<{ id: string; number: string; due_date: string | null; balance: number; status: string; client_name: string }>();
+    ).all<{ id: string; number: string; due_date: string | null; balance: number; balance_xpf: number; currency: string; status: string; client_name: string }>();
 
     const buckets = { current: 0, d30: 0, d60: 0, d90: 0, older: 0 };
     const rows = (invoices.results ?? []).map((invoice) => {
@@ -560,7 +562,7 @@ reportRoutes.get('/:type', requirePermission('reports.read'), async (c) => {
         ? Math.floor((new Date(today).getTime() - new Date(invoice.due_date).getTime()) / 86_400_000)
         : 0;
       const bucket = days <= 0 ? 'current' : days <= 30 ? 'd30' : days <= 60 ? 'd60' : days <= 90 ? 'd90' : 'older';
-      buckets[bucket] += invoice.balance;
+      buckets[bucket] += invoice.balance_xpf;
       return { ...invoice, days_overdue: Math.max(0, days), bucket };
     });
 
@@ -573,9 +575,9 @@ reportRoutes.get('/:type', requirePermission('reports.read'), async (c) => {
   if (type === 'client-sales') {
     const rows = await db.prepare(
       `SELECT c.id, c.display_name AS client_name, COUNT(i.id) AS invoices,
-        COALESCE(SUM(CASE WHEN i.total_xpf > 0 THEN i.total_xpf ELSE i.total END),0) AS invoiced,
-        COALESCE(SUM(CASE WHEN i.total_xpf > 0 AND i.total > 0 THEN ROUND(i.paid_total * 1.0 * i.total_xpf / i.total) ELSE i.paid_total END),0) AS paid,
-        COALESCE(SUM(i.balance),0) AS balance
+        COALESCE(SUM(${baseAmountSql('i.total', 'i.total_xpf')}),0) AS invoiced,
+        COALESCE(SUM(${baseBalanceSql('i.paid_total', 'i.total', 'i.total_xpf')}),0) AS paid,
+        COALESCE(SUM(${baseBalanceSql('i.balance', 'i.total', 'i.total_xpf')}),0) AS balance_xpf, COALESCE(SUM(i.balance),0) AS balance
        FROM clients c LEFT JOIN invoices i ON i.client_id = c.id AND i.deleted_at IS NULL AND i.date >= ? AND i.date <= ?
        WHERE c.deleted_at IS NULL GROUP BY c.id ORDER BY invoiced DESC`,
     ).bind(from, to).all();

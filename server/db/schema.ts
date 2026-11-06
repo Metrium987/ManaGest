@@ -10,7 +10,7 @@ import {
 } from '../../shared/company-defaults';
 import { SLA_DEFAULT_POLICIES } from '../../shared/planning';
 
-export const SCHEMA_VERSION = 51;
+export const SCHEMA_VERSION = 52;
 
 export const SCHEMA_STATEMENTS: string[] = [
 
@@ -564,7 +564,11 @@ export const SCHEMA_STATEMENTS: string[] = [
     created_by TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    deleted_at TEXT
+    deleted_at TEXT,
+    currency TEXT NOT NULL DEFAULT 'XPF',
+    exchange_rate REAL NOT NULL DEFAULT 1,
+    amount_xpf INTEGER NOT NULL DEFAULT 0,
+    tax_amount_xpf INTEGER NOT NULL DEFAULT 0
   )`,
   `CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(date)`,
 
@@ -604,7 +608,11 @@ export const SCHEMA_STATEMENTS: string[] = [
     created_by TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    deleted_at TEXT
+    deleted_at TEXT,
+    exchange_rate REAL NOT NULL DEFAULT 1,
+    subtotal_xpf INTEGER NOT NULL DEFAULT 0,
+    tax_total_xpf INTEGER NOT NULL DEFAULT 0,
+    total_xpf INTEGER NOT NULL DEFAULT 0
   )`,
 
   `CREATE TABLE IF NOT EXISTS projects (
@@ -1146,7 +1154,10 @@ export const SCHEMA_STATEMENTS: string[] = [
     id TEXT PRIMARY KEY,
     entity_type TEXT NOT NULL,
     entity_id TEXT NOT NULL,
+    revision INTEGER NOT NULL DEFAULT 1,
     amount INTEGER NOT NULL DEFAULT 0,
+    controlled_amount INTEGER NOT NULL DEFAULT 0,
+    controlled_discount INTEGER,
     rule TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
     requested_by TEXT,
@@ -1154,7 +1165,8 @@ export const SCHEMA_STATEMENTS: string[] = [
     note TEXT,
     created_at TEXT NOT NULL,
     decided_at TEXT,
-    UNIQUE (entity_type, entity_id)
+    superseded_at TEXT,
+    UNIQUE (entity_type, entity_id, revision)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status)`,
 

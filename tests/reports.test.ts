@@ -56,23 +56,23 @@ describe('local reports (T-207)', () => {
   it('merges turnover with the money actually collected', () => {
     const periods = mergeRevenue(
       [
-        { period: '2026-08', taxable: 120000, exempt: 15000, total: 135000, documents: 4 },
-        { period: '2026-09', taxable: 50000, exempt: 0, total: 50000, documents: 2 },
+        { period: '2026-08', taxable_xpf: 120000, exempt_xpf: 15000, total_xpf: 135000, documents: 4 },
+        { period: '2026-09', taxable_xpf: 50000, exempt_xpf: 0, total_xpf: 50000, documents: 2 },
       ],
       [
-        { period: '2026-08', collected: 90000 },
-        { period: '2026-09', collected: 0 },
+        { period: '2026-08', collected_xpf: 90000 },
+        { period: '2026-09', collected_xpf: 0 },
       ],
     );
-    expect(periods[0]).toMatchObject({ period: '2026-08', total: 135000, collected: 90000 });
-    expect(periods[1]).toMatchObject({ period: '2026-09', total: 50000, collected: 0 });
-    expect(periods[1].taxable + periods[1].exempt).toBe(periods[1].total);
+    expect(periods[0]).toMatchObject({ period: '2026-08', total_xpf: 135000, collected_xpf: 90000 });
+    expect(periods[1]).toMatchObject({ period: '2026-09', total_xpf: 50000, collected_xpf: 0 });
+    expect(periods[1].taxable_xpf + periods[1].exempt_xpf).toBe(periods[1].total_xpf);
   });
 
   it('labels every turnover column in French', () => {
     const csv = revenueCsv([]);
     expect(csv.replace(/^\uFEFF/, '').trim()).toBe(
-      'période;CA taxable (TTC);CA exonéré (TTC);CA total (TTC);encaissé;documents',
+      'période;CA taxable (XPF);CA exonéré (XPF);CA total (XPF);encaissé (XPF);documents',
     );
   });
 });

@@ -19,7 +19,7 @@
     "check:concurrency": "node scripts/concurrency-check.mjs",
     "load:test": "node scripts/load-test.mjs",
     "check:preview": "python3 scripts/check-screens.py && python3 scripts/check-c2-e2-h2.py && python3 scripts/check-h1-permission.py && python3 scripts/check-planning-sla.py",
-    "db:migrate:local": "wrangler d1 execute managest-db --local --file=./server/db/migrations/0001_init.sql",
+    "db:migrate:local": "wrangler d1 migrations apply managest-db --local",
     "preview": "npm run build && wrangler dev --port 8787 --local",
     "check:preview:hosted": "node scripts/check-preview-config.mjs && python3 scripts/check-screens.py && python3 scripts/check-c2-e2-h2.py && python3 scripts/check-h1-permission.py && python3 scripts/check-planning-sla.py"
   },

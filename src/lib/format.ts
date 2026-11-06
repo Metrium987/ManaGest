@@ -45,9 +45,18 @@ function dateTimeFormat(options: Intl.DateTimeFormatOptions): Intl.DateTimeForma
   }
 }
 
-export function formatMoney(minor: number | null | undefined, currency = 'XPF'): string {
-  const value = fromMinor(Number(minor ?? 0), currency);
-  const decimals = currencyDecimals(currency);
+/**
+ * A-09: pass the currency's configured `decimals` (returned by `/api/currencies`
+ * and frozen on each document). Without it the offline fallback applies, which is
+ * why a three-decimal currency must not rely on the map alone.
+ */
+export function formatMoney(
+  minor: number | null | undefined,
+  currency = 'XPF',
+  configuredDecimals?: number | null,
+): string {
+  const decimals = currencyDecimals(currency, configuredDecimals);
+  const value = fromMinor(Number(minor ?? 0), currency, decimals);
   const formatted = numberFormat({
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
@@ -55,9 +64,13 @@ export function formatMoney(minor: number | null | undefined, currency = 'XPF'):
   return `${formatted} ${currency}`;
 }
 
-export function formatMoneyParts(minor: number | null | undefined, currency = 'XPF'): { value: string; currency: string } {
-  const value = fromMinor(Number(minor ?? 0), currency);
-  const decimals = currencyDecimals(currency);
+export function formatMoneyParts(
+  minor: number | null | undefined,
+  currency = 'XPF',
+  configuredDecimals?: number | null,
+): { value: string; currency: string } {
+  const decimals = currencyDecimals(currency, configuredDecimals);
+  const value = fromMinor(Number(minor ?? 0), currency, decimals);
   return {
     value: numberFormat({
       minimumFractionDigits: decimals,

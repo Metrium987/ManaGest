@@ -9,9 +9,11 @@ import { getExtra, type ExtraKey } from '../lib/settings-extra';
 
 /**
  * Approval service (AUDIT §7 P0.5). Thresholds are settings; a rule set to 0 is
- * simply off. An approval is requested once per document (unique key), and the
- * decision can never be taken by the person who asked for it — that is the whole
- * point of a second pair of eyes.
+ * simply off. The decision can never be taken by the person who asked for it.
+ *
+ * A-06: an approval covers **one** amount and one discount. Raising either after
+ * approval, or resubmitting after a refusal, opens a new revision instead of
+ * being silently accepted or blocked forever. Superseded requests stay as history.
  */
 
 const THRESHOLD_KEYS: ExtraKey[] = [
@@ -31,7 +33,10 @@ export interface ApprovalRow {
   id: string;
   entity_type: string;
   entity_id: string;
+  revision: number;
   amount: number;
+  controlled_amount: number;
+  controlled_discount: number | null;
   rule: string;
   status: string;
   requested_by: string | null;
@@ -39,23 +44,70 @@ export interface ApprovalRow {
   note: string | null;
   created_at: string;
   decided_at: string | null;
+  superseded_at: string | null;
 }
 
+/** The latest revision is the only one that governs the document. */
 export async function approvalOf(
   database: D1Database,
   entityType: ApprovalEntity,
   entityId: string,
 ): Promise<ApprovalRow | null> {
   return database
-    .prepare(`SELECT * FROM approvals WHERE entity_type = ? AND entity_id = ?`)
+    .prepare(`SELECT * FROM approvals WHERE entity_type = ? AND entity_id = ? ORDER BY revision DESC LIMIT 1`)
     .bind(entityType, entityId)
     .first<ApprovalRow>();
 }
 
+export async function approvalHistory(
+  database: D1Database,
+  entityType: ApprovalEntity,
+  entityId: string,
+): Promise<ApprovalRow[]> {
+  const rows = await database
+    .prepare(`SELECT * FROM approvals WHERE entity_type = ? AND entity_id = ? ORDER BY revision DESC`)
+    .bind(entityType, entityId)
+    .all<ApprovalRow>();
+  return rows.results ?? [];
+}
+
+/** Opens a new pending revision, superseding any request still waiting. */
+async function openRevision(
+  database: D1Database,
+  input: { entityType: ApprovalEntity; entityId: string; amount: number; rule: string; requestedBy: string },
+  revision: number,
+  controlledDiscount: number,
+): Promise<void> {
+  const now = nowISO();
+  await database
+    .prepare(
+      `UPDATE approvals SET status = 'superseded', superseded_at = ?
+       WHERE entity_type = ? AND entity_id = ? AND status = 'pending'`,
+    )
+    .bind(now, input.entityType, input.entityId)
+    .run();
+  await database
+    .prepare(
+      `INSERT INTO approvals (id, entity_type, entity_id, revision, amount, controlled_amount,
+        controlled_discount, rule, status, requested_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+    )
+    .bind(
+      crypto.randomUUID(), input.entityType, input.entityId, revision,
+      Math.round(input.amount), Math.round(input.amount), controlledDiscount,
+      input.rule, input.requestedBy, now,
+    )
+    .run();
+  await logActivity(database, {
+    userId: input.requestedBy, action: 'requested', entityType: 'approval', entityId: input.entityId,
+    summary: 'activity.approval_requested',
+    meta: { entity: input.entityType, rule: input.rule, amount: input.amount, revision },
+  });
+}
+
 /**
- * Records the approval request if the document crosses a configured threshold,
- * then refuses the action while it is still pending. An approved or rejected
- * decision is respected: only `pending` blocks.
+ * Records the request if the document crosses a configured threshold, then refuses
+ * while it is pending. An approval only covers the amount and discount controlled.
  */
 export async function requireApprovalIfNeeded(
   database: D1Database,
@@ -69,25 +121,25 @@ export async function requireApprovalIfNeeded(
 ): Promise<void> {
   const limits = await approvalThresholds(database);
   const rule = ruleFor(input.entityType, { amount: input.amount, discountPercent: input.discountPercent }, limits);
-  if (!rule) return;
+  const discount = Math.round(input.discountPercent ?? 0);
+  const latest = await approvalOf(database, input.entityType, input.entityId);
 
-  const existing = await approvalOf(database, input.entityType, input.entityId);
-  if (!existing) {
-    await database
-      .prepare(
-        `INSERT INTO approvals (id, entity_type, entity_id, amount, rule, status, requested_by, created_at)
-         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
-      )
-      .bind(crypto.randomUUID(), input.entityType, input.entityId, Math.round(input.amount), rule, input.requestedBy, nowISO())
-      .run();
-    await logActivity(database, {
-      userId: input.requestedBy, action: 'requested', entityType: 'approval', entityId: input.entityId,
-      summary: 'activity.approval_requested', meta: { entity: input.entityType, rule, amount: input.amount },
+  if (latest?.status === 'approved') {
+    const same = latest.rule === rule
+      && Number(latest.controlled_amount) === Math.round(input.amount)
+      && Number(latest.controlled_discount ?? 0) === discount;
+    if (same) return;
+    if (!rule) return; // corrected below the threshold: nothing left to approve
+    await openRevision(database, { ...input, rule }, latest.revision + 1, discount);
+    return fail(409, 'APPROVAL_REQUIRED', {
+      rule, previous: String(latest.revision), revision: String(latest.revision + 1),
     });
-    return fail(409, 'APPROVAL_REQUIRED', { rule });
   }
-  if (existing.status === 'rejected') return fail(409, 'APPROVAL_REJECTED');
-  if (existing.status === 'pending') return fail(409, 'APPROVAL_REQUIRED', { rule: existing.rule });
+
+  if (!rule) return;
+  const revision = (latest?.revision ?? 0) + 1;
+  await openRevision(database, { ...input, rule }, revision, discount);
+  return fail(409, 'APPROVAL_REQUIRED', { rule, revision: String(revision) });
 }
 
 /** Separation of duties: the creator cannot collect what they issued. */
@@ -109,6 +161,7 @@ export async function decideApproval(
   const row = await database.prepare(`SELECT * FROM approvals WHERE id = ?`)
     .bind(input.id).first<ApprovalRow>();
   if (!row) return fail(404, 'NOT_FOUND');
+  // A superseded revision is history: it can no longer be decided (A-06).
   if (row.status !== 'pending') return fail(409, 'ALREADY_DECIDED');
   if (row.requested_by && row.requested_by === input.userId) return fail(403, 'SAME_APPROVER');
 
@@ -120,7 +173,7 @@ export async function decideApproval(
   await logActivity(database, {
     userId: input.userId, action: input.decision, entityType: 'approval', entityId: row.entity_id,
     summary: input.decision === 'approved' ? 'activity.approval_approved' : 'activity.approval_rejected',
-    meta: { entity: row.entity_type, rule: row.rule, amount: row.amount },
+    meta: { entity: row.entity_type, rule: row.rule, amount: row.amount, revision: row.revision },
     before: { status: 'pending' }, after: { status: input.decision },
   });
 }
