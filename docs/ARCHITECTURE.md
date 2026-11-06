@@ -70,6 +70,18 @@ Tables principales :
 5. **Numérotation atomique.** `INSERT … ON CONFLICT … RETURNING` garantit l'unicité
    des numéros même en cas de requêtes concurrentes.
 
+### Montants, devises et agrégats
+
+Un document peut être libellé dans une devise active, mais **tout agrège en XPF** : le taux est
+résolu à la date du document, figé à l'émission, puis conservé sur la ligne (`exchange_rate`,
+`currency_decimals`, `amount_xpf`, `tax_amount_xpf`). Les rapports, la TVA et le journal passent par
+`baseAmountSql()` / `baseBalanceSql()` (`server/lib/reports.ts`), jamais par une somme de devises
+mélangées. Modifier un taux ensuite ne réécrit aucun document émis.
+
+La **rétention** est appliquée par le passage quotidien uniquement (`server/lib/retention.ts`,
+politique détaillée dans `docs/SECURITE.md`) : documents financiers jamais purgés, journal d'audit
+conservé dix ans puis purgé par lots avec ancre de chaîne.
+
 ## 4. Cycle de vie des documents
 
 ### Facture
@@ -131,9 +143,10 @@ dist/client/       fichiers statiques (HTML, JS, CSS, polices)
 dist/worker/index.js   Worker ES module (API + fallback ASSETS)
 ```
 
-Le Worker est déployé sur Freebuff Sites avec un binding D1 `DB`. Le schéma est appliqué
-au premier appel (`ensureSchema`), puis mémorisé par isolate. Aucune étape de migration
-manuelle n'est nécessaire.
+Le Worker est déployé sur Freebuff Sites avec un binding D1 `DB`. Les migrations versionnées
+(A-10, `server/db/migrations/`) sont appliquées au premier appel (`ensureSchema`), avec le
+rattrapage de colonnes en filet, puis mémorisées par isolate. Aucune étape de migration manuelle
+n'est nécessaire.
 
 Pour un déploiement hors Sites, fournir un binding D1 nommé `DB` et un binding
 `ASSETS` (ou servir `dist/client` séparément).

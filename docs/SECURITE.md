@@ -278,6 +278,16 @@ adresse e-mail, adresse IP, chemin de requête, identifiant d'utilisateur ou éc
 n'y figure, et aucun contenu de requête n'est journalisé. Sans base initialisée, la route répond
 `unavailable` avec `schema_version: null`.
 
+## Routes anonymes et CSRF (A-27)
+
+Le middleware CSRF vérifie **l'origine** de toute mutation, avec ou sans session : une requête
+d'une autre origine est refusée (`403 CSRF_ORIGIN`). Le jeton (`x-csrf-token`, comparé au cookie
+`mg_csrf` et au secret de session en temps constant) n'est exigé que lorsqu'un cookie de session
+est présent. Les mutations anonymes — `/install`, `/recover-owner`, `/login`, mot de passe
+oublié/réinitialisé — n'ont donc pas de jeton à présenter : elles reposent sur le contrôle
+d'origine, la limitation de débit (A-20/A-23) et, pour `recover-owner`, un jeton à usage unique.
+C'est une limite assumée, écrite aussi dans `build/PENDING.md` (L-13).
+
 ## Tests d'intégration HTTP (A-26)
 
 `tests/integration/p0-http.test.ts` exerce le vrai worker sur une base D1 locale migrée, recréée

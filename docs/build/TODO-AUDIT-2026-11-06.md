@@ -216,7 +216,15 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **110 fichie
 
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **111 fichiers, 841 tests, 0 échec**.
 
-Prochaine fiche : **A-27 — documentation remise d'aplomb**.
+**6 novembre 2026 — A-27 : la documentation vivante dit ce que le code fait.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-27 | **DONE** | Audit du 28 octobre laissé **figé** dans `docs/archive/audit-2026-10-28/AUDIT.md` ; sa note nomme les chiffres périmés (26 tables / 28 index) et renvoie au 6 novembre. Constat daté remis d'aplomb : **89 tables / 89 index**, recomptés après A-17 et A-19. `README.md` : plan, audit, archive, règle « tous les agrégats en XPF », tests d'intégration. `docs/ARCHITECTURE.md` : agrégats XPF, rétention, migrations versionnées. `PENDING.md` : CSRF des routes anonymes (L-13), absence de planificateur (L-14), devise dépenses/BC livrée par A-08. `SECURITE.md` : origine contrôlée, jeton exigé seulement avec session. Garde `tests/docs-integrity.test.ts`, **3 cas**. Mutation (chiffre falsifié) : **1 cas en échec sur 3**. Aucune migration. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **112 fichiers, 844 tests, 0 échec**.
+
+Prochaine fiche : **A-28 — tests de concurrence**.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -1262,9 +1270,25 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Critères d'acceptation.** Aucun chiffre faux dans les documents **vivants** ; l'ancien audit
   est archivé sans modification et signalé comme périmé ; chaque limite connue est écrite une
   fois, à un endroit.
-- **Tests.** Relecture croisée : chaque affirmation de table/index vérifiée par une commande.
+- **Tests.** `tests/docs-integrity.test.ts` (3 gardes) : chiffres du constat daté comparés au
+  schéma déclaré, liens relatifs des documents vivants résolus, audit du 28 octobre archivé et
+  signalé périmé. Mutation : un chiffre faux dans le constat → **1 cas en échec sur 3**.
+- **Livré (2026-11-06).** L'audit du 28 octobre reste **figé** dans
+  `docs/archive/audit-2026-10-28/AUDIT.md` ; sa note d'archive nomme désormais les chiffres
+  périmés (**26 tables / 28 index** annoncés, contre **89 tables / 89 index** recomptés) et
+  renvoie à l'audit du 6 novembre. Le constat daté a été remis d'aplomb : « 89 tables, 89 index,
+  4 clés étrangères » (recompté après A-17 et A-19), et les trois passages qui répétaient
+  « 81 tables » suivent. `README.md` liste le plan du 6 novembre, l'audit, l'archive et le
+  registre ; il énonce la règle **« tous les agrégats en XPF au taux figé »** et la couverture
+  d'intégration HTTP. `docs/ARCHITECTURE.md` documente cette règle, la rétention (renvoi à
+  `SECURITE.md`) et les migrations versionnées A-10. `docs/build/PENDING.md` consigne la limite
+  **CSRF des routes anonymes** (L-13), l'**absence de planificateur** (L-14) et la livraison de la
+  **devise des dépenses et BC** par A-08. `docs/SECURITE.md` décrit le contrôle d'origine et le
+  jeton exigé seulement avec une session. Aucune migration.
+  Preuve : `tests/docs-integrity.test.ts`, **3 cas** ; suite complète **112 fichiers / 844 tests**,
+  typecheck 0 erreur. Mutation : chiffre de tables falsifié dans le constat → **1 cas en échec sur 3**.
 - **Pièges.** Ne pas présenter A-26 comme fait avant qu'il ne le soit.
-- **Effort.** S. **Statut.** TODO.
+- **Effort.** S. **Statut.** DONE.
 
 ### A-28 — Tests de concurrence
 
@@ -1477,7 +1501,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-24 | Rétention et purges | 6 | M | A-15 | DONE |
 | A-25 | Observabilité métier | 6 | M | A-12, A-14 | DONE |
 | A-26 | Tests HTTP d'intégration | 6 | L | A-10 | DONE |
-| A-27 | Documentation | 6 | S | A-01…A-31 | TODO |
+| A-27 | Documentation | 6 | S | A-01…A-31 | DONE |
 | A-28 | Tests de concurrence | 6 | M | A-19, A-23 | TODO |
 | A-29 | Aucune valeur métier en dur | 6 | M | A-10 | TODO |
 | A-30 | Autorité sur les paramètres | 6 | M | — | TODO |

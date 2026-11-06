@@ -6,7 +6,7 @@ pièces datées, conservées pour la traçabilité.
 | Dossier | Contenu | Pourquoi il est là |
 |---|---|---|
 | `specifications/` | Les 19 documents de spécification d'origine (catalogue de modules, définitions d'entités, 17 FRD) | Source des exigences. Ils encombraient la racine du dépôt ; ils restent la référence de ce qui a été demandé, pas de ce qui est livré. |
-| `audit-2026-10-28/` | L'audit daté du 28 octobre : inventaires, matrice de parité, règles métier, fiches de spécification, extraits de données, questions ouvertes (47 fichiers) et **`AUDIT.md`**, l'état des lieux d'origine (archivé le 6/11/2026) | Ses constats ont été traités ou requalifiés depuis. Les §5 et §6 d'`AUDIT.md` sont **périmés** (chiffres de tables et d'index, modules listés comme manquants alors qu'ils sont livrés) : ne pas s'y fier, lire l'audit du 6 novembre. Les renvois internes des fichiers citent encore l'ancien chemin `docs/audit/…`. |
+| `audit-2026-10-28/` | L'audit daté du 28 octobre : inventaires, matrice de parité, règles métier, fiches de spécification, extraits de données, questions ouvertes (47 fichiers) et **`AUDIT.md`**, l'état des lieux d'origine (archivé le 6/11/2026) | Ses constats ont été traités ou requalifiés depuis. Les §5 et §6 d'`AUDIT.md` sont **périmés** : les **26 tables** et **28 index** qu'ils annoncent sont à comparer aux **89 tables et 89 index** constatés dans l'audit du 6 novembre, et des modules qui y sont listés comme manquants sont livrés. Ne pas s'y fier, lire l'audit du 6 novembre. Les renvois internes des fichiers citent encore l'ancien chemin `docs/audit/…`. |
 | `build-reports/` | Rapports de module M0 → M10 et rapport de palier R1 | Preuves d'exécution des phases passées, pas un état courant. |
 
 ## Où lire l'état réel

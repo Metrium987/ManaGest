@@ -50,7 +50,7 @@ Pour le XPF, l'unité mineure est le franc : `1 500` représente 1 500 F CFP.
 
 | Élément | Valeur retenue |
 |---|---|
-| Devise | `XPF` — 0 décimale |
+| Devise | `XPF` — 0 décimale ; **tous les agrégats** (rapports, TVA, journal) sont exprimés en XPF au taux figé du document |
 | TVA | **13 % (services, défaut d'une installation neuve)**, 16 % (biens), 5 % (réduit), 1 % (archipels hors Société, au 1/7/2026), exonération |
 | Régime | Assujetti ou **franchise en base** (mention automatique sur les documents) |
 | Identifiants | **Numéro TAHITI** (une lettre + 5 chiffres, ex. `T12345`), **RIDET**, **NIF** — distincts et tous facultatifs |
@@ -71,7 +71,7 @@ Voir [`docs/CONFORMITE.md`](docs/CONFORMITE.md).
 - **API** : Hono sur **Cloudflare Workers**.
 - **Base** : **Cloudflare D1** (SQLite), schéma idempotent appliqué au premier démarrage.
 - **PDF** : `pdf-lib`, généré côté Worker (aucun service externe).
-- **Tests** : Vitest (moteur fiscal, statuts, permissions, dates, politique de mots de passe).
+- **Tests** : Vitest — unitaires, intégration HTTP sur une base D1 locale migrée, moteur fiscal, statuts, permissions, dates, politique de mots de passe.
 
 ```
 shared/        Domaine partagé (constantes, monnaie, TVA)
@@ -171,6 +171,7 @@ que masquer les actions non autorisées. Voir [`docs/SECURITE.md`](docs/SECURITE
 - [`docs/build/TODO.md`](docs/build/TODO.md) — plan d'exécution et preuve de chaque tâche.
 - [`docs/build/TODO-AUDIT-2026-11-06.md`](docs/build/TODO-AUDIT-2026-11-06.md) — plan d'exécution détaillé issu de cet audit (tâches A-01 à A-31).
 - [`docs/build/PENDING.md`](docs/build/PENDING.md) — registre unique de ce qui reste suspendu, différé ou non vérifié.
+- [`docs/archive/audit-2026-10-28/AUDIT.md`](docs/archive/audit-2026-10-28/AUDIT.md) — audit d'origine du 28 octobre, **archivé figé** : ses §5 et §6 (chiffres de tables et d'index, modules alors manquants) sont périmés et renvoient à l'audit du 6 novembre.
 
 Les documents d'origine (17 FRD, audit daté du 28 octobre, rapports de module) sont rangés dans
 [`docs/archive/`](docs/archive/README.md) : ils ne sont plus mis à jour.
