@@ -37,6 +37,7 @@ export function ProfilePage() {
   const [passwords, setPasswords] = useState({ current_password: '', new_password: '', confirm: '' });
   const [mfaSecret, setMfaSecret] = useState<{ secret: string; otpauth_uri: string } | null>(null);
   const [mfaCode, setMfaCode] = useState('');
+  const [mfaPassword, setMfaPassword] = useState('');
   const [disableCode, setDisableCode] = useState('');
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const [copied, setCopied] = useState(false);
@@ -81,19 +82,21 @@ export function ProfilePage() {
   });
 
   const setupMfa = useMutation({
-    mutationFn: () => api.post<{ secret: string; otpauth_uri: string }>('/auth/mfa/setup'),
+    mutationFn: () => api.post<{ secret: string; otpauth_uri: string }>('/auth/mfa/setup', { current_password: mfaPassword }),
     onSuccess: (result) => {
       setMfaSecret(result);
       setMfaCode('');
+      setMfaPassword('');
     },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
   const enableMfa = useMutation({
-    mutationFn: () => api.post<{ recovery_codes: string[] }>('/auth/mfa/enable', { code: mfaCode }),
+    mutationFn: () => api.post<{ recovery_codes: string[] }>('/auth/mfa/enable', { code: mfaCode, current_password: mfaPassword }),
     onSuccess: async (result) => {
       setMfaSecret(null);
       setMfaCode('');
+      setMfaPassword('');
       setRecoveryCodes(result.recovery_codes);
       toast.success(t('mfa.enabled'));
       await refetch();
@@ -103,9 +106,10 @@ export function ProfilePage() {
   });
 
   const disableMfa = useMutation({
-    mutationFn: () => api.post('/auth/mfa/disable', { code: disableCode }),
+    mutationFn: () => api.post('/auth/mfa/disable', { code: disableCode, current_password: mfaPassword }),
     onSuccess: async () => {
       setDisableCode('');
+      setMfaPassword('');
       toast.success(t('mfa.disabled'));
       await refetch();
     },
@@ -230,6 +234,15 @@ export function ProfilePage() {
                     placeholder="123456"
                   />
                 </Field>
+                <Field label={t('mfa.passwordLabel')} htmlFor="mfa_enable_password" required>
+                  <Input
+                    id="mfa_enable_password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={mfaPassword}
+                    onChange={(event) => setMfaPassword(event.target.value)}
+                  />
+                </Field>
                 <Button type="submit" loading={enableMfa.isPending}>{t('mfa.verify')}</Button>
                 <Button variant="ghost" onClick={() => { setMfaSecret(null); setMfaCode(''); }}>{t('common.cancel')}</Button>
               </form>
@@ -258,6 +271,15 @@ export function ProfilePage() {
                     value={disableCode}
                     onChange={(event) => setDisableCode(event.target.value)}
                   />
+                  <Input
+                    aria-label={t('mfa.passwordLabel')}
+                    type="password"
+                    autoComplete="current-password"
+                    placeholder={t('mfa.passwordLabel')}
+                    className="w-44"
+                    value={mfaPassword}
+                    onChange={(event) => setMfaPassword(event.target.value)}
+                  />
                   <Button
                     variant="secondary"
                     loading={disableMfa.isPending}
@@ -267,9 +289,25 @@ export function ProfilePage() {
                   </Button>
                 </div>
               ) : (
-                <Button loading={setupMfa.isPending} onClick={() => setupMfa.mutate()} icon={<ShieldCheck className="h-4 w-4" aria-hidden="true" />}>
-                  {t('mfa.generate')}
-                </Button>
+                <div className="flex flex-wrap items-end gap-2">
+                  <Field label={t('mfa.passwordLabel')} htmlFor="mfa_setup_password" required>
+                    <Input
+                      id="mfa_setup_password"
+                      type="password"
+                      autoComplete="current-password"
+                      value={mfaPassword}
+                      onChange={(event) => setMfaPassword(event.target.value)}
+                    />
+                  </Field>
+                  <Button
+                    loading={setupMfa.isPending}
+                    disabled={!mfaPassword}
+                    onClick={() => setupMfa.mutate()}
+                    icon={<ShieldCheck className="h-4 w-4" aria-hidden="true" />}
+                  >
+                    {t('mfa.generate')}
+                  </Button>
+                </div>
               )}
             </div>
           )}

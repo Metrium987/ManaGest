@@ -1,4 +1,4 @@
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { z } from 'zod';
 import { nowISO, one } from '../db';
 import { logActivity } from '../lib/audit';
@@ -48,6 +48,29 @@ async function loginPayload(user: UserRow, database: D1Database) {
       permissions: await resolveUserPermissions(database, user),
     },
   };
+}
+
+/**
+ * A-22: changing an authentication factor needs the current password, not just
+ * a session. A wrong password is counted by the login throttle (A-20) and never
+ * accepted twice: there is no stored "re-authenticated" window to reuse.
+ */
+async function assertCurrentPassword(c: Context<AppEnv>, password: string | undefined): Promise<void> {
+  const user = c.get('user')!;
+  const row = await c.env.DB.prepare(`SELECT email, password_hash FROM users WHERE id = ?`)
+    .bind(user.id)
+    .first<{ email: string; password_hash: string }>();
+  const email = row?.email ?? user.email;
+  const ip = clientIp(c);
+  const valid = Boolean(password)
+    && (await verifyPassword(String(password), row?.password_hash ?? DUMMY_PASSWORD_HASH));
+  if (valid) return;
+  const recorded = await recordLoginFailure(c.env.DB, { email, ip });
+  if (!recorded) {
+    const decision = await loginThrottle(c.env.DB, { email, ip });
+    return fail(429, 'TOO_MANY_ATTEMPTS', { retry_after: String(decision.retryAfterSeconds) });
+  }
+  return fail(401, 'INVALID_CREDENTIALS');
 }
 
 export const authRoutes = new Hono<AppEnv>();
@@ -263,6 +286,11 @@ authRoutes.post('/mfa/verify', async (c) => {
 /** Stores a fresh secret (not yet active); activation needs a valid code. */
 authRoutes.post('/mfa/setup', requireAuth, async (c) => {
   const user = c.get('user')!;
+  const body = parseInput(
+    z.object({ current_password: z.string().max(200).optional() }),
+    await c.req.json().catch(() => ({})),
+  );
+  await assertCurrentPassword(c, body.current_password);
   const row = await c.env.DB.prepare(`SELECT mfa_enabled FROM users WHERE id = ?`)
     .bind(user.id)
     .first<{ mfa_enabled: number }>();
@@ -280,9 +308,10 @@ authRoutes.post('/mfa/setup', requireAuth, async (c) => {
 authRoutes.post('/mfa/enable', requireAuth, async (c) => {
   const user = c.get('user')!;
   const body = parseInput(
-    z.object({ code: z.string().min(4).max(20) }),
+    z.object({ code: z.string().min(4).max(20), current_password: z.string().max(200).optional() }),
     await c.req.json().catch(() => ({})),
   );
+  await assertCurrentPassword(c, body.current_password);
   const row = await c.env.DB.prepare(`SELECT mfa_secret, mfa_enabled FROM users WHERE id = ?`)
     .bind(user.id)
     .first<{ mfa_secret: string | null; mfa_enabled: number }>();
@@ -313,7 +342,10 @@ authRoutes.post('/mfa/enable', requireAuth, async (c) => {
 authRoutes.post('/mfa/disable', requireAuth, async (c) => {
   const user = c.get('user')!;
   const body = parseInput(
-    z.object({ code: z.string().min(4).max(20) }),
+    z.object({
+      code: z.string().max(20).optional(),
+      current_password: z.string().max(200).optional(),
+    }),
     await c.req.json().catch(() => ({})),
   );
   const row = await c.env.DB.prepare(
@@ -323,7 +355,7 @@ authRoutes.post('/mfa/disable', requireAuth, async (c) => {
     .first<{ mfa_secret: string | null; mfa_codes: string | null; mfa_enabled: number }>();
   if (!row?.mfa_enabled) return fail(409, 'MFA_NOT_ENABLED');
 
-  const code = body.code.trim();
+  const code = (body.code ?? '').trim();
   const isTotp = /^\d{6}$/.test(code);
   let ok = isTotp && row.mfa_secret ? await verifyTotp(row.mfa_secret, code) : false;
   if (!ok && !isTotp && row.mfa_codes) {
@@ -335,7 +367,20 @@ authRoutes.post('/mfa/disable', requireAuth, async (c) => {
       ok = false;
     }
   }
-  if (!ok) return fail(401, 'INVALID_CODE');
+  if (!ok && body.current_password) {
+    const account = await c.env.DB.prepare(`SELECT password_hash FROM users WHERE id = ?`)
+      .bind(user.id)
+      .first<{ password_hash: string }>();
+    ok = await verifyPassword(body.current_password, account?.password_hash ?? DUMMY_PASSWORD_HASH);
+  }
+  if (!ok) {
+    const recorded = await recordLoginFailure(c.env.DB, { email: user.email, ip: clientIp(c) });
+    if (!recorded) {
+      const decision = await loginThrottle(c.env.DB, { email: user.email, ip: clientIp(c) });
+      return fail(429, 'TOO_MANY_ATTEMPTS', { retry_after: String(decision.retryAfterSeconds) });
+    }
+    return fail(401, 'INVALID_CREDENTIALS');
+  }
 
   await c.env.DB.prepare(
     `UPDATE users SET mfa_enabled = 0, mfa_secret = NULL, mfa_codes = NULL, updated_at = ? WHERE id = ?`,

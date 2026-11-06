@@ -3,9 +3,13 @@
  * indirectly. This drives the real routes: setup, activation with a generated
  * code, login challenge, TOTP verification, single-use recovery code and
  * disabling. It proves the PENDING line "MFA non planifié" is out of date.
+ *
+ * A-22 adds the other half of the guarantee: a session alone cannot change a
+ * factor, and the password that carried a setup does not authorise the
+ * activation that follows it.
  */
 import { DatabaseSync } from 'node:sqlite';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { ensureSchema } from '../server/db';
 import { authRoutes } from '../server/routes/auth';
 import { Hono } from 'hono';
@@ -114,18 +118,43 @@ async function installAndLogin(): Promise<{ cookie: string; database: DatabaseSy
   return { cookie: cookieOf(login), database };
 }
 
-describe('TOTP second factor', () => {
-  it('enrols, challenges the login, accepts a code, uses a recovery code once and disables', async () => {
-    const { cookie } = await installAndLogin();
+let database: DatabaseSync;
+let cookie: string;
 
-    const setup = await post('/mfa/setup', {}, cookie);
+/** A second browser: the same account, another session. */
+async function freshSession(): Promise<string> {
+  const login = await post('/login', { email: EMAIL, password: PASSWORD });
+  expect(login.status).toBe(200);
+  return cookieOf(login);
+}
+
+function scalar(sql: string, ...params: unknown[]): number {
+  const row = database.prepare(sql).get(...(params as never[])) as { value: number };
+  return row.value;
+}
+
+function mfaState(): { mfa_secret: string | null; mfa_enabled: number } {
+  return database
+    .prepare('SELECT mfa_secret, mfa_enabled FROM users WHERE email = ?')
+    .get(EMAIL) as { mfa_secret: string | null; mfa_enabled: number };
+}
+
+describe('TOTP second factor', () => {
+  beforeAll(async () => {
+    const installed = await installAndLogin();
+    database = installed.database;
+    cookie = installed.cookie;
+  });
+
+  it('enrols, challenges the login, accepts a code, uses a recovery code once and disables', async () => {
+    const setup = await post('/mfa/setup', { current_password: PASSWORD }, cookie);
     expect(setup.status).toBe(200);
     const { secret, otpauth_uri } = await setup.json() as { secret: string; otpauth_uri: string };
     expect(secret.replace(/\s/g, '')).toMatch(/^[A-Z2-7]{32}$/);
     expect(otpauth_uri).toContain('otpauth://totp/');
 
     const code = await currentCode(secret);
-    const enabled = await post('/mfa/enable', { code }, cookie);
+    const enabled = await post('/mfa/enable', { code, current_password: PASSWORD }, cookie);
     expect(enabled.status).toBe(200);
     const { recovery_codes } = await enabled.json() as { recovery_codes: string[] };
     expect(recovery_codes).toHaveLength(10);
@@ -163,5 +192,62 @@ describe('TOTP second factor', () => {
     expect(plain.status).toBe(200);
     expect((await plain.json() as { mfa_required?: boolean }).mfa_required).toBeUndefined();
     expect(plain.headers.get('set-cookie')).toContain('mg_session=');
+  });
+
+  it('refuses to start MFA setup without the current password', async () => {
+    const session = await freshSession();
+    const before = scalar('SELECT COUNT(*) AS value FROM login_attempts WHERE email = ?', EMAIL);
+
+    const refused = await post('/mfa/setup', {}, session);
+    expect(refused.status).toBe(401);
+    expect((await refused.json() as { code: string }).code).toBe('INVALID_CREDENTIALS');
+    expect(mfaState().mfa_secret).toBeNull();
+
+    const after = scalar('SELECT COUNT(*) AS value FROM login_attempts WHERE email = ?', EMAIL);
+    expect(after).toBe(before + 1);
+  });
+
+  it('counts a wrong password and only stores the secret with the right one', async () => {
+    const session = await freshSession();
+    const wrong = await post('/mfa/setup', { current_password: 'Pas-Le-Bon-2026!' }, session);
+    expect(wrong.status).toBe(401);
+    expect((await wrong.json() as { code: string }).code).toBe('INVALID_CREDENTIALS');
+    expect(mfaState().mfa_secret).toBeNull();
+
+    const accepted = await post('/mfa/setup', { current_password: PASSWORD }, session);
+    expect(accepted.status).toBe(200);
+    const { secret } = await accepted.json() as { secret: string };
+    expect(secret.replace(/\s/g, '')).toMatch(/^[A-Z2-7]{32}$/);
+    expect(mfaState().mfa_secret).not.toBeNull();
+  });
+
+  it('needs the password again to enable, even though the setup carried it', async () => {
+    const session = await freshSession();
+    const setup = await post('/mfa/setup', { current_password: PASSWORD }, session);
+    expect(setup.status).toBe(200);
+    const { secret } = await setup.json() as { secret: string };
+    const code = await currentCode(secret);
+
+    // The previous request authenticated the person, not the device: the code
+    // and the session from the setup are not enough on their own.
+    const refused = await post('/mfa/enable', { code }, session);
+    expect(refused.status).toBe(401);
+    expect((await refused.json() as { code: string }).code).toBe('INVALID_CREDENTIALS');
+    expect(mfaState().mfa_enabled).toBe(0);
+
+    const enabled = await post('/mfa/enable', { code, current_password: PASSWORD }, session);
+    expect(enabled.status).toBe(200);
+    expect(mfaState().mfa_enabled).toBe(1);
+  });
+
+  it('refuses a wrong password to disable, and accepts the current one alone', async () => {
+    const refused = await post('/mfa/disable', { current_password: 'Pas-Le-Bon-2026!' }, cookie);
+    expect(refused.status).toBe(401);
+    expect((await refused.json() as { code: string }).code).toBe('INVALID_CREDENTIALS');
+    expect(mfaState().mfa_enabled).toBe(1);
+
+    const disabled = await post('/mfa/disable', { current_password: PASSWORD }, cookie);
+    expect(disabled.status).toBe(200);
+    expect(mfaState().mfa_enabled).toBe(0);
   });
 });

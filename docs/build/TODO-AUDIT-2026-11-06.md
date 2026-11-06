@@ -169,6 +169,16 @@ Prochaine fiche : **A-21 — en-têtes de sécurité sur l'origine réelle**.
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **107 fichiers, 815 tests, 0 échec**.
 
 Prochaine fiche : **A-22 — ré-authentification pour changer un facteur**.
+
+**6 novembre 2026 — A-22 : ré-authentification pour changer un facteur.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-22 | **DONE** | `mfa/setup` et `mfa/enable` exigent `current_password` ; `mfa/disable` accepte un code valide **ou** le mot de passe. Absent/faux → `401 INVALID_CREDENTIALS`, compté par la limitation A-20 (`login_attempts` +1, `429` au quota), sans écriture de `mfa_secret`. Aucune fenêtre de ré-authentification : rien n'est mémorisé, le mot de passe du `setup` n'autorise pas le `enable`. Mot de passe jamais journalisé, `enabled`/`disabled` tracés avec l'IP, défi MFA 5 min intact, champ mot de passe dans l'interface fr/en. `tests/mfa-flow.test.ts` **5 cas** (flux historique + 4 nouveaux). Mutation (vérification neutralisée) : **3 cas en échec sur 5**. Pas de migration. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **107 fichiers, 819 tests, 0 échec**.
+
+Prochaine fiche : **A-23 — installation : verrou et limitation**.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -995,8 +1005,28 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Critères d'acceptation.** Sans mot de passe → 401 ; avec → 200 ; le flux existant
   (`tests/mfa-flow.test.ts`) passe avec le mot de passe ajouté.
 - **Tests.** `tests/mfa-flow.test.ts` étendu (4 cas).
+- **Livré (2026-11-06).** `mfa/setup` et `mfa/enable` exigent `current_password` ;
+  `mfa/disable` accepte indifféremment un code TOTP / code de secours valide **ou** le mot de
+  passe courant. Un mot de passe absent, vide ou faux renvoie `401 INVALID_CREDENTIALS` (jamais
+  `400` : le schéma reste optionnel pour que l'absence soit un refus d'authentification), est
+  enregistré par `recordLoginFailure` — donc compté par la limitation A-20, avec `429` +
+  `retry_after` au-delà du quota — et n'écrit rien (`mfa_secret` inchangé). Il n'existe
+  **aucune fenêtre de ré-authentification** : le mot de passe n'est pas mémorisé, chaque appel
+  le revérifie, donc celui du `setup` n'autorise pas le `enable` suivant. Le mot de passe n'est
+  jamais journalisé ; `enabled`/`disabled` restent tracés avec l'IP via `logActivity`. Le défi
+  de connexion MFA (5 min) est intact. Interface : champ mot de passe dans les trois panneaux
+  (`ProfilePage.tsx`), libellés fr/en.
+  Preuve : `tests/mfa-flow.test.ts`, **5 cas** (flux historique + 4 nouveaux) sur les vraies
+  routes — « refuses to start MFA setup without the current password » (401, `mfa_secret`
+  toujours NULL, **+1 ligne `login_attempts`**), « counts a wrong password and only stores the
+  secret with the right one » (401 puis 200), « needs the password again to enable, even though
+  the setup carried it » (401 sans mot de passe, `mfa_enabled` reste 0, puis 200),
+  « refuses a wrong password to disable, and accepts the current one alone » (401 puis 200,
+  `mfa_enabled` 1 → 0). Mutation : `assertCurrentPassword` rendu inconditionnellement valide
+  → **3 cas en échec sur 5**. Aucune migration (pas de nouvelle table ni colonne) ; typecheck
+  0 erreur ; suite **107 fichiers / 819 tests**.
 - **Pièges.** Ne pas casser la connexion MFA (le défi de 5 min reste inchangé).
-- **Effort.** S. **Statut.** TODO.
+- **Effort.** S. **Statut.** DONE.
 
 ### A-23 — Installation : verrou et limitation
 
@@ -1316,7 +1346,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-19 | Chaîne d'audit sans course | 4 | M | — | DONE |
 | A-20 | Limitation par IP et compte | 6 | S | — | DONE |
 | A-21 | En-têtes de sécurité cohérents | 6 | M | — | DONE |
-| A-22 | Ré-auth MFA | 6 | S | — | TODO |
+| A-22 | Ré-auth MFA | 6 | S | — | DONE |
 | A-23 | Installation verrouillée | 6 | S | A-13 | TODO |
 | A-24 | Rétention et purges | 6 | M | A-15 | TODO |
 | A-25 | Observabilité métier | 6 | M | A-12, A-14 | TODO |

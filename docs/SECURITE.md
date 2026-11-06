@@ -204,3 +204,13 @@ La préversion est la seule iframe supportée, et seulement pour sa propre origi
 contredirait la politique). Partout ailleurs, `X-Frame-Options: DENY` et
 `frame-ancestors 'none'` restent la règle. Les cookies de session suivent la même décision
 (`SameSite=None; Secure; Partitioned` sur la préversion, `Lax` sinon).
+
+## Ré-authentification avant changement de facteur (A-22)
+
+Une session valide ne suffit pas à modifier un facteur : `mfa/setup` et `mfa/enable` exigent le
+mot de passe courant, `mfa/disable` accepte un code TOTP ou de secours valide **ou** ce mot de
+passe. Un échec renvoie `401 INVALID_CREDENTIALS`, alimente la limitation de connexion (A-20) et
+n'écrit rien. Aucun état « ré-authentifié » n'est conservé : le mot de passe est vérifié à chaque
+appel, donc un `setup` autorisé ne vaut pas pour l'`enable` suivant et rien ne peut être rejoué.
+Le mot de passe n'apparaît ni dans l'audit ni dans les logs ; seuls `enabled`/`disabled` sont
+tracés, avec l'IP.
