@@ -384,48 +384,61 @@ invoiceRoutes.post('/:id/send', requirePermission('invoices.write'), async (c) =
   });
   await assertPeriodOpen(c.env.DB, invoice.date);
 
-  // Freeze the rate at issue: a later rate change must not rewrite this document.
-  const issueFx = await freezeFx(c.env.DB, invoice.currency, invoice.date);
-  await c.env.DB.prepare(
-    `UPDATE invoices SET exchange_rate = ?, currency_decimals = ?, subtotal_xpf = ?, tax_total_xpf = ?, total_xpf = ?, updated_at = ?
-     WHERE id = ?`,
-  )
-    .bind(
-      issueFx.rate, issueFx.currency.decimals,
-      convertToBase(invoice.subtotal, issueFx.currency.decimals, issueFx.rate),
-      convertToBase(invoice.tax_total, issueFx.currency.decimals, issueFx.rate),
-      convertToBase(invoice.total, issueFx.currency.decimals, issueFx.rate),
-      nowISO(), id,
-    )
-    .run();
-
-  // A3: the goods leave the warehouse when the document is issued. The refusal
-  // throws before the status changes, so a short order leaves a draft behind.
-  const consumed = await consumeInvoiceStock(c.env.DB, {
-    reference: invoice.number,
-    lines: safeLines(invoice.line_items),
-    userId: user.id,
-  });
-
-  await c.env.DB.prepare(
+  // A-28: the transition is claimed by one conditional statement before the
+  // stock leaves. Two simultaneous sends both read `draft`; only the first
+  // updates a row, and the loser is refused before consuming anything.
+  const claimed = await c.env.DB.prepare(
     `UPDATE invoices SET status = 'sent', sent_at = ?, updated_at = ? WHERE id = ? AND status = 'draft'`,
   )
     .bind(nowISO(), nowISO(), id)
     .run();
+  if (!claimed.meta.changes) return fail(409, 'INVALID_TRANSITION');
 
-  // A-18: the entry is written with the transition, not at the next read.
-  await postDocumentEntry(c.env.DB, 'invoice', id);
+  try {
+    // Freeze the rate at issue: a later rate change must not rewrite this document.
+    const issueFx = await freezeFx(c.env.DB, invoice.currency, invoice.date);
+    await c.env.DB.prepare(
+      `UPDATE invoices SET exchange_rate = ?, currency_decimals = ?, subtotal_xpf = ?, tax_total_xpf = ?, total_xpf = ?, updated_at = ?
+       WHERE id = ?`,
+    )
+      .bind(
+        issueFx.rate, issueFx.currency.decimals,
+        convertToBase(invoice.subtotal, issueFx.currency.decimals, issueFx.rate),
+        convertToBase(invoice.tax_total, issueFx.currency.decimals, issueFx.rate),
+        convertToBase(invoice.total, issueFx.currency.decimals, issueFx.rate),
+        nowISO(), id,
+      )
+      .run();
 
-  await logActivity(c.env.DB, {
-    userId: user.id,
-    action: 'sent',
-    entityType: 'invoice',
-    entityId: id,
-    summary: 'activity.invoice_sent',
-    meta: { number: invoice.number, lines: consumed.length },
-  });
+    // A3: the goods leave the warehouse when the document is issued. A refusal
+    // (short stock, missing rate) restores the draft below.
+    const consumed = await consumeInvoiceStock(c.env.DB, {
+      reference: invoice.number,
+      lines: safeLines(invoice.line_items),
+      userId: user.id,
+    });
 
-  return c.json({ ok: true, consumed });
+    // A-18: the entry is written with the transition, not at the next read.
+    await postDocumentEntry(c.env.DB, 'invoice', id);
+
+    await logActivity(c.env.DB, {
+      userId: user.id,
+      action: 'sent',
+      entityType: 'invoice',
+      entityId: id,
+      summary: 'activity.invoice_sent',
+      meta: { number: invoice.number, lines: consumed.length },
+    });
+
+    return c.json({ ok: true, consumed });
+  } catch (error) {
+    await c.env.DB.prepare(
+      `UPDATE invoices SET status = 'draft', sent_at = NULL, updated_at = ? WHERE id = ? AND status = 'sent'`,
+    )
+      .bind(nowISO(), id)
+      .run();
+    throw error;
+  }
 });
 
 invoiceRoutes.post('/:id/cancel', requirePermission('invoices.write'), async (c) => {

@@ -224,7 +224,15 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **111 fichie
 
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **112 fichiers, 844 tests, 0 échec**.
 
-Prochaine fiche : **A-28 — tests de concurrence**.
+**6 novembre 2026 — A-28 : les courses critiques sont reproduites et verrouillées.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-28 | **DONE** | `tests/concurrency/http-concurrency.test.ts` : vrai worker, base migrée par cas, barrière sur l'instruction critique (les deux requêtes lisent le même état avant la première écriture). Double envoi : `UPDATE … WHERE status = 'draft'` réclamé, perdant `409 INVALID_TRANSITION` avant tout mouvement, brouillon restauré si le stock refuse ; un seul mouvement, quantité 10 → 9. Double encaissement : `UPDATE … WHERE balance >= ?` par affectation, second `409 AMOUNT_EXCEEDS_BALANCE`, un paiement, `paid_total` = total, solde 0. Clôture de période : écriture déjà engagée acceptée, écritures suivantes `409 PERIOD_LOCKED` (fenêtre documentée). Double installation et 50 écritures d'audit : déjà prouvés par A-23/A-19. Aucune migration. Mutations : chaque garde neutralisée → **1 cas sur 3 en échec**. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **113 fichiers, 847 tests, 0 échec**.
+
+Prochaine fiche : **A-29 — aucune valeur métier en dur**.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -1303,10 +1311,28 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   4. Double installation (A-23) et 50 écritures d'audit (A-19).
 - **Critères d'acceptation.** Chaque scénario a une issue définie, testée, et la base reste
   cohérente.
-- **Tests.** Ces scripts, exécutés en CI.
+- **Tests.** `tests/concurrency/http-concurrency.test.ts` (3 cas déterministes) ; double
+  installation et 50 écritures d'audit restent prouvés par `tests/setup-concurrency.test.ts`
+  et `tests/audit-chain-concurrency.test.ts`. `scripts/concurrency-check.mjs` reste l'outil
+  manuel sur une base vivante (V-03).
+- **Livré (2026-11-06).** Harnais A-26 (vrai worker, base `node:sqlite` migrée par cas) complété
+  par une **barrière** sur l'instruction critique : les deux requêtes ont lu le même état avant
+  que l'une écrive, ce qui rend la course reproductible sans dépendre du timing.
+  Double envoi : la transition `draft → sent` est réclamée par un `UPDATE … WHERE status = 'draft'`
+  unique ; le perdant reçoit `409 INVALID_TRANSITION` **avant** tout mouvement, et un refus
+  ultérieur (stock court, taux absent) restaure le brouillon. Double encaissement : chaque
+  affectation réclame le solde par `UPDATE … WHERE balance >= ?` ; le second reçoit
+  `409 AMOUNT_EXCEEDS_BALANCE`, une seule allocation est écrite, `paid_total` reste au total.
+  Clôture de période : issue **documentée** — une écriture déjà passée par `assertPeriodOpen`
+  peut se valider juste après la fermeture, toute écriture contrôlée ensuite est refusée en
+  `409 PERIOD_LOCKED`. Aucune migration ; aucune donnée sensible.
+  Preuve : `tests/concurrency/http-concurrency.test.ts`, **3 cas** ; suite complète
+  **113 fichiers / 847 tests**, typecheck 0 erreur.
+  Mutations : garde d'envoi neutralisée → **1 cas sur 3 en échec** ; garde de solde neutralisée
+  → **1 cas sur 3** ; contrôle de période retiré du paiement → **1 cas sur 3**.
 - **Pièges.** D1 local (`wrangler dev`) sérialise aussi : la concurrence réelle doit être
   simulée par des requêtes parallèles, pas par des threads SQLite.
-- **Effort.** M. **Statut.** TODO.
+- **Effort.** M. **Statut.** DONE.
 
 ### A-29 — Aucune valeur métier en dur (R-1, R-2, R-3)
 
@@ -1502,7 +1528,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-25 | Observabilité métier | 6 | M | A-12, A-14 | DONE |
 | A-26 | Tests HTTP d'intégration | 6 | L | A-10 | DONE |
 | A-27 | Documentation | 6 | S | A-01…A-31 | DONE |
-| A-28 | Tests de concurrence | 6 | M | A-19, A-23 | TODO |
+| A-28 | Tests de concurrence | 6 | M | A-19, A-23 | DONE |
 | A-29 | Aucune valeur métier en dur | 6 | M | A-10 | TODO |
 | A-30 | Autorité sur les paramètres | 6 | M | — | TODO |
 | A-31 | Réévaluation de change de clôture | 3 | L | A-01, A-08 | TODO (conditionnelle) |

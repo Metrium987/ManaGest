@@ -69,6 +69,10 @@ Tables principales :
 4. **Suppression logique.** `deleted_at` protège l'audit ; les numéros ne sont jamais réutilisés.
 5. **Numérotation atomique.** `INSERT … ON CONFLICT … RETURNING` garantit l'unicité
    des numéros même en cas de requêtes concurrentes.
+6. **Transitions réclamées.** Un envoi de facture et une affectation de paiement réclament leur
+   état par un `UPDATE … WHERE` conditionnel (`status = 'draft'`, `balance >= ?`) : deux requêtes
+   simultanées ne peuvent pas consommer deux fois le stock ou le solde (A-28, preuves dans
+   `tests/concurrency/`).
 
 ### Montants, devises et agrégats
 

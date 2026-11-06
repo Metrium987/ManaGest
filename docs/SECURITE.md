@@ -278,6 +278,21 @@ adresse e-mail, adresse IP, chemin de requête, identifiant d'utilisateur ou éc
 n'y figure, et aucun contenu de requête n'est journalisé. Sans base initialisée, la route répond
 `unavailable` avec `schema_version: null`.
 
+## Concurrence des écritures (A-28)
+
+Deux envois simultanés d'une même facture ne peuvent pas consommer le stock deux fois : la
+transition `draft → sent` est réclamée par un `UPDATE … WHERE status = 'draft'` unique, le
+perdant reçoit `409 INVALID_TRANSITION` avant tout mouvement, et un refus ultérieur (stock court,
+taux absent) restaure le brouillon. Deux encaissements simultanés du même solde se départagent
+de la même façon : chaque affectation réclame le solde par `UPDATE … WHERE balance >= ?`, le
+second reçoit `409 AMOUNT_EXCEEDS_BALANCE` et aucune allocation n'est écrite.
+
+**Fenêtre assumée de la clôture.** Le contrôle de période et l'écriture ne partagent pas une
+transaction : une écriture déjà passée par `assertPeriodOpen` peut se valider juste après la
+fermeture. Toute écriture dont le contrôle a lieu après la fermeture est refusée
+(`409 PERIOD_LOCKED`). Preuves : `tests/concurrency/http-concurrency.test.ts`, **3 cas**
+déterministes ; neutraliser chaque garde fait échouer son cas.
+
 ## Routes anonymes et CSRF (A-27)
 
 Le middleware CSRF vérifie **l'origine** de toute mutation, avec ou sans session : une requête

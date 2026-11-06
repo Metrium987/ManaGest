@@ -54,6 +54,8 @@ attendent une donnée externe.
 
 | A-27 | **Documentation remise d'aplomb** | **LIVRÉ** (6/11/2026). Audit du 28 octobre figé et signalé périmé (26 tables / 28 index → renvoi au 6 novembre) ; constat daté recompté à **89 tables / 89 index** ; README, ARCHITECTURE et SECURITE alignés (agrégats XPF, rétention, routes anonymes/CSRF) ; limites L-13/L-14 et livraison A-08 consignées. Preuve : `tests/docs-integrity.test.ts`, **3 cas** (chiffres, liens, archive) ; mutation : 1 échec. |
 
+| A-28 | **Tests de concurrence** | **LIVRÉ** (6/11/2026). Double envoi de facture (un seul `sent`, un seul mouvement de stock), double encaissement (un seul paiement, solde soldé une fois) et clôture de période face à une écriture déjà engagée, avec barrière déterministe sur l'instruction critique. Preuve : `tests/concurrency/http-concurrency.test.ts`, **3 cas** ; chaque garde neutralisée fait échouer son cas. |
+
 ---
 
 ## 3. Décisions produit — non planifié (aucune tâche ouverte)
@@ -97,6 +99,7 @@ Ce ne sont pas des bugs ouverts : ce sont des comportements assumés, écrits po
 | L-12 | **Exercice comptable non paramétré.** | Pas de notion d'exercice clôturé au-delà du verrouillage de période. |
 | L-13 | **CSRF des routes anonymes.** Les mutations sans session (`/install`, `/recover-owner`, `/login`, mot de passe oublié/réinitialisé) n'ont pas de jeton CSRF à présenter : elles sont protégées par le **contrôle d'origine** (toute mutation d'une autre origine est refusée), la limitation de débit et, pour `recover-owner`, un jeton à usage unique. | Un navigateur tiers ne peut pas soumettre ces routes à la place de l'utilisateur ; il n'existe pas de jeton anti-CSRF pour un visiteur qui n'a pas encore de session. |
 | L-14 | **Aucun planificateur attaché à l'hébergement.** `POST /api/runs/daily` est protégé par `DAILY_RUN_TOKEN`, mais l'appelant périodique reste à créer par le propriétaire (voir D-04 et `docs/SECURITE.md` §11). | Le passage quotidien ne se déclenche pas seul : rappels, purges et vérifications attendent un cron externe. |
+| L-15 | **Clôture de période : contrôle puis écriture, sans transaction commune.** Une écriture qui a déjà passé `assertPeriodOpen` peut se valider juste après la fermeture du mois ; toute écriture contrôlée ensuite est refusée (`409 PERIOD_LOCKED`). | La fermeture protège les écritures suivantes ; une opération en vol au moment exact de la clôture peut encore atterrir. |
 
 ---
 

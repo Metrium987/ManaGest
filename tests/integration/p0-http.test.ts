@@ -39,8 +39,8 @@ function asD1(database: DatabaseSync): D1Database {
       all: async () => ({ results: database.prepare(sql).all(...(params as never[])) as Row[] }),
       first: async () => (database.prepare(sql).get(...(params as never[])) as Row | undefined) ?? null,
       run: async () => {
-        database.prepare(sql).run(...(params as never[]));
-        return { success: true, meta: {} };
+        const result = database.prepare(sql).run(...(params as never[]));
+        return { success: true, meta: { changes: Number(result.changes) } };
       },
     });
     return bind([]);

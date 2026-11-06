@@ -178,6 +178,28 @@ paymentRoutes.post('/', requirePermission('payments.write'), async (c) => {
     });
   }
 
+  // A-28: claim each balance with one conditional statement before writing.
+  // Two simultaneous settlements of the same invoice cannot both pass, even
+  // when both read the balance before either writes.
+  const claims: { invoice_id: string; amount: number }[] = [];
+  for (const row of settled) {
+    const claim = await c.env.DB.prepare(
+      `UPDATE invoices SET balance = balance - ?, updated_at = ?
+       WHERE id = ? AND balance >= ? AND status IN ('sent', 'partial')`,
+    )
+      .bind(row.amount, nowISO(), row.invoice_id, row.amount)
+      .run();
+    if (!claim.meta.changes) {
+      for (const done of claims) {
+        await c.env.DB.prepare(`UPDATE invoices SET balance = balance + ? WHERE id = ?`)
+          .bind(done.amount, done.invoice_id)
+          .run();
+      }
+      return fail(409, 'AMOUNT_EXCEEDS_BALANCE');
+    }
+    claims.push({ invoice_id: row.invoice_id, amount: row.amount });
+  }
+
   const id = crypto.randomUUID();
   const number = await nextNumber(c.env.DB, 'payment', 'REG', company.number_pattern, body.date);
   const amountXpf = convertToBase(body.amount, decimals, fx.rate);
@@ -199,9 +221,18 @@ paymentRoutes.post('/', requirePermission('payments.write'), async (c) => {
       ).bind(crypto.randomUUID(), id, row.invoice_id, row.amount, row.amount_xpf, row.exchange_rate, row.fx_difference, nowISO()),
     ),
   ];
-  await c.env.DB.batch(statements);
-  for (const allocation of settled) {
-    await recalcInvoice(c.env.DB, allocation.invoice_id);
+  try {
+    await c.env.DB.batch(statements);
+    for (const allocation of settled) {
+      await recalcInvoice(c.env.DB, allocation.invoice_id);
+    }
+  } catch (error) {
+    for (const done of claims) {
+      await c.env.DB.prepare(`UPDATE invoices SET balance = balance + ? WHERE id = ?`)
+        .bind(done.amount, done.invoice_id)
+        .run();
+    }
+    throw error;
   }
 
   await logActivity(c.env.DB, {
