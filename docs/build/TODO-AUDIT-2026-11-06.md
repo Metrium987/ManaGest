@@ -103,6 +103,12 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **97 fichier
 |---|---|---|
 | A-16 | **DONE** | `server/routes/invoices.ts` : `INVOICE_LIST_COLUMNS` + `invoiceListSql(where)` projettent toutes les colonnes sauf `line_items` ; la liste ne renvoie plus le payload, `GET /:id` le conserve. `server/routes/clients.ts` : `CLIENT_LIST_COLUMNS` remplace `c.*`. `server/routes/public-links.ts` : `PUBLIC_LINK_COLUMNS` remplace les deux `SELECT *` (sans `token_hash`). `tests/list-projection.test.ts`, **4 cas** (aucun `line_items`/`i.*`/`SELECT *`, toutes les colonnes du schéma projetées, annuaire explicite et complet, liens publics nommés). Mutations : `i.*` rétabli et `c.deleted_at` retiré → **3 cas en échec**. |
 
+**6 novembre 2026 — A-17 : recherche plein texte et sauvegarde compatible.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-17 | **DONE** | `server/db/search.ts` (table `search_documents` + déclencheurs sources + index FTS5 en contenu externe + `ensureSearchIndex`/`rebuildSearchIndex`), migration `0007_search_documents` (+ `.sql`), route `/search` en `MATCH` + `bm25()` + `snippet()` filtrée par permissions avec repli `LIKE`, export sans table virtuelle et restauration qui reconstruit l'index. `tests/search-fts.test.ts`, **8 cas** (accents/casse, « cafe » → « café », aucun résultat, ponctuation, insert/update/delete, produit, sauvegarde + restauration, repli sans FTS5). Mutation : `search_index_au` retiré → **2 cas en échec**. |
+
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -707,8 +713,27 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Tests.** `tests/search-fts.test.ts`, extension de `tests/backup-restore.test.ts`.
 - **Pièges.** Un export D1 bloquerait sur une table virtuelle (C-5) : la documentation de
   sauvegarde doit le dire. Ne pas indexer de données personnelles inutiles (RGPD).
-- **Effort.** L. **Statut.** TODO.
-
+- **Effort.** L. **Statut.** DONE (2026-11-06). `server/db/search.ts` crée la table
+  **ordinaire** `search_documents(kind, ref_id, title, body)` alimentée par des déclencheurs
+  `AFTER INSERT/UPDATE/DELETE` sur `clients`, `invoices`, `quotes` et `products`, puis l'index
+  FTS5 en **contenu externe** (`content='search_documents'`, `content_rowid='rowid'`,
+  `unicode61 remove_diacritics 2`) avec ses déclencheurs de synchronisation ; la migration
+  `0007_search_documents` (+ `.sql`) et `SCHEMA_STATEMENTS` portent le même schéma.
+  `searchDocuments()` interroge `MATCH` + `bm25()` + `snippet()`, restreint aux `kind` autorisés
+  par les permissions de l'utilisateur, et retombe sur `LIKE` sur `search_documents` si FTS5
+  manque (`ensureSearchIndex` renvoie alors `false`). Sauvegarde (C-5) :
+  `FTS_SHADOW_TABLE` exclut `search_index` et ses tables d'ombre de l'export,
+  `search_documents` est conservée mais **dérivée** — la restauration la reconstruit par les
+  déclencheurs et `rebuildSearchIndex()` rejoue `INSERT INTO search_index(search_index)
+  VALUES('rebuild')`. Preuve : `tests/search-fts.test.ts`, **8 cas** — « société »/« SOCIÉTÉ »,
+  « cafe » trouve « café », terme inconnu → aucun résultat sans erreur, ponctuation
+  (`"`, `*`, `:`, `-`) neutralisée, insert → update → delete suivis, déclencheur produit,
+  export sans table virtuelle + recherche après restauration, et repli sur `search_documents`
+  sans FTS5. Mutations : retrait du déclencheur `search_index_au` → **2 cas en échec**
+  (update/delete et restauration). Écarts assumés : aucune mesure de performance n'a été
+  exécutée (pas de jeu de données de référence) ; la route `/search` n'a pas de test HTTP —
+  le filtre par permission est prouvé par `searchDocuments(..., kinds)` et `can()`, pas par un
+  appel authentifié.
 ### A-18 — Comptabilité incrémentale
 
 - **But.** Lire la comptabilité ne relit plus tous les documents.
@@ -1135,7 +1160,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-14 | Stock : une vérité | 4 | L | A-10 | DONE |
 | A-15 | Plafonds D1 (IN, LIKE) | 3 | M | — | DONE |
 | A-16 | Projections des listes | 5 | M | — | DONE |
-| A-17 | FTS5 + sauvegarde | 5 | L | A-10, A-11 | TODO |
+| A-17 | FTS5 + sauvegarde | 5 | L | A-10, A-11 | DONE |
 | A-18 | Comptabilité incrémentale | 5 | L | A-05 | TODO |
 | A-19 | Chaîne d'audit sans course | 4 | M | — | TODO |
 | A-20 | Limitation par IP et compte | 6 | S | — | TODO |

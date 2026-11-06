@@ -4,6 +4,7 @@ import { STATEMENTS as APPROVALS_REVISION } from './0003_approvals_revision';
 import { STATEMENTS as EXPENSE_PO_CURRENCY } from './0004_expense_po_currency';
 import { STATEMENTS as INDEXES_AND_NUMBER_UNIQUENESS } from './0005_indexes_and_number_uniqueness';
 import { STATEMENTS as INTEGRITY_CONSTRAINTS } from './0006_integrity_constraints';
+import { STATEMENTS as SEARCH_DOCUMENTS } from './0007_search_documents';
 
 export interface Migration {
   version: number;
@@ -24,4 +25,5 @@ export const MIGRATIONS: Migration[] = [
   { version: 4, name: 'expense_po_currency', statements: EXPENSE_PO_CURRENCY },
   { version: 5, name: 'indexes_and_number_uniqueness', statements: INDEXES_AND_NUMBER_UNIQUENESS },
   { version: 6, name: 'integrity_constraints', statements: INTEGRITY_CONSTRAINTS },
+  { version: 7, name: 'search_documents', statements: SEARCH_DOCUMENTS },
 ];

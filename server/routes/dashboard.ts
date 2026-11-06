@@ -1,4 +1,5 @@
-import { searchTerm } from '../lib/search';
+import { can } from '../lib/permissions';
+import { searchDocuments, searchTerm } from '../lib/search';
 import { Hono } from 'hono';
 import { lastDailyRun } from '../services/daily-run';
 import { loadStockAlerts } from '../services/stock-alerts';
@@ -637,18 +638,26 @@ searchRoutes.get('/', async (c) => {
   if (!search.ok) return fail(422, 'VALIDATION_ERROR', search.fields);
   const query = search.term;
   if (query.length < 2) return c.json({ clients: [], invoices: [], quotes: [] });
-  const like = `%${query}%`;
-  const [clients, invoices, quotes] = await Promise.all([
-    c.env.DB.prepare(`SELECT id, display_name, email FROM clients WHERE deleted_at IS NULL AND (display_name LIKE ? OR email LIKE ?) LIMIT 5`)
-      .bind(like, like).all(),
-    c.env.DB.prepare(`SELECT id, number, total, status FROM invoices WHERE deleted_at IS NULL AND number LIKE ? LIMIT 5`)
-      .bind(like).all(),
-    c.env.DB.prepare(`SELECT id, number, total, status FROM quotes WHERE deleted_at IS NULL AND number LIKE ? LIMIT 5`)
-      .bind(like).all(),
-  ]);
+  // A-17: the index answers; the term never reaches a LIKE '%…%' scan.
+  const role = c.get('user')!.role;
+  const kinds = [
+    can(role, 'clients.read') ? 'client' : null,
+    can(role, 'invoices.read') ? 'invoice' : null,
+    can(role, 'quotes.read') ? 'quote' : null,
+    can(role, 'products.read') ? 'product' : null,
+  ].filter((kind): kind is string => Boolean(kind));
+  const hits = kinds.length ? await searchDocuments(c.env.DB, query, kinds) : [];
+  const grouped = (kind: string) => hits
+    .filter((hit) => hit.kind === kind)
+    .map((hit) => (kind === 'client'
+      ? { id: hit.ref_id, display_name: hit.title, snippet: hit.snippet }
+      : kind === 'product'
+        ? { id: hit.ref_id, name: hit.title, snippet: hit.snippet }
+        : { id: hit.ref_id, number: hit.title, snippet: hit.snippet }));
   return c.json({
-    clients: clients.results ?? [],
-    invoices: invoices.results ?? [],
-    quotes: quotes.results ?? [],
+    clients: grouped('client'),
+    invoices: grouped('invoice'),
+    quotes: grouped('quote'),
+    products: grouped('product'),
   });
 });

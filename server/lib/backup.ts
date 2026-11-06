@@ -17,6 +17,7 @@
  * already there.
  */
 import { SCHEMA_STATEMENTS, SCHEMA_VERSION } from '../db/schema';
+import { FTS_SHADOW_TABLE, rebuildSearchIndex } from '../db/search';
 
 export const BACKUP_FORMAT = 'managest-backup';
 export const BACKUP_FORMAT_VERSION = 1;
@@ -103,8 +104,11 @@ export async function listWorkspaceTables(source: BackupSource): Promise<string[
   const rows = await source.all(`SELECT name FROM sqlite_master WHERE type = 'table'`);
   const existing = new Set(rows.map((row) => String(row.name)));
   const ordered = SCHEMA_TABLE_ORDER.filter((name) => existing.has(name));
+  // C-5: a D1 export blocks on a virtual table, and its shadow tables are
+  // derived data. `search_documents` stays, the index is rebuilt on restore.
   const extra = [...existing]
     .filter((name) => !SCHEMA_TABLE_ORDER.includes(name) && !INTERNAL_TABLE.test(name))
+    .filter((name) => !FTS_SHADOW_TABLE.test(name))
     .sort();
   return [...ordered, ...extra];
 }
@@ -245,6 +249,10 @@ export async function restoreDatabase(
   for (const name of ordered) {
     const table = byName.get(name);
     if (!table || table.rows.length === 0) continue;
+    // A-17: the documents are derived. Restoring the source rows fires the
+    // triggers that rebuild them, so inserting the dumped copies would collide
+    // on (kind, ref_id).
+    if (name === 'search_documents') continue;
     const columns = [...new Set(table.rows.flatMap((row) => Object.keys(row)))].sort();
     const sql = `INSERT INTO "${name}" (${columns.map((column) => `"${column}"`).join(', ')}) `
       + `VALUES (${columns.map(() => '?').join(', ')})`;
@@ -264,6 +272,10 @@ export async function restoreDatabase(
       [String(SCHEMA_VERSION)],
     );
   }
+
+  // A-17 (C-5): the virtual table is never in a dump; rebuild it from the
+  // documents that are.
+  await rebuildSearchIndex(source as unknown as { run(sql: string): Promise<unknown> });
 
   return {
     schema_version: SCHEMA_VERSION,

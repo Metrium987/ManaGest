@@ -1,3 +1,4 @@
+import { SEARCH_DOCUMENT_STATEMENTS, SEARCH_INDEX_STATEMENTS } from './search';
 /**
  * D1 schema. Statements are idempotent so the Worker can provision a fresh
  * database on its first request without an external migration step.
@@ -1410,4 +1411,4 @@ WHEN NEW.total < 0 BEGIN SELECT RAISE(ABORT, 'CREDIT_TOTAL_NEGATIVE'); END`,
 WHEN NEW.amount < 0 BEGIN SELECT RAISE(ABORT, 'EXPENSE_AMOUNT_NEGATIVE'); END`,
   `CREATE TRIGGER IF NOT EXISTS trg_expenses_amount_update BEFORE UPDATE ON expenses
 WHEN NEW.amount < 0 BEGIN SELECT RAISE(ABORT, 'EXPENSE_AMOUNT_NEGATIVE'); END`,
-];
+  ...SEARCH_DOCUMENT_STATEMENTS, ...SEARCH_INDEX_STATEMENTS];
