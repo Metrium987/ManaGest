@@ -139,6 +139,16 @@ Reste de A-18 : les cinq lectures appellent encore `syncAccounting` — curseur 
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **104 fichiers, 799 tests, 0 échec**.
 
 A-18 est complète (écriture + lecture). Prochaine fiche : **A-19 — chaîne d'audit sans course** (réclamation atomique de `seq`, `audit_tail`, test de concurrence).
+
+**6 novembre 2026 — A-19 : la chaîne d'audit a un ordre total.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-19 | **DONE** | Migration `0008_audit_chain` (`activities.seq`, index unique `idx_activities_seq`, table `audit_tail(id=1, seq)` semée à 0), `SCHEMA_STATEMENTS` aligné. `logActivity` réclame un `seq` par `UPDATE audit_tail SET seq = seq + 1 … RETURNING seq` (une instruction atomique), sérialise réclamation → prédécesseur → insertion, et `verifyActivityChain` exige `seq` contigu (trou signalé) en plus du chaînage `prev_hash`, en tolérant les entrées antérieures sans `seq`. `tests/audit-chain-concurrency.test.ts` **5 cas** : 50 écritures concurrentes → `seq` 1..50 distincts et contigus, chaîne `{ ok: true, checked: 50 }` ; queue/liens ; trou `seq` 3 → 9 rapporté ; `prev_hash` falsifié détecté ; entrée legacy tolérée. Mutation (file retirée) : **1 cas en échec sur 5**. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **105 fichiers, 804 tests, 0 échec**.
+
+`audit_tail` est incluse dans la sauvegarde (table additionnelle hors ordre de schéma) et recréée par le schéma à la restauration. Prochaine fiche : **A-20 — limitation des tentatives par IP et par compte**.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -849,7 +859,24 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   `tests/audit-coverage.test.ts`.
 - **Pièges.** Une écriture qui échoue après la réclamation laisse un trou de `seq` : décider
   (trou toléré et signalé, ou rejeu). Ne pas réécrire les lignes existantes.
-- **Effort.** M. **Statut.** TODO.
+- **Livré (2026-11-06).** Migration `0008_audit_chain` (`.ts` + `.sql`, enregistrée) : colonne
+  `activities.seq`, index unique partiel `idx_activities_seq`, table `audit_tail(id=1, seq)`
+  semée à 0 ; `SCHEMA_STATEMENTS` aligné (colonne en **dernière** position, comme l'`ALTER`
+  l'ajoute). `logActivity` réclame son numéro par une seule instruction atomique
+  `UPDATE audit_tail SET seq = seq + 1 WHERE id = 1 RETURNING seq`, sérialise réclamation →
+  lecture du prédécesseur → insertion dans l'isolate, et chaîne `prev_hash` sur la ligne
+  `seq - 1`. `verifyActivityChain` ordonne par `(seq NULL d'abord, seq, created_at, rowid)`,
+  tolère les entrées antérieures sans `seq`, et **signale tout trou de numérotation** comme
+  rupture. `audit_tail` est exportée par la sauvegarde (table hors ordre, donc reprise comme
+  table additionnelle) et recréée par le schéma à la restauration.
+  Preuve : `tests/audit-chain-concurrency.test.ts` (**5 cas**) — 50 écritures concurrentes
+  (`Promise.all`) donnent `seq` 1..50 distincts et contigus, `verifyActivityChain` = `{ ok: true,
+  checked: 50 }` ; la queue et les liens `prev_hash` suivent ; un trou (`seq` 3 → 9) est
+  rapporté (`checked: 2`) ; un `prev_hash` falsifié est détecté ; une entrée d'avant la chaîne
+  (hash NULL) est tolérée. Mutation : file d'écriture retirée → **1 cas en échec sur 5**
+  (« fifty concurrent writes… » renvoie `ok: false, checked: 1`). Typecheck 0 erreur ; suite
+  **105 fichiers / 804 tests**.
+- **Effort.** M. **Statut.** DONE.
 
 ---
 

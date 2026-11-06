@@ -89,11 +89,45 @@ export function diffSnapshot(
  * chains it to the previous entry: altering or removing an entry breaks the
  * chain, which `verifyActivityChain` detects.
  */
-export async function logActivity(database: D1Database, input: ActivityInput): Promise<void> {
-  const previous = await database
-    .prepare(`SELECT hash FROM activities ORDER BY created_at DESC, rowid DESC LIMIT 1`)
-    .first<{ hash: string | null }>();
+/** A-19: the claim, the predecessor lookup and the insert are serialised inside
+ * the isolate, so concurrent handlers cannot interleave them. The `seq` itself
+ * comes from one atomic `UPDATE … RETURNING`, which also protects isolates that
+ * do not share this queue. */
+let auditQueue: Promise<unknown> = Promise.resolve();
 
+async function claimSeq(database: D1Database): Promise<number | null> {
+  const claim = await database
+    .prepare(`UPDATE audit_tail SET seq = seq + 1 WHERE id = 1 RETURNING seq`)
+    .first<{ seq: number }>();
+  if (claim?.seq !== undefined) return Number(claim.seq);
+  await database.prepare(`INSERT OR IGNORE INTO audit_tail (id, seq) VALUES (1, 0)`).run();
+  const retry = await database
+    .prepare(`UPDATE audit_tail SET seq = seq + 1 WHERE id = 1 RETURNING seq`)
+    .first<{ seq: number }>();
+  return retry?.seq === undefined ? null : Number(retry.seq);
+}
+
+async function previousHash(database: D1Database, seq: number | null): Promise<string | null> {
+  if (seq !== null && seq > 1) {
+    // The predecessor is written by the writer that claimed seq - 1; the queue
+    // makes it visible here, and the bounded wait covers another isolate.
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      const row = await database
+        .prepare(`SELECT hash FROM activities WHERE seq = ?`)
+        .bind(seq - 1)
+        .first<{ hash: string | null }>();
+      if (row) return row.hash;
+    }
+  }
+  const last = await database
+    .prepare(
+      `SELECT hash FROM activities WHERE hash IS NOT NULL ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+    )
+    .first<{ hash: string | null }>();
+  return last?.hash ?? null;
+}
+
+async function appendActivity(database: D1Database, input: ActivityInput): Promise<void> {
   const row = {
     id: crypto.randomUUID(),
     user_id: input.userId,
@@ -107,19 +141,30 @@ export async function logActivity(database: D1Database, input: ActivityInput): P
     ip: input.ip ?? null,
     created_at: nowISO(),
   };
-  const hash = await chainHash(previous?.hash ?? null, payloadOf(row));
+  const seq = await claimSeq(database);
+  const prevHash = await previousHash(database, seq);
+  const hash = await chainHash(prevHash, payloadOf(row));
 
   await database
     .prepare(
       `INSERT INTO activities (id, user_id, action, entity_type, entity_id, summary, meta,
-        before_json, after_json, ip, prev_hash, hash, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        before_json, after_json, ip, prev_hash, hash, seq, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .bind(
       row.id, row.user_id, row.action, row.entity_type, row.entity_id, row.summary, row.meta,
-      row.before_json, row.after_json, row.ip, previous?.hash ?? null, hash, row.created_at,
+      row.before_json, row.after_json, row.ip, prevHash, hash, seq, row.created_at,
     )
     .run();
+}
+
+export async function logActivity(database: D1Database, input: ActivityInput): Promise<void> {
+  const next = auditQueue.then(
+    () => appendActivity(database, input),
+    () => appendActivity(database, input),
+  );
+  auditQueue = next.then(() => undefined, () => undefined);
+  return next;
 }
 
 export interface ChainVerification {
@@ -136,13 +181,15 @@ export async function verifyActivityChain(database: D1Database): Promise<ChainVe
   const rows = await database
     .prepare(
       `SELECT id, user_id, action, entity_type, entity_id, summary, meta, before_json, after_json,
-              ip, prev_hash, hash, created_at
-       FROM activities ORDER BY created_at ASC, rowid ASC`,
+              ip, prev_hash, hash, seq, created_at
+       FROM activities
+       ORDER BY CASE WHEN seq IS NULL THEN 0 ELSE 1 END, seq ASC, created_at ASC, rowid ASC`,
     )
-    .all<ActivityRow>();
+    .all<ActivityRow & { seq: number | null }>();
 
   let prevHash: string | null = null;
   let checked = 0;
+  let expectedSeq = 1;
   for (const row of rows.results ?? []) {
     // Entries written before the chain existed carry no hash; they are the
     // starting point, not a break.
@@ -150,6 +197,12 @@ export async function verifyActivityChain(database: D1Database): Promise<ChainVe
     const expected = await chainHash(prevHash, payloadOf(row));
     if (row.prev_hash !== prevHash || row.hash !== expected) {
       return { ok: false, checked, broken_at: row.id };
+    }
+    // A-19: numbered entries must be contiguous. A gap means a write claimed a
+    // seq and never inserted: it is reported, never silently skipped.
+    if (row.seq !== null && row.seq !== undefined) {
+      if (row.seq !== expectedSeq) return { ok: false, checked, broken_at: row.id };
+      expectedSeq = row.seq + 1;
     }
     prevHash = row.hash;
     checked += 1;

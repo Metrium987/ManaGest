@@ -683,12 +683,19 @@ export const SCHEMA_STATEMENTS: string[] = [
     meta TEXT,
     before_json TEXT,
     after_json TEXT,
-    ip TEXT,
-    prev_hash TEXT,
+    ip TEXT,    prev_hash TEXT,
     hash TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    seq INTEGER
   )`,
+
   `CREATE INDEX IF NOT EXISTS idx_activities_created ON activities(created_at)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS idx_activities_seq ON activities(seq)`,
+  `CREATE TABLE IF NOT EXISTS audit_tail (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    seq INTEGER NOT NULL
+  )`,
+  `INSERT OR IGNORE INTO audit_tail (id, seq) VALUES (1, 0)`,
 
   // Short-lived second-factor challenge issued between password and TOTP check.
   `CREATE TABLE IF NOT EXISTS mfa_challenges (
