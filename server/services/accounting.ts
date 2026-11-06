@@ -615,6 +615,95 @@ export async function syncAccounting(database: D1Database): Promise<number> {
   return created;
 }
 
+/** A-18: the bounded catch-up used by the read path. One pass reads at most
+ * `limit` documents newer than the persisted cursor, posts them with the same
+ * poster as the write path, then advances `app_meta.journal_synced_at`. Ordering
+ * is `(updated_at, id)` so a page boundary can neither skip nor repeat a document. */
+export const ACCOUNTING_CATCH_UP_LIMIT = 50;
+
+const CATCH_UP_CANDIDATES = `SELECT 'invoice' AS kind, id, updated_at FROM invoices
+   WHERE deleted_at IS NULL AND (updated_at > ? OR (updated_at = ? AND id > ?))
+ UNION ALL SELECT 'credit', id, updated_at FROM credits
+   WHERE deleted_at IS NULL AND (updated_at > ? OR (updated_at = ? AND id > ?))
+ UNION ALL SELECT 'payment', id, updated_at FROM payments
+   WHERE (updated_at > ? OR (updated_at = ? AND id > ?))
+ UNION ALL SELECT 'expense', id, updated_at FROM expenses
+   WHERE (updated_at > ? OR (updated_at = ? AND id > ?))`;
+
+export interface CatchUpReport {
+  processed: number;
+  created: number;
+  remaining: number;
+  cursor: string | null;
+}
+
+export async function accountingCursor(database: D1Database): Promise<string | null> {
+  const row = await database
+    .prepare(`SELECT value FROM app_meta WHERE key = 'journal_synced_at'`)
+    .first<{ value: string }>();
+  return row?.value ?? null;
+}
+
+function cursorParts(cursor: string | null): { updatedAt: string; id: string } {
+  if (!cursor) return { updatedAt: '', id: '' };
+  const cut = cursor.indexOf('|');
+  return cut < 0 ? { updatedAt: cursor, id: '' } : { updatedAt: cursor.slice(0, cut), id: cursor.slice(cut + 1) };
+}
+
+export async function catchUpAccounting(
+  database: D1Database,
+  limit = ACCOUNTING_CATCH_UP_LIMIT,
+): Promise<CatchUpReport> {
+  const page = Math.max(1, Math.min(500, Math.floor(limit)));
+  const cursor = await accountingCursor(database);
+  const from = cursorParts(cursor);
+  // Two placeholders per branch (updated_at twice, id once), then the page size.
+  const bindings = [
+    from.updatedAt, from.updatedAt, from.id,
+    from.updatedAt, from.updatedAt, from.id,
+    from.updatedAt, from.updatedAt, from.id,
+    from.updatedAt, from.updatedAt, from.id,
+  ];
+  const rows = await database
+    .prepare(`${CATCH_UP_CANDIDATES} ORDER BY updated_at, id LIMIT ?`)
+    .bind(...bindings, page)
+    .all<{ kind: PostingDocumentType; id: string; updated_at: string }>();
+  const candidates = rows.results ?? [];
+
+  let created = 0;
+  for (const candidate of candidates) {
+    if (await postDocumentEntry(database, candidate.kind, candidate.id)) created += 1;
+  }
+
+  const last = candidates[candidates.length - 1];
+  const nextCursor = last ? `${last.updated_at}|${last.id}` : cursor;
+  if (last) {
+    await database
+      .prepare(
+        `INSERT INTO app_meta (key, value) VALUES ('journal_synced_at', ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .bind(nextCursor)
+      .run();
+  }
+
+  const next = cursorParts(nextCursor);
+  const remainingRow = await database
+    .prepare(
+      `SELECT COUNT(*) AS n FROM (${CATCH_UP_CANDIDATES})
+       WHERE updated_at > ? OR (updated_at = ? AND id > ?)`,
+    )
+    .bind(...bindings, next.updatedAt, next.updatedAt, next.id)
+    .first<{ n: number }>();
+
+  return {
+    processed: candidates.length,
+    created,
+    remaining: Number(remainingRow?.n ?? 0),
+    cursor: nextCursor,
+  };
+}
+
 export interface JournalRow {
   id: string;
   date: string;

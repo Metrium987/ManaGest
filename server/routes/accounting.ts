@@ -9,14 +9,15 @@ import { computeTotals } from '../lib/tax';
 import { logActivity } from '../lib/audit';
 import { requireAuth, requirePermission } from '../middleware';
 import {
-  allLines, chart, journalEntries, openingBalances, saveOpeningBalances, syncAccounting,
+  allLines, catchUpAccounting, chart, journalEntries, openingBalances, saveOpeningBalances, syncAccounting,
 } from '../services/accounting';
 import type { AppEnv } from '../types';
 
 /**
- * Accounting reads (AUDIT §7 P0.2). Every read first runs the idempotent sync, so
- * the journal always reflects the documents that exist; `POST /sync` is the same
- * pass on demand, for an operator who wants to see it happen.
+ * Accounting reads (AUDIT §7 P0.2). Every read first runs the bounded catch-up (A-18):
+ * at most `ACCOUNTING_CATCH_UP_LIMIT` documents newer than `app_meta.journal_synced_at`,
+ * so a read never walks the whole journal. `POST /sync` stays the full repair pass and
+ * `POST /catch-up` exposes the incremental one with its counters.
  */
 export const accountingRoutes = new Hono<AppEnv>();
 accountingRoutes.use('*', requireAuth);
@@ -31,21 +32,21 @@ accountingRoutes.get('/accounts', requirePermission('accounting.read'), async (c
 });
 
 accountingRoutes.get('/journal', requirePermission('accounting.read'), async (c) => {
-  await syncAccounting(c.env.DB);
+  const pass = await catchUpAccounting(c.env.DB);
   const range = parseInput(rangeSchema, c.req.query());
   const journal = await journalEntries(c.env.DB, { ...range, limit: 200 });
-  return c.json({ ...journal, created: 0 });
+  return c.json({ ...journal, created: pass.created, processed: pass.processed, remaining: pass.remaining });
 });
 
 accountingRoutes.get('/trial-balance', requirePermission('accounting.read'), async (c) => {
-  await syncAccounting(c.env.DB);
+  await catchUpAccounting(c.env.DB);
   const range = parseInput(rangeSchema, c.req.query());
   const [lines, accounts] = [await allLines(c.env.DB, range), await chart(c.env.DB)];
   return c.json(trialBalance(lines, accounts));
 });
 
 accountingRoutes.get('/income-statement', requirePermission('accounting.read'), async (c) => {
-  await syncAccounting(c.env.DB);
+  await catchUpAccounting(c.env.DB);
   const range = parseInput(rangeSchema, c.req.query());
   const [lines, accounts] = [await allLines(c.env.DB, range), await chart(c.env.DB)];
   return c.json(incomeStatement(lines, accounts));
@@ -55,12 +56,28 @@ accountingRoutes.post('/sync', requirePermission('accounting.write'), async (c) 
   const user = c.get('user')!;
   const created = await syncAccounting(c.env.DB);
   await logActivity(c.env.DB, { userId: user.id, action: 'synced', entityType: 'accounting', entityId: 'journal', summary: 'activity.accounting_synced', meta: { entries: created } });
-  return c.json({ created });
+  return c.json({ created, mode: 'full' });
+});
+
+// A-18: the incremental pass, exposed for an operator who wants the counters.
+accountingRoutes.post('/catch-up', requirePermission('accounting.write'), async (c) => {
+  const user = c.get('user')!;
+  const body = parseInput(z.object({ limit: z.coerce.number().int().min(1).max(500).optional() }), await c.req.json().catch(() => ({})));
+  const pass = await catchUpAccounting(c.env.DB, body.limit);
+  await logActivity(c.env.DB, {
+    userId: user.id,
+    action: 'synced',
+    entityType: 'accounting',
+    entityId: 'journal',
+    summary: 'activity.accounting_synced',
+    meta: { entries: pass.created, processed: pass.processed, remaining: pass.remaining },
+  });
+  return c.json(pass);
 });
 
 /** Balance sheet (T-304): only meaningful once opening balances exist. */
 accountingRoutes.get('/balance-sheet', requirePermission('accounting.read'), async (c) => {
-  await syncAccounting(c.env.DB);
+  await catchUpAccounting(c.env.DB);
   const range = parseInput(rangeSchema, c.req.query());
   const [lines, accounts] = [await allLines(c.env.DB, range), await chart(c.env.DB)];
   return c.json(balanceSheet(lines, accounts));

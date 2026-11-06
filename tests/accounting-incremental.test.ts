@@ -2,7 +2,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { SCHEMA_STATEMENTS } from '../server/db/schema';
 import {
+  accountingCursor,
   allLines,
+  catchUpAccounting,
   journalEntries,
   postDocumentEntry,
   syncAccounting,
@@ -265,5 +267,108 @@ describe('A-18 accounting is posted when the document is written', () => {
       .toBe(beforeLines.reduce((total, line) => total + line.debit, 0));
     expect(afterLines.reduce((total, line) => total + line.credit, 0))
       .toBe(beforeLines.reduce((total, line) => total + line.credit, 0));
+  });
+});
+
+describe('A-18 the read path catches up with a bounded cursor', () => {
+  let raw: DatabaseSync;
+  let db: Db;
+
+  beforeEach(() => {
+    raw = new DatabaseSync(':memory:');
+    for (const statement of SCHEMA_STATEMENTS) raw.exec(statement);
+    db = asD1(raw);
+  });
+
+  function insertInvoiceAt(id: string, updatedAt: string) {
+    raw
+      .prepare(
+        `INSERT INTO invoices (id, client_id, number, status, date, subtotal, tax_total, total,
+           subtotal_xpf, tax_total_xpf, total_xpf, line_items, created_at, updated_at)
+         VALUES (?, 'cli-1', ?, 'sent', '2026-10-01', 25000, 3450, 28450, 25000, 3450, 28450, '[]', ?, ?)`,
+      )
+      .run(id, `FAC-${id}`, updatedAt, updatedAt);
+  }
+
+  it('a second pass creates nothing and the cursor only moves forward', async () => {
+    insertInvoiceAt('inv-a', '2026-10-01T10:00:00.000Z');
+    insertInvoiceAt('inv-b', '2026-10-01T11:00:00.000Z');
+
+    const first = await catchUpAccounting(db, 10);
+    expect(first).toMatchObject({ processed: 2, created: 2, remaining: 0 });
+    const cursor = first.cursor;
+    expect(cursor).toBe('2026-10-01T11:00:00.000Z|inv-b');
+
+    const second = await catchUpAccounting(db, 10);
+    expect(second).toMatchObject({ processed: 0, created: 0, remaining: 0 });
+    expect(second.cursor).toBe(cursor);
+    expect(await accountingCursor(db)).toBe(cursor);
+  });
+
+  it('a page boundary neither skips nor duplicates documents', async () => {
+    for (let index = 0; index < 12; index += 1) {
+      insertInvoiceAt(`inv-${String(index).padStart(2, '0')}`, `2026-10-02T00:00:${String(index).padStart(2, '0')}.000Z`);
+    }
+
+    const pages = [];
+    for (let pass = 0; pass < 4; pass += 1) pages.push(await catchUpAccounting(db, 5));
+
+    expect(pages.map((page) => page.processed)).toEqual([5, 5, 2, 0]);
+    expect(pages.map((page) => page.created)).toEqual([5, 5, 2, 0]);
+    expect(pages[0].remaining).toBe(7);
+    expect(pages[1].remaining).toBe(2);
+    expect(pages[2].remaining).toBe(0);
+
+    const entries = raw
+      .prepare(`SELECT source_id FROM journal_entries WHERE source_type = 'invoice'`)
+      .all() as { source_id: string }[];
+    expect(entries).toHaveLength(12);
+    expect(new Set(entries.map((entry) => entry.source_id)).size).toBe(12);
+    expect(await accountingCursor(db)).toBe('2026-10-02T00:00:11.000Z|inv-11');
+  });
+
+  it('a write-time correction leaves the catch-up with nothing to post', async () => {
+    insertExpense(raw, 'exp-bounded');
+    await postDocumentEntry(db, 'expense', 'exp-bounded');
+    updateExpenseRow(raw, 'exp-bounded', 9_000, 1_242);
+    await postDocumentEntry(db, 'expense', 'exp-bounded');
+    const before = await journalEntries(db);
+
+    const pass = await catchUpAccounting(db, 50);
+    expect(pass.created).toBe(0);
+    expect(pass.processed).toBe(1);
+    const after = await journalEntries(db);
+    expect(after.entries).toHaveLength(before.entries.length);
+    expect(after.lines).toHaveLength(before.lines.length);
+  });
+
+  it('a bounded page costs fewer statements than the full sweep', async () => {
+    function counting() {
+      const base = asD1(raw) as unknown as { prepare: (sql: string) => unknown; batch: unknown };
+      let statements = 0;
+      const wrapped = {
+        prepare: (sql: string) => {
+          statements += 1;
+          return (base.prepare as (query: string) => unknown)(sql);
+        },
+        batch: base.batch,
+      } as unknown as Db;
+      return { db: wrapped, statements: () => statements };
+    }
+
+    for (let index = 0; index < 30; index += 1) {
+      insertInvoiceAt(`inv-page-${String(index).padStart(2, '0')}`, `2026-10-03T00:00:${String(index).padStart(2, '0')}.000Z`);
+    }
+
+    const bounded = counting();
+    await catchUpAccounting(bounded.db, 10);
+    const boundedCount = bounded.statements();
+
+    const full = counting();
+    await syncAccounting(full.db);
+    const fullCount = full.statements();
+
+    console.log(`A-18 statements — bounded page (10 docs): ${boundedCount}; full sweep (30 docs): ${fullCount}`);
+    expect(boundedCount).toBeLessThan(fullCount);
   });
 });

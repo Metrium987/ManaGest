@@ -129,6 +129,16 @@ Reste de A-18 : la mise à jour d'une dépense n'est pas re-postée (clé `(expe
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **103 fichiers, 793 tests, 0 échec**.
 
 Reste de A-18 : les cinq lectures appellent encore `syncAccounting` — curseur `app_meta.journal_synced_at`, rattrapage borné, route de réparation `POST /accounting/sync` et mesure réelle des requêtes D1. Aucune mesure de performance n'a été exécutée.
+
+**6 novembre 2026 — A-18, tranche 3 : le chemin de lecture devient incrémental.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-18 | **DONE** | `catchUpAccounting` : curseur `app_meta.journal_synced_at` monotone, ordre `(updated_at, id)`, page de N documents (défaut 50), posting via `postDocumentEntry` (aucune logique dupliquée), rapport `{ processed, created, remaining, cursor }`. Les cinq lectures appellent la passe bornée ; `POST /accounting/sync` reste la réparation complète ; `POST /accounting/catch-up` (`accounting.write`, journalisé) expose les compteurs. `tests/accounting-incremental.test.ts` **17 cas** (2e passe 0 écriture + curseur stable ; bornage 12 docs / pages de 5 → `[5, 5, 2, 0]`, 12 écritures distinctes ; correction d'écriture → 0 à poster) et `tests/accounting-catch-up-route.test.ts` **2 cas** (owner 200, viewer 403). Mesure instrumentée : passe bornée 10 docs = **84 requêtes**, balayage complet 30 docs = **118 requêtes**. Mutation (avance du curseur neutralisée) : **2 cas en échec**. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **104 fichiers, 799 tests, 0 échec**.
+
+A-18 est complète (écriture + lecture). Prochaine fiche : **A-19 — chaîne d'audit sans course** (réclamation atomique de `seq`, `audit_tail`, test de concurrence).
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -801,10 +811,22 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   corrections + rejeu, dépense modifiée avant câblage rattrapée par le balayage puis 0,
   balayage après correction sans aucun changement). Mutation : `syncExpenseState` neutralisé
   (`return false`) → **5 cas en échec sur 13**. Aucune migration (schéma inchangé).
-- **Reste à faire.** Les cinq lectures appellent encore `syncAccounting` : curseur
-  `app_meta.journal_synced_at`, rattrapage borné, route de réparation `POST /accounting/sync`
-  et mesure des requêtes D1 restent la tranche suivante. Aucune mesure de performance exécutée.
-- **Effort.** L. **Statut.** EN COURS (écriture complète, lecture à finir).
+- **Livré (tranche 3, 2026-11-06).** `catchUpAccounting(database, limit = 50)` lit au plus N
+  documents postérieurs au curseur `app_meta.journal_synced_at`, ordonnés `(updated_at, id)`
+  (donc ni saut ni doublon à la frontière de page), les poste avec `postDocumentEntry` — même
+  calcul que l'écriture — puis avance le curseur de façon monotone. Rapport
+  `{ processed, created, remaining, cursor }`. Les cinq lectures comptables appellent ce
+  rattrapage borné ; `POST /accounting/sync` reste la réparation complète et
+  `POST /accounting/catch-up` (permission `accounting.write`, journalisé) expose la passe
+  bornée avec ses compteurs. Aucune migration : le curseur vit dans `app_meta`, déjà couvert
+  par la sauvegarde/restauration. Preuve : `tests/accounting-incremental.test.ts` (**17 cas**)
+  — deuxième passe = 0 écriture et curseur inchangé, bornage 12 documents par pages de 5 →
+  `[5, 5, 2, 0]` avec 12 écritures distinctes, correction d'écriture laissant 0 à poster ;
+  `tests/accounting-catch-up-route.test.ts` (2 cas) : owner 200, viewer 403. Mesure réelle des
+  requêtes D1 instrumentée dans le test : **passe bornée de 10 documents = 84 requêtes**
+  contre **balayage complet de 30 documents = 118 requêtes**. Mutation : avance du curseur
+  neutralisée → **2 cas en échec**.
+- **Effort.** L. **Statut.** DONE.
 
 ### A-19 — Chaîne d'audit sans course
 
@@ -1208,7 +1230,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-15 | Plafonds D1 (IN, LIKE) | 3 | M | — | DONE |
 | A-16 | Projections des listes | 5 | M | — | DONE |
 | A-17 | FTS5 + sauvegarde | 5 | L | A-10, A-11 | DONE |
-| A-18 | Comptabilité incrémentale | 5 | L | A-05 | IN PROGRESS |
+| A-18 | Comptabilité incrémentale | 5 | L | A-05 | DONE |
 | A-19 | Chaîne d'audit sans course | 4 | M | — | TODO |
 | A-20 | Limitation par IP et compte | 6 | S | — | TODO |
 | A-21 | En-têtes de sécurité cohérents | 6 | M | — | TODO |
