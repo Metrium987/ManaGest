@@ -615,7 +615,15 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   `tests/search-limits.test.ts`.
 - **Pièges.** `chunks` doit préserver l'ordre attendu par les appelants ; certaines requêtes
   font `Map` sur les résultats, d'autres un tableau — vérifier chaque site.
-- **Effort.** M. **Statut.** DONE (2026-11-06). `server/db/migrations/` + `runMigrations()` ; preuve dans le journal.
+- **Effort.** M. **Statut.** TODO (statut « DONE » retiré le 2026-11-06 : le texte recopié
+  décrivait les migrations de A-10, pas cette fiche ; rien n'est implémenté et le tableau de
+  bord la donne TODO). Reste à faire : `server/lib/sql.ts` (`chunks`, `inClause`), conversion
+  des **28** sites `IN (${…})` recensés dans `server/` (routes `operations`/`invoices`/
+  `products`/`stock-counts`/`import-sheets`, libs `product-links`/`catalogue`/`settings-extra`/
+  `expertise`/`client-pricing`, services `stock`/`accounting`/`stock-counts`/`lots`), refus
+  `422 VALIDATION_ERROR { q: 'too_long' }` au-delà de 50 octets de recherche, contrôle de
+  taille des `line_items`, et les tests `tests/sql-chunking.test.ts` +
+  `tests/search-limits.test.ts`.
 
 ---
 
