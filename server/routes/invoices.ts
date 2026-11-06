@@ -30,7 +30,9 @@ import { getExtra } from '../lib/settings-extra';
 import { convertToBase } from '../lib/fx';
 import { freezeFx } from '../services/currencies';
 import { validateArchipelagoVat } from '../../shared/archipelago';
-import { deriveInvoiceStatus, isOverdue, refundableAmount } from '../services/status';
+import { deriveInvoiceStatus, isEditable, isOverdue, refundableAmount } from '../services/status';
+import { creditNoteFromInvoice } from '../lib/credit-note';
+import { settleInvoice } from '../services/settlements';
 import { recalcCredit } from '../services/documents';
 import { recordManualReminder } from '../services/reminders';
 import type { AppEnv } from '../types';
@@ -273,7 +275,11 @@ invoiceRoutes.patch('/:id', requirePermission('invoices.write'), async (c) => {
     .bind(id)
     .first<Record<string, unknown>>();
   if (!existing) return fail(404, 'NOT_FOUND');
-  if (existing.status === 'cancelled' || existing.status === 'paid') return fail(409, 'INVOICE_LOCKED');
+  // A-02: an issued document is immutable. Correcting it means a credit note or
+  // a cancellation, never rewriting its lines, amounts, client or dates.
+  if (!isEditable(String(existing.status))) {
+    return fail(409, 'DOCUMENT_IMMUTABLE', { document: 'invoice', status: String(existing.status) });
+  }
   if ((existing.paid_total as number) > 0) return fail(409, 'INVOICE_HAS_PAYMENTS');
   // Both dates: re-dating must not move a document into or out of a closed month.
   await assertPeriodOpen(c.env.DB, existing.date as string, body.date);
@@ -739,24 +745,17 @@ invoiceRoutes.post('/:id/mark-paid', requirePermission('payments.write'), async 
   const today = todayIn(company.timezone);
   // The payment is dated today: only the payment's own period must be open.
   await assertPeriodOpen(c.env.DB, today);
-  const paymentId = crypto.randomUUID();
-  const paymentNumber = await nextNumber(c.env.DB, 'payment', 'REG', company.number_pattern, today);
 
-  const statements = [
-    c.env.DB.prepare(
-      `INSERT INTO payments (id, client_id, number, date, amount, method, reference, status, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'completed', ?, ?, ?)`,
-    ).bind(paymentId, invoice.client_id, paymentNumber, today, invoice.balance, body.method, body.reference ?? null, user.id, nowISO(), nowISO()),
-    c.env.DB.prepare(
-      `INSERT INTO payment_allocations (id, payment_id, invoice_id, amount, created_at) VALUES (?, ?, ?, ?, ?)`,
-    ).bind(crypto.randomUUID(), paymentId, id, invoice.balance, nowISO()),
-    c.env.DB.prepare(
-      `UPDATE invoices SET status = CASE WHEN status = 'draft' THEN 'sent' ELSE status END,
-       sent_at = COALESCE(sent_at, ?) WHERE id = ?`,
-    ).bind(nowISO(), id),
-  ];
-  await c.env.DB.batch(statements);
-  await recalcInvoice(c.env.DB, id);
+  // A-01: the same settlement service as `POST /api/payments` — currency, frozen
+  // rate, XPF amount, realised difference and allocations, in one batch.
+  const settlement = await settleInvoice(c.env.DB, {
+    invoiceId: id,
+    userId: user.id,
+    method: body.method,
+    reference: body.reference ?? null,
+    date: today,
+    numberPattern: company.number_pattern,
+  });
 
   await logActivity(c.env.DB, {
     userId: user.id,
@@ -764,10 +763,23 @@ invoiceRoutes.post('/:id/mark-paid', requirePermission('payments.write'), async 
     entityType: 'invoice',
     entityId: id,
     summary: 'activity.invoice_marked_paid',
-    meta: { number: invoice.number, payment: paymentNumber, amount: invoice.balance },
+    meta: {
+      number: invoice.number,
+      payment: settlement.number,
+      amount: settlement.amount,
+      currency: settlement.currency,
+      fx_difference: settlement.fx_difference,
+    },
   });
 
-  return c.json({ ok: true, payment_id: paymentId, number: paymentNumber });
+  return c.json({
+    ok: true,
+    payment_id: settlement.payment_id,
+    number: settlement.number,
+    currency: settlement.currency,
+    amount_xpf: settlement.amount_xpf,
+    fx_difference: settlement.fx_difference,
+  });
 });
 
 invoiceRoutes.post('/:id/apply-credit', requirePermission('invoices.write'), async (c) => {
@@ -900,8 +912,15 @@ invoiceRoutes.post('/:id/credit-note', requirePermission('credits.write'), async
   const today = todayIn(company.timezone);
 
   const invoice = await c.env.DB.prepare(
-    `SELECT id, client_id, number, status, balance, total, paid_total FROM invoices WHERE id = ? AND deleted_at IS NULL AND status IN ('sent','partial','paid')`,
-  ).bind(c.req.param('id')).first<{ id: string; client_id: string; number: string; status: string; balance: number; total: number; paid_total: number }>();
+    `SELECT id, client_id, number, status, balance, total, paid_total, currency, exchange_rate,
+            currency_decimals, subtotal, discount_type, discount_value, tax_exempt, line_items
+     FROM invoices WHERE id = ? AND deleted_at IS NULL AND status IN ('sent','partial','paid')`,
+  ).bind(c.req.param('id')).first<{
+    id: string; client_id: string; number: string; status: string; balance: number; total: number;
+    paid_total: number; currency: string; exchange_rate: number; currency_decimals: number;
+    subtotal: number; discount_type: string; discount_value: number; tax_exempt: number;
+    line_items: string | null;
+  }>();
   if (!invoice) return fail(409, 'INVOICE_NOT_OPEN');
 
   // Refund ceiling: what was received on a paid invoice, else the open balance.
@@ -910,21 +929,37 @@ invoiceRoutes.post('/:id/credit-note', requirePermission('credits.write'), async
   if (body.amount > refundable) return fail(409, 'AMOUNT_EXCEEDS_BALANCE');
   const amount = body.amount;
 
+  // A-03: the credit note mirrors the invoice — same currency, frozen rate, and
+  // the VAT it actually collected on the refunded share. `tax_exempt` follows the
+  // invoice instead of forcing a 0 % document.
+  const draft = creditNoteFromInvoice({
+    number: invoice.number,
+    total: invoice.total,
+    discount_type: invoice.discount_type,
+    discount_value: invoice.discount_value,
+    tax_exempt: invoice.tax_exempt,
+    line_items: safeLines(invoice.line_items),
+  }, amount);
+  const rate = Number(invoice.exchange_rate ?? 1);
+  const decimals = Number(invoice.currency_decimals ?? 0);
+  const toBase = (value: number) => convertToBase(value, decimals, rate);
+
   const number = await nextNumber(c.env.DB, 'credit', 'AV', company.number_pattern, today);
-  const totals = computeTotals(
-    [{ id: 'credit-ref', description: `Avoir sur facture ${invoice.number ?? ''}`.trim(), quantity: 1, unit_price: amount, tax_rate: 0 }],
-    { discount_type: 'percent', discount_value: 0 },
-    false,
-  );
   const id = crypto.randomUUID();
   const date = today;
   await c.env.DB.prepare(
-    `INSERT INTO credits (id, client_id, number, status, date, currency, subtotal, discount_type, discount_value,
-      discount_total, tax_total, total, applied_total, balance, tax_exempt, line_items, notes, terms, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, 'draft', ?, ?, ?, 'percent', 0, 0, 0, ?, 0, ?, 1, ?, ?, ?, ?, ?, ?)`,
-  ).bind(id, invoice.client_id, number, date, company.currency, totals.subtotal, totals.total, totals.total,
-    serialiseLines([{ id: 'credit-ref', description: `Avoir sur facture ${invoice.number ?? ''}`.trim(), quantity: 1, unit_price: amount, tax_rate: 0 }]),
-    body.notes ?? null, company.invoice_terms, user.id, nowISO(), nowISO()).run();
+    `INSERT INTO credits (id, client_id, number, status, date, currency, exchange_rate, currency_decimals,
+      subtotal, discount_type, discount_value, discount_total, tax_total, total,
+      subtotal_xpf, tax_total_xpf, total_xpf, applied_total, balance, tax_exempt,
+      line_items, notes, terms, created_by, created_at, updated_at)
+     VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, 'percent', 0, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    id, invoice.client_id, number, date, invoice.currency, rate, decimals,
+    draft.totals.subtotal, draft.totals.discount_total, draft.totals.tax_total, draft.totals.total,
+    toBase(draft.totals.subtotal), toBase(draft.totals.tax_total), toBase(draft.totals.total),
+    draft.totals.total, invoice.tax_exempt, serialiseLines(draft.lines),
+    body.notes ?? null, company.invoice_terms, user.id, nowISO(), nowISO(),
+  ).run();
 
   await logActivity(c.env.DB, {
     userId: user.id, action: 'created', entityType: 'credit', entityId: id,

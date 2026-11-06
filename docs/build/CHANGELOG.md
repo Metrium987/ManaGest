@@ -1,3 +1,11 @@
+## 2026-11-06 — Phase 1 of the audit plan: settlement, immutability, credit notes
+
+- **A-01 — one settlement path.** `server/services/settlements.ts` records the payment in the invoice's own currency at the payment-date rate, relieves the receivable at the frozen rate, books the realised difference, writes the payment and its allocation in one `batch`, and flips a draft to issued before recomputing the balance. `POST /invoices/:id/mark-paid` now calls it, so the shortcut no longer produces an XPF-labelled payment on a USD invoice.
+- **A-02 — issued invoices are immutable (invoices done).** `isEditable()` in `server/services/status.ts`; `PATCH /invoices/:id` answers `409 DOCUMENT_IMMUTABLE` for anything but a draft, instead of allowing a rewrite of lines, amounts, client or dates after issue. Quotes and credit notes are still open.
+- **A-03 — a credit note mirrors the invoice.** `server/lib/credit-note.ts` builds the credit from the invoice's own tax buckets: one line per rate, proportional on a partial refund, currency and frozen rate carried over, and `tax_exempt` inherited instead of forcing a 0 % document. The VAT the invoice collected is now reversed.
+- **Proof:** 12 new tests (`tests/settle-invoice.test.ts`, `tests/credit-note.test.ts`); full suite **85 files / 710 tests**; `npm run typecheck` clean.
+- **Not claimed:** A-02 remains open for quotes and credits and for hiding the edit button; A-04 (VAT mirror of credits) and A-05 (reversals of voided payments) are not started; the journal posting of the FX difference derives from the payment row but was not replayed end to end.
+
 ## 2026-11-06 — Transverse audit, 31-task plan, and the old audit archived
 
 - **A second audit, dated and bounded.** `docs/AUDIT-2026-11-06.md` reviews the app across architecture, schema, accounting, security, product, operations and quality, with a dedicated verdict on the SQL schema: 81 tables, 68 indexes, 4 declared foreign keys. Every finding carries a file/line anchor, and the limits are stated (no browser, no hosted database, no load test).

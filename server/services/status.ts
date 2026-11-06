@@ -31,6 +31,15 @@ export function refundableAmount(status: string, balance: number, paidTotal: num
   return 0;
 }
 
+/**
+ * A-02: an issued document is immutable. Correcting it means issuing a credit
+ * note (or cancelling it), never rewriting its lines or amounts — the rule Odoo
+ * states for a validated invoice and the one the VAT rules imply.
+ */
+export function isEditable(status: string): boolean {
+  return status === 'draft';
+}
+
 export function isOverdue(status: string, dueDate: string | null, today: string): boolean {
   if (!dueDate) return false;
   if (status !== 'sent' && status !== 'partial') return false;

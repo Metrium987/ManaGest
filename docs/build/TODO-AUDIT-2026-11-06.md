@@ -42,6 +42,20 @@ documentée.
 
 ---
 
+## 0 bis. Journal d'exécution
+
+**6 novembre 2026 — phase 1 entamée.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-01 | **DONE** | `server/services/settlements.ts` : un seul chemin d'encaissement — devise de la facture, taux figé, base XPF, écart réalisé, allocation et passage brouillon → émis dans un `batch`. `mark-paid` l'appelle ; plus de règlement sans devise. `tests/settle-invoice.test.ts`, **5 cas** (XPF, USD +5 000 d'écart, EUR à parité fixe donc écart nul, refus annulée/soldée/taux manquant, brouillon encaissé). |
+| A-02 | **IN PROGRESS** | Factures faites : `isEditable()` (`server/services/status.ts`) et `409 DOCUMENT_IMMUTABLE` hors brouillon. Reste : devis et avoirs, bouton d'édition masqué hors brouillon. |
+| A-03 | **DONE** | `server/lib/credit-note.ts` : avoir prérempli depuis la facture, un bucket par taux, prorata sur un remboursement partiel, devise et taux figés repris, `tax_exempt` hérité au lieu d'être forcé. `tests/credit-note.test.ts`, **6 cas**. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **85 fichiers, 710 tests, 0 échec**.
+
+---
+
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -125,7 +139,9 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   consommé une seule fois).
 - **Pièges.** Ne pas réutiliser `body.amount` du client : c'est le **solde** qui fait foi.
   Vérifier qu'un second appel ne crée pas un deuxième règlement (idempotence par solde).
-- **Effort.** M. **Statut.** TODO.
+- **Effort.** M. **Statut.** **DONE** — service `server/services/settlements.ts`, appelé par
+  `mark-paid` ; preuve `tests/settle-invoice.test.ts` (5 cas). Le journal hérite de l'écart par
+  `paymentLines` (chemin inchangé), non rejoué de bout en bout dans ce test.
 
 ### A-02 — Immutabilité des documents émis
 
@@ -157,7 +173,8 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
 - **Pièges.** Les tests existants qui modifient une facture envoyée devront passer par un
   avoir : vérifier `tests/` avant de changer le comportement, et corriger le test, pas le
   garde-fou.
-- **Effort.** S. **Statut.** TODO.
+- **Effort.** S. **Statut.** **IN PROGRESS** — factures : `isEditable` + `409
+  DOCUMENT_IMMUTABLE`, testé. Restent les devis et les avoirs, et le bouton d'édition.
 
 ### A-03 — Avoir créé depuis une facture : TVA, devise, change
 
@@ -194,7 +211,8 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   avoir sur facture soldée (plafond = payé).
 - **Pièges.** Un avoir partiel doit répartir la remise globale de la facture, sinon la TVA
   reversée est fausse. Vérifier `discount_type = 'amount'`.
-- **Effort.** M. **Statut.** TODO.
+- **Effort.** M. **Statut.** **DONE** — `server/lib/credit-note.ts`, branché sur
+  `POST /invoices/:id/credit-note` ; preuve `tests/credit-note.test.ts` (6 cas).
 
 ### A-04 — Miroir TVA des avoirs et déduction dans les états
 
@@ -1011,9 +1029,9 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 
 | ID | Titre | Phase | Effort | Dépend de | Statut |
 |---|---|---|---|---|---|
-| A-01 | Encaissement direct en devise | 1 | M | — | TODO |
-| A-02 | Immutabilité des documents émis | 1 | S | — | TODO |
-| A-03 | Avoir : TVA, devise, change | 1 | M | — | TODO |
+| A-01 | Encaissement direct en devise | 1 | M | — | **DONE** |
+| A-02 | Immutabilité des documents émis | 1 | S | — | **IN PROGRESS** (factures) |
+| A-03 | Avoir : TVA, devise, change | 1 | M | — | **DONE** |
 | A-04 | Miroir TVA des avoirs | 1 | M | A-03 | TODO |
 | A-05 | Contre-écritures paiements/dépenses | 1 | M | — | TODO |
 | A-06 | Approbations : révision et re-contrôle | 2 | L | A-10 | TODO |
