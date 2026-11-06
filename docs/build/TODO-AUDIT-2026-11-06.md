@@ -119,6 +119,16 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **97 fichier
 Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **103 fichiers, 789 tests, 0 échec**.
 
 Reste de A-18 : la mise à jour d'une dépense n'est pas re-postée (clé `(expense, id, 'posted')` déjà posée ; une correction de montant demande une règle d'extourne) ; les cinq lectures appellent encore `syncAccounting` — curseur `app_meta.journal_synced_at`, rattrapage borné, route de réparation `POST /accounting/sync` et mesure des requêtes D1 restent à faire. Aucune mesure de performance n'a été exécutée.
+
+**6 novembre 2026 — A-18, tranche 2 : corriger une dépense déjà postée.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-18 | **EN COURS** | `syncExpenseState` (même module, appelé par `postDocumentEntry('expense', id)` et par `syncAccounting`) compare le net posté par compte à l'état courant ; en cas d'écart il poste `reversal:<signature>` (extourne du net posté) puis `corrected:<signature>` (nouvel état), signatures dérivées des lignes. Rejeu = aucun doublon ; deux corrections = deux paires, une extourne chacune. `PATCH /expenses` poste la correction au moment de l'écriture. `tests/accounting-incremental.test.ts`, **13 cas** (les 9 de la tranche 1 + correction nominale, deux corrections + rejeu, dépense modifiée avant câblage rattrapée par le balayage puis 0, balayage après correction sans changement). Mutation : `syncExpenseState` neutralisé → **5 cas en échec sur 13**. Aucune migration. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **103 fichiers, 793 tests, 0 échec**.
+
+Reste de A-18 : les cinq lectures appellent encore `syncAccounting` — curseur `app_meta.journal_synced_at`, rattrapage borné, route de réparation `POST /accounting/sync` et mesure réelle des requêtes D1. Aucune mesure de performance n'a été exécutée.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -780,13 +790,21 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   `syncAccounting` → 0 créé, journal et totaux identiques). Mutation : `postDocumentEntry`
   neutralisé (`return false`) → **8 cas en échec sur 9**. Typecheck 0 erreur ; suite
   **103 fichiers / 789 tests**.
-- **Reste à faire.** (a) Mise à jour d'une dépense : l'écriture d'origine porte déjà la clé
-  `(expense, id, 'posted')` ; refléter un changement de montant exige une stratégie
-  d'extourne/correction (décision comptable), non câblée ici et non couverte par le balayage.
-  (b) Les cinq lectures appellent encore `syncAccounting` : curseur
+- **Livré (tranche 2, 2026-11-06).** Correction d'une dépense déjà postée : `syncExpenseState`
+  compare l'état posté (`SUM(debit - credit)` par compte) à l'état courant du document ; en cas
+  d'écart il poste l'extourne de l'état posté (`reversal:<signature>`) puis le nouvel état
+  (`corrected:<signature>`), la signature étant les lignes de l'état — rejouer la même
+  correction ne crée rien, deux corrections successives donnent deux paires distinctes avec
+  une seule extourne chacune. `syncAccounting` appelle la même fonction, donc rattrapage et
+  écriture ne divergent pas. Câblage : `PATCH /expenses` poste la correction immédiatement.
+  `tests/accounting-incremental.test.ts` porte à **13 cas** (correction nominale, deux
+  corrections + rejeu, dépense modifiée avant câblage rattrapée par le balayage puis 0,
+  balayage après correction sans aucun changement). Mutation : `syncExpenseState` neutralisé
+  (`return false`) → **5 cas en échec sur 13**. Aucune migration (schéma inchangé).
+- **Reste à faire.** Les cinq lectures appellent encore `syncAccounting` : curseur
   `app_meta.journal_synced_at`, rattrapage borné, route de réparation `POST /accounting/sync`
-  et mesure des requêtes D1 restent la tranche suivante.
-- **Effort.** L. **Statut.** EN COURS (tranche 1 livrée).
+  et mesure des requêtes D1 restent la tranche suivante. Aucune mesure de performance exécutée.
+- **Effort.** L. **Statut.** EN COURS (écriture complète, lecture à finir).
 
 ### A-19 — Chaîne d'audit sans course
 

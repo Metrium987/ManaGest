@@ -129,6 +129,9 @@ expenseRoutes.patch('/:id', requirePermission('expenses.write'), async (c) => {
     body.payment_method, body.reference, body.notes, body.is_billable ? 1 : 0, nowISO(),
     fx.currency, fx.exchange_rate, fx.amount_xpf, fx.tax_amount_xpf, id,
   ).run();
+  // A-18: a corrected expense posts, at write time, the reversal of its previous
+  // state plus its new state. Replaying the same correction adds nothing.
+  await postDocumentEntry(c.env.DB, 'expense', id);
 
   const changes = diffSnapshot(existing, {
     ...body,

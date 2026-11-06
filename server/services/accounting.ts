@@ -359,6 +359,102 @@ function reversedExpensePosting(row: ExpensePostingRow, codes: AccountingContext
   };
 }
 
+/** A-18: an already posted expense that is corrected gets a reversal of what is
+ * currently posted plus the entry of its new state. The correction is derived from
+ * the posted net (`SUM(debit - credit)`), never from a stored copy, so the sweep and
+ * the write path replay exactly the same computation. */
+function netOfLines(lines: PostingInput['lines']): Map<string, number> {
+  const net = new Map<string, number>();
+  for (const line of lines) {
+    net.set(line.account_code, (net.get(line.account_code) ?? 0) + line.debit - line.credit);
+  }
+  return net;
+}
+
+async function postedNet(
+  database: D1Database,
+  sourceType: string,
+  sourceId: string,
+): Promise<Map<string, number>> {
+  const rows = await database
+    .prepare(
+      `SELECT l.account_code, SUM(l.debit - l.credit) AS net
+       FROM journal_lines l JOIN journal_entries e ON e.id = l.entry_id
+       WHERE e.source_type = ? AND e.source_id = ?
+       GROUP BY l.account_code`,
+    )
+    .bind(sourceType, sourceId)
+    .all<{ account_code: string; net: number }>();
+  return new Map((rows.results ?? []).map((row) => [row.account_code, Number(row.net)]));
+}
+
+function sameNet(left: Map<string, number>, right: Map<string, number>): boolean {
+  if (left.size !== right.size) return false;
+  for (const [account, value] of left) {
+    if ((right.get(account) ?? 0) !== value) return false;
+  }
+  return true;
+}
+
+function linesSignature(lines: PostingInput['lines']): string {
+  const text = lines.map((line) => `${line.account_code}:${line.debit}:${line.credit}`).sort().join('|');
+  let hash = 5381;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) + hash + text.charCodeAt(index)) | 0;
+  }
+  return (hash >>> 0).toString(16);
+}
+
+/** Brings the expense's posted state in line with the document as it stands now.
+ * First posting keeps the historical `posted` key; each later state gets a stable
+ * `reversal:<sig>` + `corrected:<sig>` pair, where the signature is the state's
+ * lines — replaying the same update finds the keys and creates nothing. */
+async function syncExpenseState(
+  database: D1Database,
+  row: ExpensePostingRow,
+  codes: AccountingContext['codes'],
+): Promise<boolean> {
+  const expected = expenseLines(row.amount, row.tax_amount, row.reference, codes);
+  const current = await postedNet(database, 'expense', row.id);
+  if (sameNet(current, netOfLines(expected))) return false;
+
+  if (current.size === 0) return post(database, expensePosting(row, codes));
+
+  const signature = linesSignature(expected);
+  const reversalEvent = `reversal:${signature}`;
+  const correctionEvent = `corrected:${signature}`;
+  const seen = await database
+    .prepare(
+      `SELECT event FROM journal_entries WHERE source_type = 'expense' AND source_id = ? AND event IN (?, ?)`,
+    )
+    .bind(row.id, reversalEvent, correctionEvent)
+    .all<{ event: string }>();
+  const events = new Set((seen.results ?? []).map((entry) => entry.event));
+  let created = false;
+
+  if (!events.has(reversalEvent)) {
+    const mirror = [...current].map(([account, net]) => ({
+      account_code: account,
+      label: `Correction dépense ${row.reference}`,
+      debit: net < 0 ? -net : 0,
+      credit: net > 0 ? net : 0,
+    }));
+    if (mirror.some((line) => line.debit || line.credit)) {
+      created = await post(database, {
+        id: row.id, source_type: 'expense', source_id: row.id, event: reversalEvent,
+        date: row.date, reference: row.reference, label: `Correction dépense ${row.reference}`, journal: 'AC',
+        lines: mirror,
+      }) || created;
+    }
+  }
+  if (!events.has(correctionEvent)) {
+    created = await post(database, {
+      ...expensePosting(row, codes), event: correctionEvent, label: `Dépense ${row.reference} (corrigée)`,
+    }) || created;
+  }
+  return created;
+}
+
 /** Posts one document at the moment it is written. Idempotent: `postJournalEntry`
  * keys the entry on `(source_type, source_id, event)`, so replaying a transition
  * never duplicates the entry. Returns true only when an entry was created. */
@@ -423,7 +519,7 @@ export async function postDocumentEntry(
   if (!row) return false;
   return row.deleted_at
     ? post(database, reversedExpensePosting(row, codes))
-    : post(database, expensePosting(row, codes));
+    : syncExpenseState(database, row, codes);
 }
 
 /** Posts everything that is missing. Returns how many entries were created. */
@@ -501,7 +597,7 @@ export async function syncAccounting(database: D1Database): Promise<number> {
     )
     .all<{ id: string; date: string; amount: number; tax_amount: number; reference: string }>();
   for (const row of expenses.results ?? []) {
-    if (await post(database, expensePosting(row, codes))) created += 1;
+    if (await syncExpenseState(database, row, codes)) created += 1;
   }
 
   // A-05: a deleted expense gives back the charge and the deductible VAT, again as

@@ -85,6 +85,28 @@ function insertExpense(raw: DatabaseSync, id: string, deletedAt: string | null =
     .run(id, `DEP-${id}`, deletedAt);
 }
 
+function updateExpenseRow(raw: DatabaseSync, id: string, amount: number, tax: number) {
+  raw
+    .prepare(`UPDATE expenses SET amount = ?, tax_amount = ?, updated_at = '2026-10-06' WHERE id = ?`)
+    .run(amount, tax, id);
+}
+
+function netByAccount(raw: DatabaseSync, id: string): Map<string, number> {
+  const net = new Map<string, number>();
+  for (const line of linesOf(raw, id)) {
+    net.set(line.account_code, (net.get(line.account_code) ?? 0) + line.debit - line.credit);
+  }
+  return net;
+}
+
+function netTotals(raw: DatabaseSync, id: string) {
+  const values = [...netByAccount(raw, id).values()];
+  return {
+    charges: values.filter((value) => value > 0).reduce((total, value) => total + value, 0),
+    payable: values.filter((value) => value < 0).reduce((total, value) => total + value, 0),
+  };
+}
+
 describe('A-18 accounting is posted when the document is written', () => {
   let raw: DatabaseSync;
   let db: Db;
@@ -178,5 +200,70 @@ describe('A-18 accounting is posted when the document is written', () => {
       .toBe(beforeLines.reduce((total, line) => total + line.credit, 0));
     expect(entriesOf(raw, 'inv-sync')).toEqual([{ event: 'issued' }]);
     expect(entriesOf(raw, 'exp-sync')).toEqual([{ event: 'posted' }]);
+  });
+
+  it('a corrected expense posts a reversal and its new state', async () => {
+    insertExpense(raw, 'exp-fix');
+    expect(await postDocumentEntry(db, 'expense', 'exp-fix')).toBe(true);
+    updateExpenseRow(raw, 'exp-fix', 30_000, 4_140);
+    expect(await postDocumentEntry(db, 'expense', 'exp-fix')).toBe(true);
+
+    const events = entriesOf(raw, 'exp-fix').map((entry) => entry.event);
+    expect(events).toHaveLength(3);
+    expect(events.filter((event) => event.startsWith('reversal:'))).toHaveLength(1);
+    expect(events.filter((event) => event.startsWith('corrected:'))).toHaveLength(1);
+    // `amount` is tax-inclusive: the charge is 30 000 - 4 140, the VAT 4 140.
+    expect(netTotals(raw, 'exp-fix')).toEqual({ charges: 30_000, payable: -30_000 });
+    expect([...netByAccount(raw, 'exp-fix').values()]).toContain(25_860);
+  });
+
+  it('two successive corrections and a replay neither duplicate nor double-reverse', async () => {
+    insertExpense(raw, 'exp-twice');
+    await postDocumentEntry(db, 'expense', 'exp-twice');
+    updateExpenseRow(raw, 'exp-twice', 30_000, 4_140);
+    expect(await postDocumentEntry(db, 'expense', 'exp-twice')).toBe(true);
+    updateExpenseRow(raw, 'exp-twice', 40_000, 5_520);
+    expect(await postDocumentEntry(db, 'expense', 'exp-twice')).toBe(true);
+
+    const afterCorrections = entriesOf(raw, 'exp-twice').length;
+    expect(afterCorrections).toBe(5);
+    expect(netTotals(raw, 'exp-twice')).toEqual({ charges: 40_000, payable: -40_000 });
+
+    expect(await postDocumentEntry(db, 'expense', 'exp-twice')).toBe(false);
+    expect(entriesOf(raw, 'exp-twice')).toHaveLength(afterCorrections);
+    expect(netTotals(raw, 'exp-twice')).toEqual({ charges: 40_000, payable: -40_000 });
+  });
+
+  it('the sweep corrects an expense changed before the wiring, then stops (limit case)', async () => {
+    insertExpense(raw, 'exp-legacy');
+    await postDocumentEntry(db, 'expense', 'exp-legacy');
+    updateExpenseRow(raw, 'exp-legacy', 50_000, 6_900);
+
+    expect(await syncAccounting(db)).toBe(1);
+    expect(netTotals(raw, 'exp-legacy')).toEqual({ charges: 50_000, payable: -50_000 });
+    expect(entriesOf(raw, 'exp-legacy')).toHaveLength(3);
+
+    const settled = entriesOf(raw, 'exp-legacy').length;
+    expect(await syncAccounting(db)).toBe(0);
+    expect(entriesOf(raw, 'exp-legacy')).toHaveLength(settled);
+  });
+
+  it('the sweep after a write-time correction changes nothing', async () => {
+    insertExpense(raw, 'exp-stable');
+    await postDocumentEntry(db, 'expense', 'exp-stable');
+    updateExpenseRow(raw, 'exp-stable', 12_000, 1_656);
+    await postDocumentEntry(db, 'expense', 'exp-stable');
+
+    const before = await journalEntries(db);
+    const beforeLines = await allLines(db);
+    expect(await syncAccounting(db)).toBe(0);
+    const after = await journalEntries(db);
+    const afterLines = await allLines(db);
+    expect(after.entries).toHaveLength(before.entries.length);
+    expect(afterLines).toHaveLength(beforeLines.length);
+    expect(afterLines.reduce((total, line) => total + line.debit, 0))
+      .toBe(beforeLines.reduce((total, line) => total + line.debit, 0));
+    expect(afterLines.reduce((total, line) => total + line.credit, 0))
+      .toBe(beforeLines.reduce((total, line) => total + line.credit, 0));
   });
 });
