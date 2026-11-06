@@ -4,6 +4,7 @@ import { loadStockAlerts } from '../services/stock-alerts';
 import { alertCounts } from '../lib/stock-alerting';
 import { addMonths, monthStart, todayIn } from '../lib/dates';
 import { logActivity } from '../lib/audit';
+import { integrityReport } from '../lib/integrity';
 import { csvResponse } from '../lib/csv';
 import { fail } from '../lib/errors';
 import {
@@ -361,6 +362,15 @@ reportRoutes.get('/revenue-summary', requirePermission('reports.read'), async (c
  */
 /** The full alert list (C4): the dashboard card shows five, the buyer needs all
  * of them — a truncated list is how an article stays out of stock for a month. */
+/**
+ * A-12: referential integrity card. A non-zero total names the relation and a
+ * few offending ids, so the gap is actionable instead of merely alarming.
+ */
+dashboardRoutes.get('/integrity', requirePermission('reports.read'), async (c) => {
+  const report = await integrityReport(c.env.DB);
+  return c.json(report);
+});
+
 dashboardRoutes.get('/stock-alerts', requirePermission('reports.read'), async (c) => {
   const alerts = await loadStockAlerts(c.env.DB);
   return c.json({ data: alerts, counts: alertCounts(alerts) });

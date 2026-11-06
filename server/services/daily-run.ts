@@ -2,6 +2,7 @@ import { nowISO } from '../db';
 import { logActivity } from '../lib/audit';
 import { assertPeriodOpen } from '../lib/locks';
 import { getExtra } from '../lib/settings-extra';
+import { integrityReport } from '../lib/integrity';
 import { advanceRunDate, generateRecurringInvoice } from './recurring';
 import { DEFAULT_REMINDER_INTERVAL_DAYS, runReminderPass } from './reminders';
 import type { CompanyRow } from '../types';
@@ -30,6 +31,8 @@ export interface RunSummary {
   skipped_reason?: string;
   /** True when more templates were due than this pass was allowed to touch. */
   truncated: boolean;
+  /** A-12: orphan rows found by the integrity pass, 0 on a healthy book. */
+  integrity_gaps?: number;
 }
 
 /** A pass is only successful when every template it touched produced an invoice. */
@@ -258,6 +261,19 @@ export async function runDailyPipeline(
       : DEFAULT_REMINDER_INTERVAL_DAYS,
   });
   summary.reminders = reminders.recorded;
+
+  const integrity = await integrityReport(database);
+  summary.integrity_gaps = integrity.total;
+  if (integrity.total > 0) {
+    await logActivity(database, {
+      userId: null,
+      action: 'integrity_gap',
+      entityType: 'integrity',
+      entityId: 'daily',
+      summary: 'activity.integrity_gap',
+      meta: { total: integrity.total, relations: integrity.relations.filter((gap) => gap.orphans > 0).map((gap) => gap.relation) },
+    });
+  }
 
   await logActivity(database, {
     userId: null,
