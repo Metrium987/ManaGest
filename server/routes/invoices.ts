@@ -1,3 +1,4 @@
+import { postDocumentEntry } from '../services/accounting';
 import { selectIn } from '../lib/sql';
 import { discountPercentOf } from '../lib/approvals';
 import { assertSeparation, requireApprovalIfNeeded } from '../services/approvals';
@@ -412,6 +413,9 @@ invoiceRoutes.post('/:id/send', requirePermission('invoices.write'), async (c) =
     .bind(nowISO(), nowISO(), id)
     .run();
 
+  // A-18: the entry is written with the transition, not at the next read.
+  await postDocumentEntry(c.env.DB, 'invoice', id);
+
   await logActivity(c.env.DB, {
     userId: user.id,
     action: 'sent',
@@ -455,6 +459,9 @@ invoiceRoutes.post('/:id/cancel', requirePermission('invoices.write'), async (c)
   )
     .bind(nowISO(), nowISO(), id)
     .run();
+
+  // A-18: cancellation posts its mirror with the transition, not at the next read.
+  await postDocumentEntry(c.env.DB, 'invoice', id);
 
   // Cancellation is a financial act, not a physical one: the goods are still at
   // the customer's until someone records a return (see A6). Restocking here would

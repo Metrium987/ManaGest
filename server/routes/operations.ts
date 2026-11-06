@@ -1,3 +1,4 @@
+import { postDocumentEntry } from '../services/accounting';
 import { runInChunks, selectIn } from '../lib/sql';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -154,6 +155,8 @@ expenseRoutes.delete('/:id', requirePermission('expenses.delete'), async (c) => 
   await assertPeriodOpen(c.env.DB, existing.date);
   await c.env.DB.prepare(`UPDATE expenses SET deleted_at = ?, updated_at = ? WHERE id = ?`)
     .bind(nowISO(), nowISO(), id).run();
+  // A-18: a removed expense posts its reversal at deletion time.
+  await postDocumentEntry(c.env.DB, 'expense', id);
   await logActivity(c.env.DB, {
     userId: c.get('user')!.id, action: 'deleted', entityType: 'expense', entityId: id,
     summary: 'activity.expense_deleted',

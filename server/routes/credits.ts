@@ -1,3 +1,4 @@
+import { postDocumentEntry } from '../services/accounting';
 import { requireApprovalIfNeeded } from '../services/approvals';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -287,6 +288,8 @@ creditRoutes.post('/:id/send', requirePermission('credits.write'), async (c) => 
   // A-04: a credit issued before the mirror existed is healed here, from its own
   // lines, so the VAT return can never miss an issued credit again.
   await syncCreditFromRow(c.env.DB, { id, ...credit });
+  // A-18: an issued credit posts its own entry at issue time.
+  await postDocumentEntry(c.env.DB, 'credit', id);
   await logActivity(c.env.DB, { userId: user.id, action: 'sent', entityType: 'credit', entityId: id, summary: 'activity.credit_sent' });
   return c.json({ ok: true });
 });

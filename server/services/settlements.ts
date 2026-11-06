@@ -1,3 +1,4 @@
+import { postDocumentEntry } from './accounting';
 import { nowISO } from '../db';
 import { ApiError } from '../lib/errors';
 import { convertToBase } from '../lib/fx';
@@ -110,6 +111,8 @@ export async function settleInvoice(
   ]);
 
   await recalcInvoice(database, invoice.id);
+  // A-18: the cash entry lands with the payment, before anything reads.
+  await postDocumentEntry(database, 'payment', paymentId);
 
   return {
     payment_id: paymentId,

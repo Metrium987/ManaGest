@@ -248,6 +248,184 @@ async function loadCatalogue(database: D1Database) {
   };
 }
 
+/** A-18: one poster per document, shared by the write paths and by the sweep.
+ * The financial lines are built here once, so posting at write time and a later
+ * `syncAccounting` pass can never disagree about how a document is posted. */
+export type PostingDocumentType = 'invoice' | 'credit' | 'payment' | 'expense';
+
+type PostingInput = Parameters<typeof post>[1];
+
+interface PaymentPostingRow {
+  id: string;
+  number: string | null;
+  date: string;
+  amount: number;
+  currency: string;
+  exchange_rate: number;
+  amount_xpf: number;
+  fx_difference: number;
+  status?: string;
+  deleted_at?: string | null;
+}
+
+interface ExpensePostingRow {
+  id: string;
+  date: string;
+  amount: number;
+  tax_amount: number;
+  reference: string;
+  deleted_at?: string | null;
+}
+
+interface AccountingContext {
+  codes: Awaited<ReturnType<typeof getAccountCodes>>;
+  byItemAccount: boolean;
+  catalogue: () => ReturnType<typeof loadCatalogue>;
+}
+
+const DOCUMENT_POSTING_COLUMNS = `id, number, date, subtotal, discount_total, discount_type, discount_value, tax_total,
+              total, tax_exempt, status, line_items, currency, exchange_rate, currency_decimals,
+              subtotal_xpf, tax_total_xpf, total_xpf`;
+
+async function invoicePosting(row: DocumentRow, ctx: AccountingContext): Promise<PostingInput | null> {
+  const reference = row.number ?? '—';
+  const split = ctx.byItemAccount ? await revenueSplit(row, ctx.catalogue, ctx.codes, fxOf(row)) : null;
+  const lines = row.status === 'cancelled'
+    ? reversalLines(amounts(row), split, ctx.codes)
+    : invoiceLines(amounts(row), split, ctx.codes);
+  if (!lines.length) return null;
+  return {
+    id: row.id, source_type: 'invoice', source_id: row.id,
+    event: row.status === 'cancelled' ? 'cancelled' : 'issued',
+    date: row.date, reference, label: `Facture ${reference}`, journal: 'VE', lines,
+  };
+}
+
+async function creditPosting(row: DocumentRow, ctx: AccountingContext): Promise<PostingInput> {
+  const reference = row.number ?? '—';
+  const split = ctx.byItemAccount ? await revenueSplit(row, ctx.catalogue, ctx.codes, fxOf(row)) : null;
+  return {
+    id: row.id, source_type: 'credit', source_id: row.id, event: 'issued',
+    date: row.date, reference, label: `Avoir ${reference}`, journal: 'VE',
+    lines: creditLines(amounts(row), split, ctx.codes),
+  };
+}
+
+function paymentPosting(row: PaymentPostingRow, codes: AccountingContext['codes']): PostingInput {
+  const reference = row.number ?? '—';
+  const cash = row.amount_xpf || row.amount;
+  return {
+    id: row.id, source_type: 'payment', source_id: row.id, event: 'completed',
+    date: row.date, reference, label: `Règlement ${reference}`, journal: 'BQ',
+    lines: paymentLines(cash, reference, codes, {
+      currency: row.currency,
+      exchangeRate: row.exchange_rate,
+      originalAmount: row.amount,
+      receivable: cash - (row.fx_difference ?? 0),
+      difference: row.fx_difference ?? 0,
+    }),
+  };
+}
+
+function voidedPaymentPosting(row: PaymentPostingRow, codes: AccountingContext['codes']): PostingInput {
+  const reference = row.number ?? '—';
+  const cash = row.amount_xpf || row.amount;
+  return {
+    id: row.id, source_type: 'payment', source_id: row.id, event: 'voided',
+    date: row.date, reference, label: `Extourne règlement ${reference}`, journal: 'BQ',
+    lines: paymentReversalLines(cash, reference, codes, {
+      currency: row.currency,
+      exchangeRate: row.exchange_rate,
+      originalAmount: row.amount,
+      receivable: cash - (row.fx_difference ?? 0),
+      difference: row.fx_difference ?? 0,
+    }),
+  };
+}
+
+function expensePosting(row: ExpensePostingRow, codes: AccountingContext['codes']): PostingInput {
+  return {
+    id: row.id, source_type: 'expense', source_id: row.id, event: 'posted',
+    date: row.date, reference: row.reference, label: `Dépense ${row.reference}`, journal: 'AC',
+    lines: expenseLines(row.amount, row.tax_amount, row.reference, codes),
+  };
+}
+
+function reversedExpensePosting(row: ExpensePostingRow, codes: AccountingContext['codes']): PostingInput {
+  return {
+    id: row.id, source_type: 'expense', source_id: row.id, event: 'reversed',
+    date: row.date, reference: row.reference, label: `Extourne dépense ${row.reference}`, journal: 'AC',
+    lines: expenseReversalLines(row.amount, row.tax_amount, row.reference, codes),
+  };
+}
+
+/** Posts one document at the moment it is written. Idempotent: `postJournalEntry`
+ * keys the entry on `(source_type, source_id, event)`, so replaying a transition
+ * never duplicates the entry. Returns true only when an entry was created. */
+export async function postDocumentEntry(
+  database: D1Database,
+  type: PostingDocumentType,
+  id: string,
+): Promise<boolean> {
+  const codes = await getAccountCodes(database);
+  await ensureChart(database, codes);
+  const flag = await database
+    .prepare(`SELECT value FROM settings_extra WHERE key = 'item_accounts'`)
+    .first<{ value: string }>();
+  let cataloguePromise: ReturnType<typeof loadCatalogue> | null = null;
+  const ctx: AccountingContext = {
+    codes,
+    byItemAccount: ['1', 'true'].includes(String(flag?.value ?? '0')),
+    catalogue: () => {
+      cataloguePromise ??= loadCatalogue(database);
+      return cataloguePromise;
+    },
+  };
+
+  if (type === 'invoice' || type === 'credit') {
+    const table = type === 'invoice' ? 'invoices' : 'credits';
+    const allowed = type === 'invoice'
+      ? ['sent', 'partial', 'paid', 'cancelled']
+      : ['sent', 'partial', 'applied'];
+    const row = await database
+      .prepare(`SELECT ${DOCUMENT_POSTING_COLUMNS} FROM ${table} WHERE id = ? AND deleted_at IS NULL`)
+      .bind(id)
+      .first<DocumentRow>();
+    if (!row || !allowed.includes(row.status)) return false;
+    if (type === 'invoice') {
+      const posting = await invoicePosting(row, ctx);
+      return posting ? post(database, posting) : false;
+    }
+    return post(database, await creditPosting(row, ctx));
+  }
+
+  if (type === 'payment') {
+    const row = await database
+      .prepare(
+        `SELECT id, number, date, amount, currency, exchange_rate, amount_xpf, fx_difference, status, deleted_at
+         FROM payments WHERE id = ?`,
+      )
+      .bind(id)
+      .first<PaymentPostingRow>();
+    if (!row) return false;
+    if (row.status === 'void' || row.deleted_at) return post(database, voidedPaymentPosting(row, codes));
+    if (row.status !== 'completed') return false;
+    return post(database, paymentPosting(row, codes));
+  }
+
+  const row = await database
+    .prepare(
+      `SELECT id, date, amount, tax_amount, COALESCE(reference, category) AS reference, deleted_at
+       FROM expenses WHERE id = ?`,
+    )
+    .bind(id)
+    .first<ExpensePostingRow>();
+  if (!row) return false;
+  return row.deleted_at
+    ? post(database, reversedExpensePosting(row, codes))
+    : post(database, expensePosting(row, codes));
+}
+
 /** Posts everything that is missing. Returns how many entries were created. */
 export async function syncAccounting(database: D1Database): Promise<number> {
   const codes = await getAccountCodes(database);
@@ -259,11 +437,14 @@ export async function syncAccounting(database: D1Database): Promise<number> {
   const flag = await database
     .prepare(`SELECT value FROM settings_extra WHERE key = 'item_accounts'`)
     .first<{ value: string }>();
-  const byItemAccount = ['1', 'true'].includes(String(flag?.value ?? '0'));
   let cataloguePromise: ReturnType<typeof loadCatalogue> | null = null;
-  const catalogue = () => {
-    cataloguePromise ??= loadCatalogue(database);
-    return cataloguePromise;
+  const ctx: AccountingContext = {
+    codes,
+    byItemAccount: ['1', 'true'].includes(String(flag?.value ?? '0')),
+    catalogue: () => {
+      cataloguePromise ??= loadCatalogue(database);
+      return cataloguePromise;
+    },
   };
 
   const invoices = await database
@@ -275,17 +456,8 @@ export async function syncAccounting(database: D1Database): Promise<number> {
     )
     .all<DocumentRow>();
   for (const row of invoices.results ?? []) {
-    const reference = row.number ?? '—';
-    const split = byItemAccount ? await revenueSplit(row, catalogue, codes, fxOf(row)) : null;
-    const lines = row.status === 'cancelled'
-      ? reversalLines(amounts(row), split, codes)
-      : invoiceLines(amounts(row), split, codes);
-    if (!lines.length) continue;
-    if (await post(database, {
-      id: row.id, source_type: 'invoice', source_id: row.id,
-      event: row.status === 'cancelled' ? 'cancelled' : 'issued',
-      date: row.date, reference, label: `Facture ${reference}`, journal: 'VE', lines,
-    })) created += 1;
+    const posting = await invoicePosting(row, ctx);
+    if (posting && await post(database, posting)) created += 1;
   }
 
   const credits = await database
@@ -297,13 +469,7 @@ export async function syncAccounting(database: D1Database): Promise<number> {
     )
     .all<DocumentRow>();
   for (const row of credits.results ?? []) {
-    const reference = row.number ?? '—';
-    const split = byItemAccount ? await revenueSplit(row, catalogue, codes, fxOf(row)) : null;
-    const lines = creditLines(amounts(row), split, codes);
-    if (await post(database, {
-      id: row.id, source_type: 'credit', source_id: row.id, event: 'issued',
-      date: row.date, reference, label: `Avoir ${reference}`, journal: 'VE', lines,
-    })) created += 1;
+    if (await post(database, await creditPosting(row, ctx))) created += 1;
   }
 
   const payments = await database
@@ -313,23 +479,7 @@ export async function syncAccounting(database: D1Database): Promise<number> {
     )
     .all<{ id: string; number: string | null; date: string; amount: number; currency: string; exchange_rate: number; amount_xpf: number; fx_difference: number }>();
   for (const row of payments.results ?? []) {
-    const reference = row.number ?? '—';
-    if (await post(database, {
-      id: row.id, source_type: 'payment', source_id: row.id, event: 'completed',
-      date: row.date, reference, label: `Règlement ${reference}`, journal: 'BQ',
-      lines: paymentLines(
-        row.amount_xpf || row.amount,
-        reference,
-        codes,
-        {
-          currency: row.currency,
-          exchangeRate: row.exchange_rate,
-          originalAmount: row.amount,
-          receivable: (row.amount_xpf || row.amount) - (row.fx_difference ?? 0),
-          difference: row.fx_difference ?? 0,
-        },
-      ),
-    })) created += 1;
+    if (await post(database, paymentPosting(row, codes))) created += 1;
   }
 
   // A-05: a voided payment keeps its original entry and gains its mirror. The
@@ -341,19 +491,7 @@ export async function syncAccounting(database: D1Database): Promise<number> {
     )
     .all<{ id: string; number: string | null; date: string; amount: number; currency: string; exchange_rate: number; amount_xpf: number; fx_difference: number }>();
   for (const row of voided.results ?? []) {
-    const reference = row.number ?? '—';
-    const cash = row.amount_xpf || row.amount;
-    if (await post(database, {
-      id: row.id, source_type: 'payment', source_id: row.id, event: 'voided',
-      date: row.date, reference, label: `Extourne règlement ${reference}`, journal: 'BQ',
-      lines: paymentReversalLines(cash, reference, codes, {
-        currency: row.currency,
-        exchangeRate: row.exchange_rate,
-        originalAmount: row.amount,
-        receivable: cash - (row.fx_difference ?? 0),
-        difference: row.fx_difference ?? 0,
-      }),
-    })) created += 1;
+    if (await post(database, voidedPaymentPosting(row, codes))) created += 1;
   }
 
   const expenses = await database
@@ -363,11 +501,7 @@ export async function syncAccounting(database: D1Database): Promise<number> {
     )
     .all<{ id: string; date: string; amount: number; tax_amount: number; reference: string }>();
   for (const row of expenses.results ?? []) {
-    if (await post(database, {
-      id: row.id, source_type: 'expense', source_id: row.id, event: 'posted',
-      date: row.date, reference: row.reference, label: `Dépense ${row.reference}`, journal: 'AC',
-      lines: expenseLines(row.amount, row.tax_amount, row.reference, codes),
-    })) created += 1;
+    if (await post(database, expensePosting(row, codes))) created += 1;
   }
 
   // A-05: a deleted expense gives back the charge and the deductible VAT, again as
@@ -379,11 +513,7 @@ export async function syncAccounting(database: D1Database): Promise<number> {
     )
     .all<{ id: string; date: string; amount: number; tax_amount: number; reference: string }>();
   for (const row of removed.results ?? []) {
-    if (await post(database, {
-      id: row.id, source_type: 'expense', source_id: row.id, event: 'reversed',
-      date: row.date, reference: row.reference, label: `Extourne dépense ${row.reference}`, journal: 'AC',
-      lines: expenseReversalLines(row.amount, row.tax_amount, row.reference, codes),
-    })) created += 1;
+    if (await post(database, reversedExpensePosting(row, codes))) created += 1;
   }
 
   return created;

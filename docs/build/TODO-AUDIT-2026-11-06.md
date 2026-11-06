@@ -109,6 +109,16 @@ Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **97 fichier
 |---|---|---|
 | A-17 | **DONE** | `server/db/search.ts` (table `search_documents` + déclencheurs sources + index FTS5 en contenu externe + `ensureSearchIndex`/`rebuildSearchIndex`), migration `0007_search_documents` (+ `.sql`), route `/search` en `MATCH` + `bm25()` + `snippet()` filtrée par permissions avec repli `LIKE`, export sans table virtuelle et restauration qui reconstruit l'index. `tests/search-fts.test.ts`, **8 cas** (accents/casse, « cafe » → « café », aucun résultat, ponctuation, insert/update/delete, produit, sauvegarde + restauration, repli sans FTS5). Mutation : `search_index_au` retiré → **2 cas en échec**. |
 
+
+**6 novembre 2026 — A-18, tranche 1 : la comptabilité s'écrit à l'écriture.**
+
+| Tâche | État | Preuve exécutée |
+|---|---|---|
+| A-18 | **EN COURS** | `postDocumentEntry(database, type, id)` dans `server/services/accounting.ts` construit l'écriture d'une facture (émise/annulée), d'un avoir, d'un paiement (`completed`/`void`) et d'une dépense (postée/extournée) ; `syncAccounting` réutilise les mêmes constructeurs (`invoicePosting`, `creditPosting`, `paymentPosting`, `voidedPaymentPosting`, `expensePosting`, `reversedExpensePosting`). Câblage : envoi + annulation de facture (`invoices.ts`), encaissement (`settlements.ts`), émission d'avoir (`credits.ts`), création et suppression de dépense (`expenses.ts`, `operations.ts`). `tests/accounting-incremental.test.ts`, **9 cas** : nominal des quatre types, annulation de facture, `void` + extourne de dépense, brouillon non posté, double appel sans doublon, non-régression (écriture immédiate puis `syncAccounting` → 0 créé, journal et totaux identiques). Mutation : posteur neutralisé → **8 cas en échec sur 9**. |
+
+Porte : `npm run typecheck` → **0 erreur** ; `npx vitest run` → **103 fichiers, 789 tests, 0 échec**.
+
+Reste de A-18 : la mise à jour d'une dépense n'est pas re-postée (clé `(expense, id, 'posted')` déjà posée ; une correction de montant demande une règle d'extourne) ; les cinq lectures appellent encore `syncAccounting` — curseur `app_meta.journal_synced_at`, rattrapage borné, route de réparation `POST /accounting/sync` et mesure des requêtes D1 restent à faire. Aucune mesure de performance n'a été exécutée.
 ## 1. Contraintes de plateforme vérifiées (elles décident de plusieurs tâches)
 
 Ces points ont été vérifiés dans la documentation officielle pendant l'élaboration du plan.
@@ -757,7 +767,26 @@ arrimée à l'euro ; elle dépend de A-01 et A-08 mais ne bloque personne.
   rattrapage après insertion manuelle).
 - **Pièges.** L'ordre des écritures (facture avant paiement) ne doit pas créer de doublon :
   la clé `(source, id, event)` protège. Attention aux périodes closes.
-- **Effort.** L. **Statut.** TODO.
+- **Livré (tranche 1, 2026-11-06).** `postDocumentEntry(database, type, id)` construit
+  l'écriture d'une facture (émise ou annulée), d'un avoir, d'un paiement (y compris `void`)
+  et d'une dépense (y compris extourne) ; `syncAccounting` réutilise exactement ces
+  constructeurs, donc balayage et écriture partagent le même calcul. Branchements : envoi et
+  annulation de facture (`server/routes/invoices.ts`), encaissement
+  (`server/services/settlements.ts`), émission d'avoir (`server/routes/credits.ts`), création
+  (`server/services/expenses.ts`) et suppression (`server/routes/operations.ts`). Aucune
+  migration : le schéma est inchangé. Preuve : `tests/accounting-incremental.test.ts`
+  (9 cas) — nominal facture/avoir/paiement/dépense, annulation, `void` + extourne de dépense,
+  brouillon non posté, double appel sans doublon, non-régression (écriture immédiate puis
+  `syncAccounting` → 0 créé, journal et totaux identiques). Mutation : `postDocumentEntry`
+  neutralisé (`return false`) → **8 cas en échec sur 9**. Typecheck 0 erreur ; suite
+  **103 fichiers / 789 tests**.
+- **Reste à faire.** (a) Mise à jour d'une dépense : l'écriture d'origine porte déjà la clé
+  `(expense, id, 'posted')` ; refléter un changement de montant exige une stratégie
+  d'extourne/correction (décision comptable), non câblée ici et non couverte par le balayage.
+  (b) Les cinq lectures appellent encore `syncAccounting` : curseur
+  `app_meta.journal_synced_at`, rattrapage borné, route de réparation `POST /accounting/sync`
+  et mesure des requêtes D1 restent la tranche suivante.
+- **Effort.** L. **Statut.** EN COURS (tranche 1 livrée).
 
 ### A-19 — Chaîne d'audit sans course
 
@@ -1161,7 +1190,7 @@ secrets de la préversion hébergée), donc `PENDING.md`. La note de quota D1 du
 | A-15 | Plafonds D1 (IN, LIKE) | 3 | M | — | DONE |
 | A-16 | Projections des listes | 5 | M | — | DONE |
 | A-17 | FTS5 + sauvegarde | 5 | L | A-10, A-11 | DONE |
-| A-18 | Comptabilité incrémentale | 5 | L | A-05 | TODO |
+| A-18 | Comptabilité incrémentale | 5 | L | A-05 | IN PROGRESS |
 | A-19 | Chaîne d'audit sans course | 4 | M | — | TODO |
 | A-20 | Limitation par IP et compte | 6 | S | — | TODO |
 | A-21 | En-têtes de sécurité cohérents | 6 | M | — | TODO |

@@ -1,3 +1,4 @@
+import { postDocumentEntry } from './accounting';
 import { nowISO } from '../db';
 import { convertToBase } from '../lib/fx';
 import { freezeFx } from './currencies';
@@ -66,5 +67,7 @@ export async function createExpense(
       nowISO(), nowISO(), fx.currency, fx.exchange_rate, fx.amount_xpf, fx.tax_amount_xpf,
     )
     .run();
+  // A-18: the charge and its deductible VAT post with the expense.
+  await postDocumentEntry(database, 'expense', id);
   return { id, fx };
 }
