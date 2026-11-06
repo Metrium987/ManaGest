@@ -4,8 +4,8 @@
 pas terminé, pas vérifié ou volontairement écarté. Il remplace les listes dispersées : si une
 chose est repoussée, elle est écrite ici et nulle part ailleurs.
 
-Ce qu'il n'est pas : ni l'ordre d'exécution (c'est [`TODO.md`](TODO.md)), ni l'état de ce qui
-est livré (c'est [`TODO.md`](TODO.md) et [`../AUDIT-2026-11-06.md`](../AUDIT-2026-11-06.md)).
+Ce qu'il n'est pas : ni l'ordre d'exécution (c'est [`PLAN-ACTION-PRODUCTION-2026-11-06.md`](PLAN-ACTION-PRODUCTION-2026-11-06.md)), ni l'état de ce qui
+est livré (c'est [`../AUDIT-PRODUCTION-READINESS-2026-11-06.md`](../AUDIT-PRODUCTION-READINESS-2026-11-06.md) et [`../AUDIT-2026-11-06.md`](../AUDIT-2026-11-06.md)).
 
 | Statut | Sens |
 |---|---|
@@ -178,7 +178,7 @@ Toutes les tâches du plan sont fermées : T-000 → T-009, T-010, T-100 → T-1
 T-201 → T-207, T-301 → T-304. Les quatre points d'extension R4 (T-401 → T-404) restent
 **spécifiés et non construits** : c'est leur état final (décision produit), pas un retard.
 
-Le détail, la preuve et les limites de chaque tâche sont dans [`TODO.md`](TODO.md) et
+Le détail, la preuve et les limites de chaque tâche sont dans [`../archive/build-2026-11/TODO.md`](../archive/build-2026-11/TODO.md), [`../archive/build-2026-11/TODO-AUDIT-2026-11-06.md`](../archive/build-2026-11/TODO-AUDIT-2026-11-06.md) et
 [`CHANGELOG.md`](CHANGELOG.md). L'audit d'origine reste lisible dans
 [`../archive/audit-2026-10-28/`](../archive/audit-2026-10-28/), ses constats à jour dans
 [`../AUDIT-2026-11-06.md`](../AUDIT-2026-11-06.md) ; l'ancien `AUDIT.md` y est archivé, figé.

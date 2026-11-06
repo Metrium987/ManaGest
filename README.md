@@ -169,8 +169,8 @@ que masquer les actions non autorisées. Voir [`docs/SECURITE.md`](docs/SECURITE
 - [`docs/UTILISATION.md`](docs/UTILISATION.md) — prise en main pas à pas.
 - [`docs/AUDIT-2026-11-06.md`](docs/AUDIT-2026-11-06.md) — audit daté du 6 novembre 2026 (constats, preuves, verdict sur le schéma).
 - [`docs/AUDIT-PRODUCTION-READINESS-2026-11-06.md`](docs/AUDIT-PRODUCTION-READINESS-2026-11-06.md) — audit de préparation à la production : notes par module, comparaison Odoo/Invoice Ninja, écarts prioritaires et feuille de route.
-- [`docs/build/TODO.md`](docs/build/TODO.md) — plan d'exécution et preuve de chaque tâche.
-- [`docs/build/TODO-AUDIT-2026-11-06.md`](docs/build/TODO-AUDIT-2026-11-06.md) — plan d'exécution détaillé issu de cet audit (tâches A-01 à A-31).
+- [`docs/build/PLAN-ACTION-PRODUCTION-2026-11-06.md`](docs/build/PLAN-ACTION-PRODUCTION-2026-11-06.md) — plan d'action de production : solutions aux 30 écarts, inspirations Odoo/OCA et adaptations polynésiennes.
+- [`docs/archive/build-2026-11/README.md`](docs/archive/build-2026-11/README.md) — archives figées de la construction (TODO clos, plan A-01…A-31, fiches module).
 - [`docs/build/PENDING.md`](docs/build/PENDING.md) — registre unique de ce qui reste suspendu, différé ou non vérifié.
 - [`docs/archive/audit-2026-10-28/AUDIT.md`](docs/archive/audit-2026-10-28/AUDIT.md) — audit d'origine du 28 octobre, **archivé figé** : ses §5 et §6 (chiffres de tables et d'index, modules alors manquants) sont périmés et renvoient à l'audit du 6 novembre.
 
